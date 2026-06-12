@@ -1,0 +1,87 @@
+import type { AgentFinding, Severity } from '../agents/base.js'
+import { SEVERITY_PENALTY } from '../agents/base.js'
+
+const SEVERITY_RANK: Record<Severity, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+}
+
+function characterOverlap(a: string, b: string): number {
+  const aLower = a.toLowerCase()
+  const bLower = b.toLowerCase()
+  const bSet = new Set(bLower)
+  let overlap = 0
+  for (const ch of new Set(aLower)) {
+    if (bSet.has(ch)) overlap++
+  }
+  const aUnique = new Set(aLower).size
+  return aUnique === 0 ? 0 : overlap / aUnique
+}
+
+function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
+  if (a.filePath && b.filePath && a.filePath === b.filePath) {
+    if (a.lineStart !== undefined && b.lineStart !== undefined) {
+      if (a.lineStart === b.lineStart) {
+        if (characterOverlap(a.title, b.title) > 0.7) return true
+      }
+      if (a.agentName === b.agentName && Math.abs(a.lineStart - b.lineStart) <= 5) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
+  const sevA = SEVERITY_RANK[a.severity]
+  const sevB = SEVERITY_RANK[b.severity]
+  const keep = sevA <= sevB ? a : b
+  const discard = sevA <= sevB ? b : a
+
+  const tagSet = new Set([...keep.tags, ...discard.tags])
+
+  return {
+    ...keep,
+    tags: Array.from(tagSet),
+    description: keep.description.length >= discard.description.length
+      ? keep.description
+      : discard.description,
+  }
+}
+
+export function mergeFindings(findings: AgentFinding[]): AgentFinding[] {
+  const result = [...findings]
+  const merged = new Set<number>()
+
+  for (let i = 0; i < result.length; i++) {
+    if (merged.has(i)) continue
+    for (let j = i + 1; j < result.length; j++) {
+      if (merged.has(j)) continue
+      if (shouldMerge(result[i], result[j])) {
+        result[i] = mergeTwo(result[i], result[j])
+        merged.add(j)
+      }
+    }
+  }
+
+  const deduped = result.filter((_, idx) => !merged.has(idx))
+
+  deduped.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
+
+  return deduped
+}
+
+export function groupBySeverity(
+  findings: AgentFinding[]
+): Record<'critical' | 'high' | 'medium' | 'low' | 'info', AgentFinding[]> {
+  return {
+    critical: findings.filter((f) => f.severity === 'critical'),
+    high: findings.filter((f) => f.severity === 'high'),
+    medium: findings.filter((f) => f.severity === 'medium'),
+    low: findings.filter((f) => f.severity === 'low'),
+    info: findings.filter((f) => f.severity === 'info'),
+  }
+}

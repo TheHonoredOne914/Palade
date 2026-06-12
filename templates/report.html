@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}} — Palade Report</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #0f1117;
+      color: #e1e4e8;
+      line-height: 1.6;
+      padding: 2rem;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #1a1f2e 0%, #2d3548 100%);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      border: 1px solid #30363d;
+    }
+    
+    .header h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+    
+    .header .meta {
+      color: #8b949e;
+      font-size: 0.875rem;
+    }
+    
+    .score-hero {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      margin-top: 1.5rem;
+    }
+    
+    .score-circle {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      font-weight: 700;
+      border: 4px solid;
+    }
+    
+    .score-circle.grade-a { background: rgba(63, 185, 80, 0.1); border-color: #3fb950; color: #3fb950; }
+    .score-circle.grade-b { background: rgba(139, 148, 158, 0.1); border-color: #8b949e; color: #8b949e; }
+    .score-circle.grade-c { background: rgba(210, 153, 34, 0.1); border-color: #d29922; color: #d29922; }
+    .score-circle.grade-d { background: rgba(219, 97, 162, 0.1); border-color: #db61a2; color: #db61a2; }
+    .score-circle.grade-f { background: rgba(248, 81, 73, 0.1); border-color: #f85149; color: #f85149; }
+    
+    .score-details {
+      flex: 1;
+    }
+    
+    .score-details .delta {
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .score-details .delta.positive { color: #3fb950; }
+    .score-details .delta.negative { color: #f85149; }
+    .score-details .delta.neutral { color: #8b949e; }
+    
+    .sparkline-container {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #161b22;
+      border-radius: 8px;
+    }
+    
+    .sparkline {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 40px;
+    }
+    
+    .sparkline-bar {
+      flex: 1;
+      background: #3fb950;
+      border-radius: 2px 2px 0 0;
+      min-width: 4px;
+      transition: height 0.2s;
+    }
+    
+    .sparkline-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      color: #8b949e;
+    }
+    
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    .card h2 {
+      font-size: 1.125rem;
+      margin-bottom: 1rem;
+      color: #fff;
+      border-bottom: 1px solid #30363d;
+      padding-bottom: 0.5rem;
+    }
+    
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+    
+    .category-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: #0f1117;
+      border-radius: 6px;
+    }
+    
+    .category-score {
+      font-size: 1.5rem;
+      font-weight: 700;
+      min-width: 50px;
+      text-align: right;
+    }
+    
+    .category-bar {
+      flex: 1;
+      height: 8px;
+      background: #30363d;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .category-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+    
+    .category-name {
+      min-width: 120px;
+      color: #8b949e;
+    }
+    
+    .finding-list {
+      list-style: none;
+    }
+    
+    .finding-item {
+      padding: 1rem;
+      border-bottom: 1px solid #30363d;
+    }
+    
+    .finding-item:last-child {
+      border-bottom: none;
+    }
+    
+    .finding-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .finding-severity {
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    
+    .severity-critical { background: rgba(248, 81, 73, 0.2); color: #f85149; }
+    .severity-high { background: rgba(210, 153, 34, 0.2); color: #d29922; }
+    .severity-medium { background: rgba(56, 139, 253, 0.2); color: #388bfd; }
+    .severity-low { background: rgba(139, 148, 158, 0.2); color: #8b949e; }
+    
+    .finding-title {
+      font-weight: 600;
+      color: #fff;
+    }
+    
+    .finding-location {
+      font-size: 0.875rem;
+      color: #8b949e;
+      margin-left: auto;
+    }
+    
+    .finding-description {
+      color: #c9d1d9;
+      font-size: 0.875rem;
+    }
+    
+    .debt-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    
+    .debt-item {
+      text-align: center;
+      padding: 1rem;
+      background: #0f1117;
+      border-radius: 6px;
+    }
+    
+    .debt-count {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+    
+    .debt-label {
+      font-size: 0.75rem;
+      color: #8b949e;
+      text-transform: uppercase;
+    }
+    
+    .priority-fix {
+      padding: 1rem;
+      background: #0f1117;
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+    }
+    
+    .priority-fix-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .priority-rank {
+      background: #3fb950;
+      color: #0f1117;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    
+    .priority-title {
+      font-weight: 600;
+      color: #fff;
+    }
+    
+    .priority-rationale {
+      color: #c9d1d9;
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .priority-meta {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.75rem;
+      color: #8b949e;
+    }
+    
+    .agent-timing {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.5rem 0;
+    }
+    
+    .agent-name {
+      min-width: 120px;
+      color: #8b949e;
+    }
+    
+    .agent-bar {
+      flex: 1;
+      height: 6px;
+      background: #30363d;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    
+    .agent-bar-fill {
+      height: 100%;
+      background: #388bfd;
+      border-radius: 3px;
+    }
+    
+    .agent-time {
+      min-width: 60px;
+      text-align: right;
+      font-size: 0.875rem;
+      color: #8b949e;
+    }
+    
+    .summary-text {
+      color: #c9d1d9;
+      white-space: pre-wrap;
+      line-height: 1.8;
+    }
+    
+    .observations-list {
+      list-style: none;
+    }
+    
+    .observations-list li {
+      padding: 0.5rem 0;
+      padding-left: 1.5rem;
+      position: relative;
+    }
+    
+    .observations-list li::before {
+      content: '•';
+      position: absolute;
+      left: 0;
+      color: #3fb950;
+    }
+    
+    .footer {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid #30363d;
+      text-align: center;
+      color: #8b949e;
+      font-size: 0.75rem;
+    }
+    
+    @media (max-width: 768px) {
+      body {
+        padding: 1rem;
+      }
+      
+      .score-hero {
+        flex-direction: column;
+        text-align: center;
+      }
+      
+      .category-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>{{TITLE}}</h1>
+      <div class="meta">
+        Generated: {{TIMESTAMP}} | Run ID: {{RUN_ID}} | Duration: {{DURATION}}
+      </div>
+      
+      <div class="score-hero">
+        <div class="score-circle {{SCORE_GRADE_CLASS}}">
+          {{SCORE}}
+        </div>
+        <div class="score-details">
+          <div class="delta {{DELTA_CLASS}}">
+            {{DELTA_TEXT}}
+          </div>
+          <div class="sparkline-container">
+            <div class="sparkline" id="sparkline"></div>
+            <div class="sparkline-labels">
+              <span>Oldest</span>
+              <span>Newest</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>Executive Summary</h2>
+      <div class="summary-text">{{EXECUTIVE_SUMMARY}}</div>
+    </div>
+    
+    <div class="card">
+      <h2>Category Scores</h2>
+      <div class="category-grid">
+        {{CATEGORY_SCORES}}
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>Priority Fixes</h2>
+      {{PRIORITY_FIXES}}
+    </div>
+    
+    <div class="card">
+      <h2>Cross-Cutting Observations</h2>
+      <ul class="observations-list">
+        {{OBSERVATIONS}}
+      </ul>
+    </div>
+    
+    <div class="card">
+      <h2>Debt Estimate</h2>
+      <div class="debt-grid">
+        <div class="debt-item">
+          <div class="debt-count" style="color: #f85149;">{{DEBT_CRITICAL}}</div>
+          <div class="debt-label">Critical</div>
+        </div>
+        <div class="debt-item">
+          <div class="debt-count" style="color: #d29922;">{{DEBT_HIGH}}</div>
+          <div class="debt-label">High</div>
+        </div>
+        <div class="debt-item">
+          <div class="debt-count" style="color: #388bfd;">{{DEBT_MEDIUM}}</div>
+          <div class="debt-label">Medium</div>
+        </div>
+        <div class="debt-item">
+          <div class="debt-count" style="color: #8b949e;">{{DEBT_LOW}}</div>
+          <div class="debt-label">Low</div>
+        </div>
+      </div>
+      {{DEBT_HIGHEST_ROI}}
+    </div>
+    
+    <div class="card">
+      <h2>Cross-Agent Findings</h2>
+      <ul class="finding-list">
+        {{CROSS_AGENT_FINDINGS}}
+      </ul>
+    </div>
+    
+    <div class="card">
+      <h2>Agent Timings</h2>
+      {{AGENT_TIMINGS}}
+    </div>
+    
+    <div class="card">
+      <h2>Findings Summary</h2>
+      {{FINDINGS_SUMMARY}}
+    </div>
+    
+    <div class="footer">
+      Generated by Palade — AI-powered codebase intelligence engine
+    </div>
+  </div>
+  
+  <script>
+    (function() {
+      var sparklineData = {{SPARKLINE_DATA}};
+      var container = document.getElementById('sparkline');
+      if (container && sparklineData.length > 0) {
+        var max = Math.max.apply(null, sparklineData);
+        var html = '';
+        for (var i = 0; i < sparklineData.length; i++) {
+          var height = max > 0 ? (sparklineData[i] / max) * 100 : 0;
+          var color = sparklineData[i] >= 80 ? '#3fb950' : sparklineData[i] >= 60 ? '#d29922' : '#f85149';
+          html += '<div class="sparkline-bar" style="height: ' + height + '%; background: ' + color + ';" title="Score: ' + sparklineData[i] + '"></div>';
+        }
+        container.innerHTML = html;
+      }
+    })();
+  </script>
+</body>
+</html>
