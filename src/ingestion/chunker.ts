@@ -5,6 +5,9 @@ const MAX_TOKENS = 6000
 const CHUNK_LINES = 150
 const CHUNK_OVERLAP = 30
 const CHARS_PER_TOKEN = 4
+const MAX_TREE_SITTER_LINES = 3000
+const MAX_CHUNKS_PER_FILE = 50
+const MAX_TREE_SITTER_BYTES = 300_000
 
 function estimateTokens(content: string): number {
   return Math.ceil(content.length / CHARS_PER_TOKEN)
@@ -38,8 +41,8 @@ function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
       language: chunk.language
     })
 
+    if (endIdx >= lines.length) break
     startIdx = endIdx - CHUNK_OVERLAP
-    if (startIdx >= lines.length) break
   }
 
   return chunks
@@ -50,7 +53,7 @@ function chunkBySlidingWindow(content: string, filePath: string, language: strin
   if (lines.length === 0) return []
 
   if (lines.length <= CHUNK_LINES) {
-    const chunk: CodeChunk = {
+    return [{
       id: makeChunkId(filePath, 1, lines.length),
       filePath,
       startLine: 1,
@@ -58,8 +61,7 @@ function chunkBySlidingWindow(content: string, filePath: string, language: strin
       content,
       tokenCount: estimateTokens(content),
       language: language as CodeChunk['language']
-    }
-    return [chunk]
+    }]
   }
 
   const chunks: CodeChunk[] = []
@@ -81,8 +83,8 @@ function chunkBySlidingWindow(content: string, filePath: string, language: strin
       language: language as CodeChunk['language']
     })
 
+    if (endIdx >= lines.length) break
     startIdx = endIdx - CHUNK_OVERLAP
-    if (startIdx >= lines.length) break
   }
 
   return chunks
@@ -121,6 +123,11 @@ async function loadTreeSitter(): Promise<boolean> {
 }
 
 function chunkTsJs(content: string, filePath: string, language: string): CodeChunk[] {
+  const lineCount = content.split('\n').length
+  if (lineCount > MAX_TREE_SITTER_LINES) {
+    return chunkBySlidingWindow(content, filePath, language)
+  }
+
   const parser = language === 'typescript' ? tsParser : jsParser
   if (!parser) {
     return chunkBySlidingWindow(content, filePath, language)
@@ -190,6 +197,10 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
 }
 
 function chunkPython(content: string, filePath: string): CodeChunk[] {
+  if (content.split('\n').length > MAX_TREE_SITTER_LINES) {
+    return chunkBySlidingWindow(content, filePath, 'python')
+  }
+
   if (!pyParser) {
     return chunkBySlidingWindow(content, filePath, 'python')
   }
@@ -258,7 +269,10 @@ let treeSitterLoaded = false
 
 export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]> {
   if (!treeSitterLoaded) {
-    treeSitterLoaded = await loadTreeSitter()
+    const hasSmallFiles = manifests.some(m => m.sizeBytes <= MAX_TREE_SITTER_BYTES)
+    if (hasSmallFiles) {
+      treeSitterLoaded = await loadTreeSitter()
+    }
   }
 
   const allChunks: CodeChunk[] = []
@@ -286,6 +300,14 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
     }
 
     allChunks.push(...chunks)
+
+    if (allChunks.length > MAX_CHUNKS_PER_FILE * manifests.length) {
+      break
+    }
+  }
+
+  if (allChunks.length > MAX_CHUNKS_PER_FILE * manifests.length) {
+    allChunks.length = MAX_CHUNKS_PER_FILE * manifests.length
   }
 
   return allChunks
