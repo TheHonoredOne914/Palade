@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 const ProviderConfigSchema = z.object({
-  apiKey: z.string().min(1),
+  apiKey: z.string().default(''),
   apiKeys: z.array(z.string().min(1)).optional(),
   model: z.string().optional(),
   maxConcurrency: z.number().int().min(1).max(20).optional()
@@ -18,11 +18,11 @@ export const PaladeConfigSchema = z.object({
     'opencode-zen': ProviderConfigSchema.optional()
   }),
   swarm: z.object({
-    primary: z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']),
-    synthesis: z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']),
+    primary: z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']).default('opencode-zen'),
+    synthesis: z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']).default('nvidia'),
     agentCount: z.number().int().min(1).max(12).default(8),
     timeoutMs: z.number().int().default(600000)
-  }),
+  }).default({}),
   output: z.object({
     dir: z.string().default('.palade/reports'),
     formats: z.array(z.enum(['html', 'json', 'md'])).default(['html', 'json']),

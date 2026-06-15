@@ -211,35 +211,73 @@ function formatValue(v: unknown): string {
 
 function setNestedValue(content: string, dotPath: string, value: unknown): string {
   const parts = dotPath.split('.')
-  const indent = '  '
+  const valueStr = typeof value === 'string' ? `'${value}'` : String(value)
 
   if (parts.length === 2) {
     const [section, key] = parts
-    const valueStr = typeof value === 'string' ? `'${value}'` : JSON.stringify(value)
+    const lines = content.split('\n')
+    let inSection = false
+    let sectionDepth = 0
+    let keyFound = false
+    let sectionFound = false
 
-    const sectionRegex = new RegExp(
-      `(${indent}${section}:\\s*\\{[\\s\\S]*?)(\\n${indent}\\})`
-    )
-    const sectionMatch = content.match(sectionRegex)
+    function ensureComma(line: string): string {
+      const trimmed = line.trimEnd()
+      if (trimmed.endsWith(',') || trimmed.endsWith('{') || trimmed.endsWith('}') || trimmed.endsWith('//') || trimmed === '') {
+        return line
+      }
+      return line + ','
+    }
 
-    if (sectionMatch) {
-      const sectionBody = sectionMatch[1]
-      const keyRegex = new RegExp(`(${indent}${indent}${key}:\\s*)([^,\\n]+)`)
-      if (keyRegex.test(sectionBody)) {
-        return content.replace(
-          new RegExp(`(${indent}${section}[\\s\\S]*?${indent}${indent}${key}:\\s*)([^,\\n]+)`),
-          `$1${valueStr}`
-        )
-      } else {
-        const insertPoint = new RegExp(
-          `(${indent}${section}:\\s*\\{\\n)`
-        )
-        return content.replace(
-          insertPoint,
-          `$1${indent}${indent}${key}: ${valueStr}\n`
-        )
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const trimmed = line.trimStart()
+
+      if (trimmed.startsWith(`${section}:`)) {
+        inSection = true
+        sectionFound = true
+        sectionDepth = line.length - trimmed.length
+        continue
+      }
+
+      if (inSection) {
+        const currentDepth = line.length - trimmed.length
+
+        if (currentDepth <= sectionDepth && trimmed.startsWith('}')) {
+          if (!keyFound) {
+            const prevLine = i > 0 ? lines[i - 1] : ''
+            lines.splice(i, 0, `${' '.repeat(sectionDepth + 2)}${key}: ${valueStr}`)
+          }
+          break
+        }
+
+        const keyPattern = new RegExp(`^\\s*${key}:\\s*`)
+        if (keyPattern.test(line)) {
+          lines[i] = ensureComma(`${' '.repeat(currentDepth)}${key}: ${valueStr}`)
+          keyFound = true
+        }
       }
     }
+
+    if (!sectionFound) {
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (lines[i].trim() === '}') {
+          const prevIdx = i - 1
+          if (prevIdx >= 0) {
+            lines[prevIdx] = ensureComma(lines[prevIdx])
+          }
+          lines.splice(i, 0,
+            ``,
+            `  ${section}: {`,
+            `    ${key}: ${valueStr}`,
+            `  }`,
+          )
+          break
+        }
+      }
+    }
+
+    return lines.join('\n')
   }
 
   console.log(theme.dim(`  ⚠ Could not set ${dotPath} — edit palade.config.ts manually`))

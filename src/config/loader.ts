@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { config as dotenvConfig } from 'dotenv'
+import { pathToFileURL } from 'node:url'
 import { PaladeConfigSchema, type PaladeConfig } from './schema.js'
 import { DEFAULT_CONFIG } from './defaults.js'
 
@@ -76,10 +77,12 @@ export async function loadConfig(): Promise<PaladeConfig> {
   let raw: Record<string, unknown> | undefined
 
   try {
-    const configPath = `${process.cwd()}/palade.config.ts`
-    const mod = await import(configPath)
+    const configPath = join(process.cwd(), 'palade.config.ts')
+    const fileUrl = pathToFileURL(configPath).href
+    const cacheBust = `?t=${Date.now()}`
+    const mod = await import(`${fileUrl}${cacheBust}`)
     raw = mod.default ?? mod
-  } catch {
+  } catch (e) {
     // No config file found — fall through to env vars
   }
 
