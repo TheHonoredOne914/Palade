@@ -27,8 +27,8 @@ import type { AgentName } from '../../agents/base.js'
 import type { ResolvedTarget } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import chalk from 'chalk'
-import { mkdirSync, existsSync } from 'node:fs'
-import { join, basename, isAbsolute, resolve, relative, sep } from 'node:path'
+import { mkdirSync, existsSync, statSync } from 'node:fs'
+import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'node:path'
 
 interface ReviewOptions {
   target?: string
@@ -58,13 +58,24 @@ export async function reviewCommand(
     symbolFilter = parts[1]
   }
 
-  const projectRoot = rawPath
+  const resolvedPath = rawPath
     ? (isAbsolute(rawPath) ? rawPath : resolve(process.cwd(), rawPath))
     : process.cwd()
 
-  if (!existsSync(projectRoot)) {
-    console.error(chalk.red(`Path does not exist: ${projectRoot}`))
+  if (!existsSync(resolvedPath)) {
+    console.error(chalk.red(`Path does not exist: ${resolvedPath}`))
     process.exit(1)
+  }
+
+  // Detect if path is a file or directory
+  let projectRoot: string
+  let singleFile: string | undefined
+  const pathStat = statSync(resolvedPath)
+  if (pathStat.isFile()) {
+    projectRoot = dirname(resolvedPath)
+    singleFile = basename(resolvedPath)
+  } else {
+    projectRoot = resolvedPath
   }
 
   // Resolve symbol if :: syntax used
@@ -96,12 +107,15 @@ export async function reviewCommand(
     const absDir = isAbsolute(d) ? d : resolve(projectRoot, d)
     return relative(projectRoot, absDir).split(sep).join('/')
   }
+  const scopeFiles = singleFile
+    ? [singleFile]
+    : opts.file && opts.file.length > 0
+      ? opts.file.map(f => isAbsolute(f) ? relative(projectRoot, f).split(sep).join('/') : f)
+      : undefined
   const scope: ScopeOptions = {
     projectRoot,
     dirs: opts.dir ? [normalizeDir(opts.dir)] : undefined,
-    files: opts.file && opts.file.length > 0
-      ? opts.file.map(f => isAbsolute(f) ? relative(projectRoot, f).split(sep).join('/') : f)
-      : undefined,
+    files: scopeFiles,
     globs: opts.glob ? [opts.glob] : undefined,
     annotationsOnly: opts.annotations ?? false,
     symbolChunks: resolvedSymbolChunk ? [resolvedSymbolChunk] : undefined,
