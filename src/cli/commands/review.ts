@@ -25,6 +25,7 @@ import {
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentName } from '../../agents/base.js'
 import type { ResolvedTarget } from '../../orchestrator/types.js'
+import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync } from 'node:fs'
 import { join, basename, isAbsolute, resolve, relative, sep } from 'node:path'
@@ -66,9 +67,17 @@ export async function reviewCommand(
     process.exit(1)
   }
 
+  // Resolve symbol if :: syntax used
+  let resolvedSymbolChunk = undefined
   if (symbolFilter) {
-    console.log(chalk.yellow(`  Symbol filter: ${symbolFilter}`))
-    console.log(chalk.dim('  (Note: symbol-level scoping is not yet implemented — reviewing entire file)'))
+    const symbolRef = rawPath ? `${rawPath}::${symbolFilter}` : `${process.cwd()}::${symbolFilter}`
+    const chunk = await resolveSymbol(symbolRef, process.cwd())
+    if (!chunk) {
+      console.error(chalk.red(`  Symbol '${symbolFilter}' not found in ${rawPath || '.'}`))
+      process.exit(1)
+    }
+    resolvedSymbolChunk = chunk
+    console.log(theme.success(`  ✓ Resolved symbol: ${chunk.filePath}:${chunk.startLine}-${chunk.endLine}`))
   }
 
   // 1. Load config + init providers
@@ -95,6 +104,7 @@ export async function reviewCommand(
       : undefined,
     globs: opts.glob ? [opts.glob] : undefined,
     annotationsOnly: opts.annotations ?? false,
+    symbolChunks: resolvedSymbolChunk ? [resolvedSymbolChunk] : undefined,
   }
 
   // 5. Handle --pick
@@ -105,10 +115,15 @@ export async function reviewCommand(
     )
     const selectedPaths = await launchPicker(projectRoot, allManifests)
     if (selectedPaths.length === 0) {
-      console.log(theme.dim('  No files selected.'))
-      return
+      if (!process.stdin.isTTY) {
+        console.log(theme.dim('  --pick requires an interactive terminal. Reviewing all files.'))
+      } else {
+        console.log(theme.dim('  No files selected.'))
+        return
+      }
+    } else {
+      scope.files = selectedPaths
     }
-    scope.files = selectedPaths
   }
 
   // 6. Handle --target

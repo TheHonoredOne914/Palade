@@ -34,4 +34,5 @@ export interface ScopeOptions {
   targetPaths?: string[]
   annotationsOnly?: boolean
   projectRoot: string
+  symbolChunks?: CodeChunk[]
 }
