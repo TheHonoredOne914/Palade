@@ -6,199 +6,319 @@ import { runPipeline } from '../../orchestrator/pipeline.js'
 import { calculateScore } from '../../scorer/calculator.js'
 import { readHistory, appendEntry } from '../../scorer/history.js'
 import { renderBadge, getScoreColor } from '../../scorer/badge.js'
-import { reportTerminal } from '../../reporters/terminal.js'
 import { reportJson } from '../../reporters/json.js'
 import { writeHtmlReport, startLocalServer } from '../../reporters/html.js'
 import { reportMarkdown } from '../../reporters/markdown.js'
+import { validateMode, getModeConfig } from '../../modes/index.js'
+import { writeOnboardDocs } from '../../modes/onboard.js'
+import { createLiveProgress } from '../../ui/progress.js'
+import { theme, scoreTheme } from '../../ui/theme.js'
+import {
+  kvTable,
+  findingsTable,
+  divider,
+  sparkline,
+  sectionBox,
+  scoreGrade,
+  formatDelta,
+} from '../../ui/layout.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentName } from '../../agents/base.js'
+import type { ResolvedTarget } from '../../orchestrator/types.js'
 import chalk from 'chalk'
-import ora from 'ora'
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs'
-import { join, basename, dirname } from 'node:path'
+import { mkdirSync, existsSync } from 'node:fs'
+import { join, basename } from 'node:path'
 
-export async function reviewCommand(opts: { pick?: boolean; target?: string }): Promise<void> {
-  const projectRoot = process.cwd()
+interface ReviewOptions {
+  target?: string
+  allTargets?: boolean
+  dir?: string
+  file?: string[]
+  glob?: string
+  mode?: string
+  annotations?: boolean
+  pick?: boolean
+  depth?: number
+  format?: string
+  open?: boolean
+  quiet?: boolean
+}
 
-  try {
-    // 1. Load config + init providers
-    const configSpinner = ora('Loading configuration...').start()
-    const config = await loadConfig()
-    configSpinner.succeed('Configuration loaded')
+export async function reviewCommand(
+  pathArg: string | undefined,
+  opts: ReviewOptions
+): Promise<void> {
+  const projectRoot = pathArg
+    ? join(process.cwd(), pathArg)
+    : process.cwd()
 
-    await initRouter(config)
-
-    // 2. Handle target selection
-    let scope: ScopeOptions = { projectRoot }
-    let targetDescription: string | undefined
-    let targetFocus: string[] | undefined
-
-    if (opts.pick) {
-      const targets = await loadTargets(projectRoot)
-      if (targets.length === 0) {
-        console.log(chalk.yellow('No targets defined in palade.targets.ts'))
-        return
-      }
-      const selected = await launchPicker(targets)
-      if (selected.length === 0) {
-        console.log(chalk.gray('No targets selected.'))
-        return
-      }
-      console.log(chalk.cyan(`Selected: ${selected.map(t => t.name).join(', ')}`))
-      const allPaths: string[] = []
-      for (const t of selected) {
-        allPaths.push(...resolveTargetPaths(t, projectRoot))
-      }
-      scope = { projectRoot, dirs: allPaths }
-    } else if (opts.target) {
-      const targets = await loadTargets(projectRoot)
-      const match = targets.find((t) => t.name === opts.target)
-      if (!match) {
-        console.log(chalk.red(`Target "${opts.target}" not found in palade.targets.ts`))
-        process.exit(1)
-      }
-      console.log(chalk.cyan(`Running review for target: ${match.name}`))
-      const paths = resolveTargetPaths(match, projectRoot)
-      scope = { projectRoot, dirs: paths }
-      targetDescription = match.description
-      targetFocus = match.focus
-    }
-
-    // 3. Run pipeline (walk + chunk + swarm) with progress
-    const agentCount = config.swarm.agentCount
-    let completedAgents = 0
-
-    const progressSpinner = ora('Starting analysis...').start()
-
-    const swarmResult = await runPipeline({
-      projectRoot,
-      scope,
-      context: {
-        projectLanguages: ['typescript'],
-        totalFiles: 0,
-        totalChunks: 0,
-        mode: 'standard',
-        ...(targetDescription ? { targetDescription } : {}),
-        ...(targetFocus ? { targetFocus } : {})
-      },
-      swarmOptions: {
-        onAgentStart: (name: AgentName): void => {
-          progressSpinner.text = `[${completedAgents}/${agentCount}] ${name} agent analyzing...`
-        },
-        onAgentComplete: (name: AgentName, findings: number, durationMs: number): void => {
-          completedAgents++
-          progressSpinner.text = `[${completedAgents}/${agentCount}] ${name} complete (${findings} findings, ${(durationMs / 1000).toFixed(1)}s)`
-        },
-        onSynthesisStart: (): void => {
-          progressSpinner.text = 'Synthesizing cross-agent findings...'
-        },
-        onSynthesisComplete: (durationMs: number): void => {
-          progressSpinner.text = `Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`
-        },
-        timeoutMs: config.swarm.timeoutMs
-      }
-    })
-
-    progressSpinner.succeed(
-      `Analysis complete — ${swarmResult.findings.length} findings in ${(swarmResult.durationMs / 1000).toFixed(1)}s`
-    )
-
-    // 4. Calculate score
-    const scoreSpinner = ora('Calculating score...').start()
-    const historyPath = join(projectRoot, config.score.historyFile)
-    const previousScore = (() => {
-      try {
-        const entries = readHistory(historyPath)
-        return entries.length > 0 ? entries[entries.length - 1].score : null
-      } catch { return null }
-    })()
-
-    const scoreResult = calculateScore(
-      swarmResult.findings,
-      swarmResult.crossAgentFindings,
-      previousScore
-    )
-    scoreSpinner.succeed(
-      `Score: ${scoreResult.score}/100 (delta: ${scoreResult.delta >= 0 ? '+' : ''}${scoreResult.delta})`
-    )
-
-    // 5. Append to history
-    appendEntry(historyPath, {
-      timestamp: new Date().toISOString(),
-      runId: swarmResult.runId,
-      score: scoreResult.score,
-      breakdown: scoreResult.breakdown,
-      delta: scoreResult.delta
-    })
-
-    // 6. Generate badge
-    if (config.score.badge) {
-      const badgeSvg = renderBadge({
-        score: scoreResult.score,
-        color: getScoreColor(scoreResult.score),
-        label: 'palade'
-      })
-      const badgePath = join(projectRoot, config.score.badgePath)
-      const badgeDir = dirname(badgePath)
-      if (!existsSync(badgeDir)) mkdirSync(badgeDir, { recursive: true })
-      writeFileSync(badgePath, badgeSvg, 'utf-8')
-      console.log(chalk.green(`  Badge updated: ${config.score.badgePath}`))
-    }
-
-    // 7. Build reporter context
-    const reporterCtx = {
-      score: scoreResult,
-      swarm: swarmResult,
-      synthesis: swarmResult.synthesis,
-      findings: swarmResult.findings,
-      crossAgentFindings: swarmResult.crossAgentFindings,
-      history: readHistory(historyPath),
-      config: {
-        projectName: basename(projectRoot),
-        runTimestamp: new Date().toISOString()
-      }
-    }
-
-    // 8. Generate reports
-    const outputDir = join(projectRoot, config.output.dir)
-    if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
-
-    const dateStr = new Date().toISOString().slice(0, 10)
-    const reportName = `${dateStr}-${scoreResult.score}`
-
-    const reportSpinner = ora('Generating reports...').start()
-
-    if (config.output.formats.includes('json')) {
-      const jsonPath = join(outputDir, `${reportName}.json`)
-      reportJson(reporterCtx, jsonPath)
-      console.log(chalk.green(`  JSON: ${jsonPath}`))
-    }
-
-    if (config.output.formats.includes('html')) {
-      const htmlPath = join(outputDir, `${reportName}.html`)
-      writeHtmlReport(reporterCtx, htmlPath)
-      console.log(chalk.green(`  HTML: ${htmlPath}`))
-      if (config.output.openBrowser) {
-        startLocalServer(htmlPath, config.output.port)
-      }
-    }
-
-    if (config.output.formats.includes('md')) {
-      const mdPath = join(outputDir, `${reportName}.md`)
-      reportMarkdown(reporterCtx, mdPath)
-      console.log(chalk.green(`  Markdown: ${mdPath}`))
-    }
-
-    reportSpinner.succeed('Reports generated')
-
-    // 9. Terminal summary
-    await reportTerminal(reporterCtx)
-
-  } catch (err) {
-    console.error(chalk.red(`\nReview failed: ${(err as Error).message}`))
-    if ((err as Error).stack && process.env.DEBUG) {
-      console.error(chalk.gray((err as Error).stack))
-    }
+  if (!existsSync(projectRoot)) {
+    console.error(chalk.red(`Path does not exist: ${projectRoot}`))
     process.exit(1)
   }
+
+  // 1. Load config + init providers
+  const config = await loadConfig()
+  await initRouter(config)
+
+  // 2. Load targets
+  const allTargets = await loadTargets(projectRoot)
+
+  // 3. Validate mode
+  const mode = validateMode(opts.mode ?? 'standard')
+  const modeConfig = getModeConfig(mode)
+
+  // 4. Build scope
+  const scope: ScopeOptions = {
+    projectRoot,
+    dirs: opts.dir ? [opts.dir] : undefined,
+    files: opts.file && opts.file.length > 0 ? opts.file : undefined,
+    globs: opts.glob ? [opts.glob] : undefined,
+    annotationsOnly: opts.annotations ?? false,
+  }
+
+  // 5. Handle --pick
+  let resolvedTarget: ResolvedTarget | undefined = undefined
+  if (opts.pick) {
+    const allManifests = await import('../../ingestion/walker.js').then((m) =>
+      m.walkProject(projectRoot, { projectRoot })
+    )
+    const selectedPaths = await launchPicker(projectRoot, allManifests)
+    if (selectedPaths.length === 0) {
+      console.log(theme.dim('  No files selected.'))
+      return
+    }
+    scope.files = selectedPaths
+  }
+
+  // 6. Handle --target
+  if (opts.target) {
+    const match = allTargets.find((t) => t.name === opts.target)
+    if (!match) {
+      console.error(
+        chalk.red(
+          `Target "${opts.target}" not found. Available: ${allTargets.map((t) => t.name).join(', ') || '(none)'}`
+        )
+      )
+      process.exit(1)
+    }
+    console.log(theme.accent(`  Running review for target: ${match.name}`))
+    resolvedTarget = {
+      definition: match,
+      resolvedPaths: resolveTargetPaths(match, projectRoot),
+    }
+  }
+
+  // 7. Print run header
+  if (!opts.quiet) {
+    const rows: [string, string][] = [
+      ['Project:', `${theme.white(basename(projectRoot))}`],
+      ['Mode:', theme.accent(mode)],
+      ['Scope:', theme.dim(opts.target ? `target: ${opts.target}` : opts.dir ? `dir: ${opts.dir}` : 'full codebase')],
+      ['Swarm:', `${theme.white(config.swarm.primary)} → ${config.swarm.agentCount} agents`],
+      ['Synthesis:', theme.white(config.swarm.synthesis)],
+    ]
+    if (opts.annotations) {
+      rows.push(['Annotations:', theme.warning('only annotated items')])
+    }
+    console.log(kvTable(rows))
+    console.log()
+  }
+
+  // 8. Run pipeline with progress
+  const agentCount = config.swarm.agentCount
+  let completedAgents = 0
+  const progress = opts.quiet
+    ? undefined
+    : createLiveProgress()
+
+  const swarmResult = await runPipeline({
+    projectRoot,
+    scope,
+    context: {
+      projectLanguages: [],
+      totalFiles: 0,
+      totalChunks: 0,
+      mode,
+      modeConfig,
+    },
+    swarmOptions: {
+      onAgentStart: (name: AgentName): void => {
+        progress?.agentStart(name)
+      },
+      onAgentComplete: (
+        name: AgentName,
+        findings: number,
+        durationMs: number
+      ): void => {
+        completedAgents++
+        progress?.agentDone(name, findings, durationMs)
+      },
+      onSynthesisStart: (): void => {
+        progress?.synthesisStart(config.swarm.synthesis)
+      },
+      onSynthesisComplete: (durationMs: number): void => {
+        progress?.synthesisDone(durationMs)
+      },
+      timeoutMs: config.swarm.timeoutMs,
+    },
+    target: resolvedTarget,
+  })
+
+  progress?.stop()
+
+  // 9. Calculate score
+  const historyPath = join(projectRoot, config.score.historyFile)
+  const previousScore = (() => {
+    try {
+      const entries = readHistory(historyPath)
+      return entries.length > 0 ? entries[entries.length - 1].score : null
+    } catch {
+      return null
+    }
+  })()
+
+  const scoreResult = calculateScore(
+    swarmResult.findings,
+    swarmResult.crossAgentFindings,
+    previousScore
+  )
+
+  // 10. Append to history
+  appendEntry(historyPath, {
+    timestamp: new Date().toISOString(),
+    runId: swarmResult.runId,
+    score: scoreResult.score,
+    breakdown: scoreResult.breakdown,
+    delta: scoreResult.delta,
+  })
+
+  // 11. Generate badge
+  if (config.score.badge) {
+    const badgeSvg = renderBadge({
+      score: scoreResult.score,
+      color: getScoreColor(scoreResult.score),
+      label: 'palade',
+    })
+    const badgePath = join(projectRoot, config.score.badgePath)
+    const badgeDir = join(badgePath, '..')
+    if (!existsSync(badgeDir)) mkdirSync(badgeDir, { recursive: true })
+    const { writeFileSync } = await import('node:fs')
+    writeFileSync(badgePath, badgeSvg, 'utf-8')
+  }
+
+  // 12. Generate reports
+  const outputDir = join(projectRoot, config.output.dir)
+  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
+
+  const dateStr = new Date().toISOString().slice(0, 10)
+  const reportName = `${dateStr}-${scoreResult.score}`
+  const formats = (opts.format ?? config.output.formats.join(','))
+    .split(',')
+    .map((f) => f.trim())
+
+  const reporterCtx = {
+    score: scoreResult,
+    swarm: swarmResult,
+    synthesis: swarmResult.synthesis,
+    findings: swarmResult.findings,
+    crossAgentFindings: swarmResult.crossAgentFindings,
+    history: readHistory(historyPath),
+    config: {
+      projectName: basename(projectRoot),
+      runTimestamp: new Date().toISOString(),
+    },
+  }
+
+  if (formats.includes('json')) {
+    const jsonPath = join(outputDir, `${reportName}.json`)
+    reportJson(reporterCtx, jsonPath)
+  }
+
+  let htmlPath: string | undefined
+  if (formats.includes('html')) {
+    htmlPath = join(outputDir, `${reportName}.html`)
+    writeHtmlReport(reporterCtx, htmlPath)
+  }
+
+  if (formats.includes('md')) {
+    const mdPath = join(outputDir, `${reportName}.md`)
+    reportMarkdown(reporterCtx, mdPath)
+  }
+
+  // 13. Handle onboard mode output
+  if (mode === 'onboard' && swarmResult.synthesis.executiveSummary) {
+    const onboardDir = join(outputDir, `onboard-${dateStr}`)
+    const paths = await writeOnboardDocs(
+      swarmResult.synthesis.executiveSummary,
+      onboardDir
+    )
+    if (paths.length > 0) {
+      console.log(theme.success(`  ✓ Onboard docs written to ${onboardDir}/`))
+    }
+  }
+
+  // 14. Print summary
+  const { critical, high, medium, low } = groupBySeverity(
+    swarmResult.findings
+  )
+
+  console.log()
+  console.log(divider())
+
+  const scoreStr = scoreTheme(scoreResult.score)(
+    `${scoreResult.score}/100`
+  )
+  const deltaStr = formatDelta(scoreResult.delta)
+  const gradeStr = scoreGrade(scoreResult.score)
+
+  console.log(
+    `  Palade Score   ${scoreStr}  ${theme.dim(deltaStr)}  ${theme.dim(`Grade: ${gradeStr}`)}`
+  )
+
+  console.log(
+    [
+      `  Findings       `,
+      theme.critical(`${critical.length} critical`),
+      `  `,
+      theme.high(`${high.length} high`),
+      `  `,
+      theme.medium(`${medium.length} medium`),
+      `  `,
+      theme.dim(`${low.length} low`),
+    ].join('')
+  )
+
+  console.log()
+
+  if (htmlPath) {
+    console.log(
+      `  ${theme.dim('→ Report')}   ${chalk.cyan(htmlPath)}`
+    )
+  }
+  console.log(
+    `  ${theme.dim('→ Badge')}     ${chalk.cyan(config.score.badgePath)} ${theme.success('updated')}`
+  )
+
+  console.log()
+  console.log(divider())
+  console.log(
+    `  ${theme.dim('Total time:')}  ${(swarmResult.durationMs / 1000).toFixed(1)}s`
+  )
+  console.log()
+
+  // 15. Open browser
+  if (htmlPath && opts.open !== false && config.output.openBrowser) {
+    startLocalServer(htmlPath, config.output.port)
+  }
+}
+
+function groupBySeverity(findings: Array<{ severity: string }>) {
+  const critical = findings.filter((f) => f.severity === 'critical')
+  const high = findings.filter((f) => f.severity === 'high')
+  const medium = findings.filter((f) => f.severity === 'medium')
+  const low = findings.filter(
+    (f) => f.severity === 'low' || f.severity === 'info'
+  )
+  return { critical, high, medium, low }
 }

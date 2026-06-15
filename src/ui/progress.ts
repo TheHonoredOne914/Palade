@@ -1,0 +1,66 @@
+import ora, { type Ora } from 'ora'
+import chalk from 'chalk'
+import { theme } from './theme.js'
+
+export interface LiveProgress {
+  agentStart(name: string): void
+  agentDone(name: string, findings: number, ms: number): void
+  synthesisStart(providerName: string): void
+  synthesisDone(ms: number): void
+  stop(): void
+}
+
+export function createLiveProgress(): LiveProgress {
+  const spinners = new Map<string, Ora>()
+
+  return {
+    agentStart(name) {
+      const spinner = ora({
+        text: `  ${theme.dim(name.padEnd(22))} ${theme.dim('initialising...')}`,
+        spinner: 'dots2',
+        color: 'magenta',
+        prefixText: ' ',
+      }).start()
+      spinners.set(name, spinner)
+    },
+
+    agentDone(name, findings, ms) {
+      const spinner = spinners.get(name)
+      if (!spinner) return
+      const time = `${(ms / 1000).toFixed(1)}s`
+      const countStr =
+        findings > 0
+          ? theme.warning(`${findings} finding${findings !== 1 ? 's' : ''}`)
+          : theme.success('clean')
+      spinner.stopAndPersist({
+        symbol: theme.success('✓'),
+        text: `  ${theme.dim(name.padEnd(22))} ${countStr.padEnd(20)} ${theme.dim(time)}`,
+      })
+    },
+
+    synthesisStart(providerName) {
+      const spinner = ora({
+        text: `  ${theme.dim('Synthesis'.padEnd(22))} ${theme.dim(`${providerName}...`)}`,
+        spinner: 'dots2',
+        color: 'blue',
+        prefixText: ' ',
+      }).start()
+      spinners.set('_synthesis', spinner)
+    },
+
+    synthesisDone(ms) {
+      const spinner = spinners.get('_synthesis')
+      if (!spinner) return
+      spinner.stopAndPersist({
+        symbol: theme.primary('◆'),
+        text: `  ${theme.dim('Synthesis'.padEnd(22))} ${theme.primary('complete')}                ${theme.dim((ms / 1000).toFixed(1) + 's')}`,
+      })
+    },
+
+    stop() {
+      for (const s of spinners.values()) {
+        if (s.isSpinning) s.stop()
+      }
+    },
+  }
+}

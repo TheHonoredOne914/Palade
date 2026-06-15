@@ -1,8 +1,11 @@
 import { z } from 'zod'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { config as dotenvConfig } from 'dotenv'
 import { PaladeConfigSchema, type PaladeConfig } from './schema.js'
 import { DEFAULT_CONFIG } from './defaults.js'
+
+dotenvConfig()
 
 export function readPackageJson(projectRoot: string): Record<string, unknown> | null {
   try {

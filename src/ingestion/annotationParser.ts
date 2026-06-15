@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import type { Annotation, FileManifest } from './types.js'
+import type { Annotation, FileManifest, CodeChunk } from './types.js'
 
 const REVIEW_RE = /\/\/\s*@palade\s+review\s*:\s*(.+)/i
 const FOCUS_RE = /\/\/\s*@palade\s+focus\s*:\s*(.+)/i
@@ -76,4 +76,60 @@ async function parseAnnotationsAsync(manifests: FileManifest[]): Promise<Map<str
     }
   }
   return map
+}
+
+// ── Phase 11: Annotation Summary ─────────────────────────────
+
+export interface AnnotationSummary {
+  reviewRequests: Array<{
+    filePath: string
+    line: number
+    reason: string
+  }>
+  focusRequests: Array<{
+    filePath: string
+    line: number
+    domain: string
+  }>
+  ignoredFiles: string[]
+  ignoredLines: Array<{
+    filePath: string
+    startLine: number
+  }>
+}
+
+export function buildAnnotationSummary(
+  manifests: FileManifest[],
+  chunks: CodeChunk[]
+): AnnotationSummary {
+  const reviewRequests: AnnotationSummary['reviewRequests'] = []
+  const focusRequests: AnnotationSummary['focusRequests'] = []
+  const ignoredFiles: string[] = []
+  const ignoredLines: AnnotationSummary['ignoredLines'] = []
+
+  for (const manifest of manifests) {
+    for (const annotation of manifest.annotations) {
+      if (annotation.type === 'ignore') {
+        if (annotation.line <= 5) {
+          ignoredFiles.push(manifest.path)
+        } else {
+          ignoredLines.push({ filePath: manifest.path, startLine: annotation.line })
+        }
+      } else if (annotation.type === 'review' && annotation.value) {
+        reviewRequests.push({
+          filePath: manifest.path,
+          line: annotation.line,
+          reason: annotation.value,
+        })
+      } else if (annotation.type === 'focus' && annotation.value) {
+        focusRequests.push({
+          filePath: manifest.path,
+          line: annotation.line,
+          domain: annotation.value,
+        })
+      }
+    }
+  }
+
+  return { reviewRequests, focusRequests, ignoredFiles, ignoredLines }
 }
