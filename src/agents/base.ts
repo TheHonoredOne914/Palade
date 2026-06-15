@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import chalk from 'chalk'
 import type { CodeChunk, Language } from '../ingestion/types.js'
+import type { ModeConfig } from '../modes/index.js'
 
 export type ReviewMode = 'standard' | 'security' | 'onboard' | 'debt' | 'ghost'
 
@@ -26,6 +27,8 @@ export interface AgentFinding {
   symbolName?: string
   tags: string[]
   scorePenalty: number
+  estimatedHours?: number
+  hoursWasted?: number
 }
 
 export interface DiffContext {
@@ -40,6 +43,24 @@ export interface DiffContext {
   }>
 }
 
+export interface AnnotationSummary {
+  reviewRequests: Array<{
+    filePath: string
+    line: number
+    reason: string
+  }>
+  focusRequests: Array<{
+    filePath: string
+    line: number
+    domain: string
+  }>
+  ignoredFiles: string[]
+  ignoredLines: Array<{
+    filePath: string
+    startLine: number
+  }>
+}
+
 export interface AgentContext {
   targetDescription?: string
   targetFocus?: string[]
@@ -48,6 +69,8 @@ export interface AgentContext {
   totalChunks: number
   mode: ReviewMode
   diffContext?: DiffContext
+  annotations?: AnnotationSummary
+  modeConfig?: ModeConfig
 }
 
 export interface IAgent {
@@ -146,7 +169,11 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
   return findings
 }
 
-export function buildSystemPrompt(base: string, context: AgentContext): string {
+export function buildSystemPrompt(
+  base: string,
+  context: AgentContext,
+  modeConfig?: ModeConfig
+): string {
   let prompt = base
   if (context.diffContext) {
     const dc = context.diffContext
@@ -157,6 +184,22 @@ export function buildSystemPrompt(base: string, context: AgentContext): string {
   }
   if (context.targetFocus?.length) {
     prompt += `\nFOCUS AREAS: ${context.targetFocus.join(', ')}`
+  }
+  if (modeConfig?.systemPromptSuffix) {
+    prompt += `\n\n${modeConfig.systemPromptSuffix}`
+  }
+  if (context.annotations?.reviewRequests.length) {
+    const requests = context.annotations.reviewRequests
+      .slice(0, 10)
+      .map((r) => `  - ${r.filePath}:${r.line} — "${r.reason}"`)
+      .join('\n')
+    prompt += `\n\nDEVELOPER REVIEW REQUESTS:\nThe following were explicitly flagged by the developer:\n${requests}\nPrioritise these in your findings.`
+  }
+  if (context.annotations?.focusRequests.length) {
+    const focuses = context.annotations.focusRequests
+      .map((f) => `  - ${f.filePath}:${f.line} → focus: ${f.domain}`)
+      .join('\n')
+    prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}`
   }
   return prompt
 }
