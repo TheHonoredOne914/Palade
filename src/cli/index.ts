@@ -163,8 +163,15 @@ async function runClassicCLI(): Promise<void> {
 
   program
     .command('settings')
-    .description('Interactive settings manager')
-    .action(settingsCommand)
+    .description('View and update Palade config')
+    .option('--set <key=value>', 'Set a config value (repeatable)', (val: string, prev: string[]) => prev.concat([val]), [])
+    .option('--init', 'Create default palade.config.ts and .paladeignore')
+    .option('--list', 'Show current config (default)')
+    .action(
+      async (opts: { set?: string[]; init?: boolean; list?: boolean }): Promise<void> => {
+        await settingsCommand(opts)
+      }
+    )
 
   program
     .command('init')
