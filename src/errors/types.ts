@@ -11,7 +11,7 @@ export class PaladeConfigError extends Error {
 
 export class NoProvidersError extends Error {
   constructor() {
-    super('No LLM providers available. Set at least one API key: GROQ_API_KEY, CEREBRAS_API_KEY, or NVIDIA_API_KEY.')
+    super('No LLM providers available. Set at least one API key:\n  GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY, or OPENCODE_ZEN_API_KEY')
     this.name = 'NoProvidersError'
   }
 }

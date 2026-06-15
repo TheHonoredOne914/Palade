@@ -1,3 +1,5 @@
+import crypto from 'node:crypto'
+import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
 import type { ScopeOptions } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
@@ -23,6 +25,27 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   }
 
   const manifests = await walkProject(opts.projectRoot, scope)
+
+  if (manifests.length === 0) {
+    console.log(chalk.yellow('\n  No files found to review.'))
+    console.log(chalk.dim('  Check your scope flags or .paladeignore rules.'))
+    return {
+      runId: crypto.randomUUID().slice(0, 8),
+      findings: [],
+      crossAgentFindings: [],
+      synthesis: {
+        executiveSummary: 'No files found to review.',
+        priorityFixes: [],
+        crossCuttingObservations: [],
+        debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
+      },
+      agentTimings: {} as Record<string, number>,
+      totalChunks: 0,
+      totalTokensEstimated: 0,
+      durationMs: 0,
+    }
+  }
+
   const chunks = await chunkFiles(manifests)
 
   console.log(

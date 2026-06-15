@@ -9,6 +9,11 @@ export async function launchPicker(
     return []
   }
 
+  if (!process.stdin.isTTY) {
+    console.error('  --pick requires an interactive terminal.')
+    return []
+  }
+
   const choices = manifests.map((m) => ({
     name: m.path,
     value: m.path,

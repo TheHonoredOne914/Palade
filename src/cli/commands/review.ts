@@ -27,7 +27,7 @@ import type { AgentName } from '../../agents/base.js'
 import type { ResolvedTarget } from '../../orchestrator/types.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { join, basename, isAbsolute, resolve, relative, sep } from 'node:path'
 
 interface ReviewOptions {
   target?: string
@@ -48,13 +48,27 @@ export async function reviewCommand(
   pathArg: string | undefined,
   opts: ReviewOptions
 ): Promise<void> {
-  const projectRoot = pathArg
-    ? join(process.cwd(), pathArg)
+  // Parse file::symbol syntax
+  let symbolFilter: string | undefined
+  let rawPath = pathArg ?? ''
+  if (rawPath.includes('::')) {
+    const parts = rawPath.split('::')
+    rawPath = parts[0]
+    symbolFilter = parts[1]
+  }
+
+  const projectRoot = rawPath
+    ? (isAbsolute(rawPath) ? rawPath : resolve(process.cwd(), rawPath))
     : process.cwd()
 
   if (!existsSync(projectRoot)) {
     console.error(chalk.red(`Path does not exist: ${projectRoot}`))
     process.exit(1)
+  }
+
+  if (symbolFilter) {
+    console.log(chalk.yellow(`  Symbol filter: ${symbolFilter}`))
+    console.log(chalk.dim('  (Note: symbol-level scoping is not yet implemented — reviewing entire file)'))
   }
 
   // 1. Load config + init providers
@@ -69,10 +83,16 @@ export async function reviewCommand(
   const modeConfig = getModeConfig(mode)
 
   // 4. Build scope
+  const normalizeDir = (d: string): string => {
+    const absDir = isAbsolute(d) ? d : resolve(projectRoot, d)
+    return relative(projectRoot, absDir).split(sep).join('/')
+  }
   const scope: ScopeOptions = {
     projectRoot,
-    dirs: opts.dir ? [opts.dir] : undefined,
-    files: opts.file && opts.file.length > 0 ? opts.file : undefined,
+    dirs: opts.dir ? [normalizeDir(opts.dir)] : undefined,
+    files: opts.file && opts.file.length > 0
+      ? opts.file.map(f => isAbsolute(f) ? relative(projectRoot, f).split(sep).join('/') : f)
+      : undefined,
     globs: opts.glob ? [opts.glob] : undefined,
     annotationsOnly: opts.annotations ?? false,
   }

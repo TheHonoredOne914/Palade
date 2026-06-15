@@ -5,6 +5,11 @@
   "bin": {
     "palade": "./bin/palade.js"
   },
+  "files": [
+    "bin/",
+    "dist/",
+    "templates/"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli/index.ts",

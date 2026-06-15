@@ -58,17 +58,21 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
   if (ignoreExists) existingFiles.push('.paladeignore')
 
   if (existingFiles.length > 0 && !opts?.yes) {
-    const { proceed } = await inquirer.prompt<{ proceed: boolean }>([
-      {
-        type: 'confirm',
-        name: 'proceed',
-        message: `${existingFiles.length} config file(s) already exist. Create missing files and update .gitignore?`,
-        default: true
+    if (!process.stdin.isTTY) {
+      // Non-interactive: skip existing, only create missing
+    } else {
+      const { proceed } = await inquirer.prompt<{ proceed: boolean }>([
+        {
+          type: 'confirm',
+          name: 'proceed',
+          message: `${existingFiles.length} config file(s) already exist. Create missing files and update .gitignore?`,
+          default: true
+        }
+      ])
+      if (!proceed) {
+        console.log(chalk.gray('Init cancelled.'))
+        return
       }
-    ])
-    if (!proceed) {
-      console.log(chalk.gray('Init cancelled.'))
-      return
     }
   }
 
