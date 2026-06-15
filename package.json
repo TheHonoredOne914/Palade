@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "palade": "./dist/cli/index.js"
+    "palade": "./bin/palade.js"
   },
   "scripts": {
     "build": "tsc",

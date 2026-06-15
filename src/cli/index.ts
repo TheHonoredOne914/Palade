@@ -7,7 +7,18 @@ const pkg = JSON.parse(
   readFileSync(join(__dirname, '../../package.json'), 'utf-8')
 )
 
-// Detect if user passed a command (anything that isn't a flag)
+process.on('uncaughtException', (err) => {
+  const msg = err instanceof Error ? err.message : String(err)
+  if (
+    msg.includes('Raw mode') ||
+    msg.includes('isRawModeSupported')
+  ) {
+    process.exit(0)
+  }
+  console.error(err)
+  process.exit(1)
+})
+
 const rawArgs = process.argv.slice(2)
 const hasCommand = rawArgs.some(
   (a) => !a.startsWith('-') && a.length > 0
@@ -16,12 +27,30 @@ const hasCommand = rawArgs.some(
 if (hasCommand) {
   runClassicCLI()
 } else {
-  launchTUI()
+  launchTUIWithFallback()
 }
 
-async function launchTUI(): Promise<void> {
-  const { launchTUI: startTUI } = await import('../tui/launch.js')
-  await startTUI()
+async function launchTUIWithFallback(): Promise<void> {
+  if (!process.stdin.isTTY) {
+    runClassicCLI()
+    return
+  }
+
+  try {
+    const { launchTUI } = await import('../tui/launch.js')
+    await launchTUI()
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (
+      msg.includes('Raw mode') ||
+      msg.includes('stdin') ||
+      msg.includes('isRawModeSupported')
+    ) {
+      runClassicCLI()
+    } else {
+      throw err
+    }
+  }
 }
 
 async function runClassicCLI(): Promise<void> {
@@ -39,10 +68,6 @@ async function runClassicCLI(): Promise<void> {
 
   process.on('unhandledRejection', (reason) => {
     handleFatalError(reason)
-  })
-
-  process.on('uncaughtException', (err) => {
-    handleFatalError(err)
   })
 
   process.on('SIGINT', () => {
