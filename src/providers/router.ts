@@ -3,6 +3,7 @@ import type { PaladeConfig } from '../config/schema.js'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 import { GroqProvider } from './groq.js'
 import { CerebrasProvider } from './cerebras.js'
+import { NoProvidersError } from '../errors/types.js'
 import { NvidiaProvider } from './nvidia.js'
 import { OpenRouterProvider } from './openrouter.js'
 import { OpenCodeZenProvider } from './opencode-zen.js'
@@ -150,23 +151,25 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
     names.map((n) => allProviders.get(n)!.isAvailable())
   )
 
-  console.log(chalk.bold('\nProviders:'))
-  for (let i = 0; i < names.length; i++) {
-    const name = names[i]
-    const available = availability[i]
-    const provider = allProviders.get(name)!
-    const icon = available ? chalk.green('✓') : chalk.red('✗')
-    const poolInfo = provider instanceof ProviderPool
-      ? chalk.dim(` (${provider.size} keys)`)
-      : ''
-    const label = padRight(`  ${icon} ${provider.name}`, 25)
-    const status = available
-      ? chalk.green('available')
-      : chalk.red(`unavailable — check ${name.toUpperCase().replace(/-/g, '_')}_API_KEY`)
-    const modelInfo = available ? chalk.dim(` (${provider.model})`) : ''
-    console.log(`${label} ${status}${modelInfo}${poolInfo}`)
+  if (names.length > 0) {
+    console.log(chalk.bold('\nProviders:'))
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i]
+      const available = availability[i]
+      const provider = allProviders.get(name)!
+      const icon = available ? chalk.green('✓') : chalk.red('✗')
+      const poolInfo = provider instanceof ProviderPool
+        ? chalk.dim(` (${provider.size} keys)`)
+        : ''
+      const label = padRight(`  ${icon} ${provider.name}`, 25)
+      const status = available
+        ? chalk.green('available')
+        : chalk.red(`unavailable — check ${name.toUpperCase().replace(/-/g, '_')}_API_KEY`)
+      const modelInfo = available ? chalk.dim(` (${provider.model})`) : ''
+      console.log(`${label} ${status}${modelInfo}${poolInfo}`)
+    }
+    console.log()
   }
-  console.log()
 
   // Assign primary
   let primary: IProvider | undefined
@@ -183,7 +186,7 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   }
 
   if (!primary) {
-    throw new Error('No providers available. Set at least one API key.')
+    throw new NoProvidersError()
   }
 
   // Assign synthesis

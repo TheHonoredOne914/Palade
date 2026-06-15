@@ -25,9 +25,10 @@ import {
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentName } from '../../agents/base.js'
 import type { ResolvedTarget } from '../../orchestrator/types.js'
+import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { join, basename, isAbsolute, resolve, relative, sep } from 'node:path'
 
 interface ReviewOptions {
   target?: string
@@ -48,13 +49,35 @@ export async function reviewCommand(
   pathArg: string | undefined,
   opts: ReviewOptions
 ): Promise<void> {
-  const projectRoot = pathArg
-    ? join(process.cwd(), pathArg)
+  // Parse file::symbol syntax
+  let symbolFilter: string | undefined
+  let rawPath = pathArg ?? ''
+  if (rawPath.includes('::')) {
+    const parts = rawPath.split('::')
+    rawPath = parts[0]
+    symbolFilter = parts[1]
+  }
+
+  const projectRoot = rawPath
+    ? (isAbsolute(rawPath) ? rawPath : resolve(process.cwd(), rawPath))
     : process.cwd()
 
   if (!existsSync(projectRoot)) {
     console.error(chalk.red(`Path does not exist: ${projectRoot}`))
     process.exit(1)
+  }
+
+  // Resolve symbol if :: syntax used
+  let resolvedSymbolChunk = undefined
+  if (symbolFilter) {
+    const symbolRef = rawPath ? `${rawPath}::${symbolFilter}` : `${process.cwd()}::${symbolFilter}`
+    const chunk = await resolveSymbol(symbolRef, process.cwd())
+    if (!chunk) {
+      console.error(chalk.red(`  Symbol '${symbolFilter}' not found in ${rawPath || '.'}`))
+      process.exit(1)
+    }
+    resolvedSymbolChunk = chunk
+    console.log(theme.success(`  ✓ Resolved symbol: ${chunk.filePath}:${chunk.startLine}-${chunk.endLine}`))
   }
 
   // 1. Load config + init providers
@@ -69,12 +92,19 @@ export async function reviewCommand(
   const modeConfig = getModeConfig(mode)
 
   // 4. Build scope
+  const normalizeDir = (d: string): string => {
+    const absDir = isAbsolute(d) ? d : resolve(projectRoot, d)
+    return relative(projectRoot, absDir).split(sep).join('/')
+  }
   const scope: ScopeOptions = {
     projectRoot,
-    dirs: opts.dir ? [opts.dir] : undefined,
-    files: opts.file && opts.file.length > 0 ? opts.file : undefined,
+    dirs: opts.dir ? [normalizeDir(opts.dir)] : undefined,
+    files: opts.file && opts.file.length > 0
+      ? opts.file.map(f => isAbsolute(f) ? relative(projectRoot, f).split(sep).join('/') : f)
+      : undefined,
     globs: opts.glob ? [opts.glob] : undefined,
     annotationsOnly: opts.annotations ?? false,
+    symbolChunks: resolvedSymbolChunk ? [resolvedSymbolChunk] : undefined,
   }
 
   // 5. Handle --pick
@@ -85,10 +115,15 @@ export async function reviewCommand(
     )
     const selectedPaths = await launchPicker(projectRoot, allManifests)
     if (selectedPaths.length === 0) {
-      console.log(theme.dim('  No files selected.'))
-      return
+      if (!process.stdin.isTTY) {
+        console.log(theme.dim('  --pick requires an interactive terminal. Reviewing all files.'))
+      } else {
+        console.log(theme.dim('  No files selected.'))
+        return
+      }
+    } else {
+      scope.files = selectedPaths
     }
-    scope.files = selectedPaths
   }
 
   // 6. Handle --target

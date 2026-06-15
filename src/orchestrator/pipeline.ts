@@ -1,5 +1,7 @@
+import crypto from 'node:crypto'
+import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
-import type { ScopeOptions } from '../ingestion/types.js'
+import type { ScopeOptions, CodeChunk } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
 import { chunkFiles } from '../ingestion/chunker.js'
 import { buildAnnotationSummary } from '../ingestion/annotationParser.js'
@@ -22,12 +24,42 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     scope.targetPaths = opts.target.resolvedPaths
   }
 
-  const manifests = await walkProject(opts.projectRoot, scope)
-  const chunks = await chunkFiles(manifests)
+  // If symbol chunks are provided (from :: syntax), skip walking and use them directly
+  let manifests = await walkProject(opts.projectRoot, scope)
+  let chunks: CodeChunk[]
 
-  console.log(
-    `[pipeline] Chunking complete: ${manifests.length} files → ${chunks.length} chunks (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
-  )
+  if (scope.symbolChunks && scope.symbolChunks.length > 0) {
+    chunks = scope.symbolChunks
+    console.log(
+      `[pipeline] Symbol-scoped: 1 symbol → 1 chunk (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
+    )
+  } else {
+    if (manifests.length === 0) {
+      console.log(chalk.yellow('\n  No files found to review.'))
+      console.log(chalk.dim('  Check your scope flags or .paladeignore rules.'))
+      return {
+        runId: crypto.randomUUID().slice(0, 8),
+        findings: [],
+        crossAgentFindings: [],
+        synthesis: {
+          executiveSummary: 'No files found to review.',
+          priorityFixes: [],
+          crossCuttingObservations: [],
+          debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
+        },
+        agentTimings: {} as Record<string, number>,
+        totalChunks: 0,
+        totalTokensEstimated: 0,
+        durationMs: 0,
+      }
+    }
+
+    chunks = await chunkFiles(manifests)
+
+    console.log(
+      `[pipeline] Chunking complete: ${manifests.length} files → ${chunks.length} chunks (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
+    )
+  }
 
   // Phase 11: Build annotation summary and apply ignores
   const annotationSummary = buildAnnotationSummary(manifests, chunks)
