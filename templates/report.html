@@ -32,13 +32,35 @@
       border: 1px solid #30363d;
     }
     
-    .header h1 {
+    .header-top {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    .owl-mascot {
+      flex-shrink: 0;
+    }
+    
+    .owl-mascot img {
+      width: 80px;
+      height: 80px;
+      image-rendering: pixelated;
+      filter: drop-shadow(0 0 8px rgba(198, 40, 40, 0.4));
+    }
+    
+    .header-text {
+      flex: 1;
+    }
+    
+    .header-text h1 {
       font-size: 1.5rem;
       margin-bottom: 0.5rem;
       color: #fff;
     }
     
-    .header .meta {
+    .header-text .meta {
       color: #8b949e;
       font-size: 0.875rem;
     }
@@ -371,9 +393,14 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>{{TITLE}}</h1>
-      <div class="meta">
-        Generated: {{TIMESTAMP}} | Run ID: {{RUN_ID}} | Duration: {{DURATION}}
+      <div class="header-top">
+        <div class="owl-mascot">{{OWL_MASCOT}}</div>
+        <div class="header-text">
+          <h1>{{TITLE}}</h1>
+          <div class="meta">
+            Generated: {{TIMESTAMP}} | Run ID: {{RUN_ID}} | Duration: {{DURATION}}
+          </div>
+        </div>
       </div>
       
       <div class="score-hero">

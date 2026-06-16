@@ -5,6 +5,17 @@ import type { ReporterContext, ReporterOutput, HtmlTemplateData } from './types.
 import type { ScoreCategory } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
 
+const OWL_BASE64 = (() => {
+  try {
+    const owlPath = join(__dirname, '..', '..', '..', 'Screenshot 2026-06-16 130737.png')
+    if (existsSync(owlPath)) {
+      const buf = readFileSync(owlPath)
+      return `data:image/png;base64,${buf.toString('base64')}`
+    }
+  } catch {}
+  return ''
+})()
+
 const CATEGORY_LABELS: Record<ScoreCategory, string> = {
   security: 'Security',
   architecture: 'Architecture',
@@ -238,6 +249,10 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
 function replacePlaceholders(template: string, data: HtmlTemplateData, ctx: ReporterContext): string {
   let result = template
   
+  const owlImg = OWL_BASE64
+    ? `<img src="${OWL_BASE64}" alt="Palade Owl" />`
+    : '<div style="font-size: 3rem;">🦉</div>'
+  result = result.replace(/\{\{OWL_MASCOT\}\}/g, owlImg)
   result = result.replace(/\{\{TITLE\}\}/g, data.title)
   result = result.replace(/\{\{TIMESTAMP\}\}/g, data.timestamp)
   result = result.replace(/\{\{PROJECT_NAME\}\}/g, data.projectName)
