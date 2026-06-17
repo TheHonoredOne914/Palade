@@ -1,11 +1,9 @@
 #!/usr/bin/env node
-import { execSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
-import { existsSync } from 'node:fs'
+const { execSync } = require('child_process')
+const { resolve } = require('path')
+const { existsSync } = require('fs')
 
-const scriptDir = dirname(fileURLToPath(import.meta.url))
-const scriptPath = resolve(scriptDir, '../dist/cli/index.js')
+const scriptPath = resolve(__dirname, '../dist/cli/index.js')
 
 if (!existsSync(scriptPath)) {
   console.error('Palade is not built. Run `npm run build` first.')

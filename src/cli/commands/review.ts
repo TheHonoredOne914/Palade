@@ -102,6 +102,12 @@ export async function reviewCommand(
   const mode = validateMode(opts.mode ?? 'standard')
   const modeConfig = getModeConfig(mode)
 
+  // 3b. Ghost mode banner
+  if (mode === 'ghost') {
+    const { printGhostBanner } = await import('../../ui/banner.js')
+    printGhostBanner()
+  }
+
   // 4. Build scope
   const normalizeDir = (d: string): string => {
     const absDir = isAbsolute(d) ? d : resolve(projectRoot, d)
