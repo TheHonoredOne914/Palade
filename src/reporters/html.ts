@@ -5,17 +5,6 @@ import type { ReporterContext, ReporterOutput, HtmlTemplateData } from './types.
 import type { ScoreCategory } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
 
-const OWL_BASE64 = (() => {
-  try {
-    const owlPath = join(__dirname, '..', '..', '..', 'Screenshot 2026-06-16 130737.png')
-    if (existsSync(owlPath)) {
-      const buf = readFileSync(owlPath)
-      return `data:image/png;base64,${buf.toString('base64')}`
-    }
-  } catch {}
-  return ''
-})()
-
 const CATEGORY_LABELS: Record<ScoreCategory, string> = {
   security: 'Security',
   architecture: 'Architecture',
@@ -234,6 +223,7 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
     executiveSummary: escapeHtml(ctx.synthesis.executiveSummary),
     categoryScoresHtml,
     priorityFixesHtml,
+    observationsHtml,
     crossAgentFindingsHtml,
     findingsSummaryHtml,
     debtEstimateHtml: '',
@@ -248,11 +238,8 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
 
 function replacePlaceholders(template: string, data: HtmlTemplateData, ctx: ReporterContext): string {
   let result = template
-  
-  const owlImg = OWL_BASE64
-    ? `<img src="${OWL_BASE64}" alt="Palade Owl" />`
-    : '<div style="font-size: 3rem;">🦉</div>'
-  result = result.replace(/\{\{OWL_MASCOT\}\}/g, owlImg)
+
+  result = result.replace(/\{\{OWL_MASCOT\}\}/g, '<div style="font-size: 3rem;">🦉</div>')
   result = result.replace(/\{\{TITLE\}\}/g, data.title)
   result = result.replace(/\{\{TIMESTAMP\}\}/g, data.timestamp)
   result = result.replace(/\{\{PROJECT_NAME\}\}/g, data.projectName)
@@ -266,7 +253,7 @@ function replacePlaceholders(template: string, data: HtmlTemplateData, ctx: Repo
   result = result.replace(/\{\{EXECUTIVE_SUMMARY\}\}/g, data.executiveSummary)
   result = result.replace(/\{\{CATEGORY_SCORES\}\}/g, data.categoryScoresHtml)
   result = result.replace(/\{\{PRIORITY_FIXES\}\}/g, data.priorityFixesHtml)
-  result = result.replace(/\{\{OBSERVATIONS\}\}/g, data.crossAgentFindingsHtml)
+  result = result.replace(/\{\{OBSERVATIONS\}\}/g, data.observationsHtml)
   result = result.replace(/\{\{DEBT_CRITICAL\}\}/g, String(ctx.synthesis.debtEstimate.critical))
   result = result.replace(/\{\{DEBT_HIGH\}\}/g, String(ctx.synthesis.debtEstimate.high))
   result = result.replace(/\{\{DEBT_MEDIUM\}\}/g, String(ctx.synthesis.debtEstimate.medium))
@@ -309,26 +296,49 @@ export function writeHtmlReport(ctx: ReporterContext, outputPath: string): Repor
   }
 }
 
-export function startLocalServer(htmlPath: string, port: number = 4242): void {
+export function startLocalServer(
+  htmlPath: string,
+  port: number = 4242,
+  options: { openBrowser?: boolean } = {}
+): void {
   if (htmlServer) {
     stopLocalServer()
   }
-  
+
   const html = readFileSync(htmlPath, 'utf-8')
-  
+  const url = `http://127.0.0.1:${port}`
+
   htmlServer = createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     res.end(html)
   })
-  
+
   htmlServer.listen(port, '127.0.0.1', () => {
-    console.log(`Palade report server running at http://127.0.0.1:${port}`)
+    console.log(`Palade report server running at ${url}`)
+    if (options.openBrowser !== false) {
+      // Best-effort: open the report in the user's default browser. Never let
+      // a failure here prevent the report from being served.
+      openBrowser(url).catch(() => {
+        console.log(`Open manually: ${url}`)
+      })
+    }
   })
-  
+
   serverTimeout = setTimeout(() => {
     stopLocalServer()
     console.log('Palade report server auto-closed after 10 minutes')
   }, 10 * 60 * 1000)
+}
+
+/**
+ * Opens a URL in the default browser. Lazily imports the `open` package so the
+ * dependency is only loaded when actually needed, and any environment that
+ * can't resolve it simply falls back to printing the URL.
+ */
+async function openBrowser(url: string): Promise<void> {
+  const openModule = await import('open')
+  const open = (openModule as { default: (target: string) => Promise<unknown> }).default
+  await open(url)
 }
 
 export function stopLocalServer(): void {

@@ -4,10 +4,19 @@ import {
   NoProvidersError,
   TargetNotFoundError,
   SwarmTimeoutError,
+  CliExitError,
 } from './types.js'
 
 export function handleFatalError(err: unknown): undefined {
   const debug = process.env.DEBUG === 'palade'
+
+  // A CliExitError is a command signalling "exit with this code". The command
+  // has already printed any user-facing message, so we just translate it into
+  // a real process exit. This lets the same commands run safely inside the TUI,
+  // where the host must survive — the TUI catches the throw instead of exiting.
+  if (err instanceof CliExitError) {
+    process.exit(err.exitCode)
+  }
 
   if (err instanceof PaladeConfigError) {
     console.error(chalk.red(`\nConfiguration error at ${err.field}:`))

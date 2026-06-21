@@ -20,7 +20,13 @@ export class OpenRouterProvider implements IProvider {
     this.model = model
   }
 
+  private static readonly MAX_RETRIES = 3
+
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
+    return this.doComplete(req, 0)
+  }
+
+  private async doComplete(req: CompletionRequest, attempt: number): Promise<CompletionResponse> {
     if (this.dailyLimitExhausted) {
       throw new Error('OpenRouter daily limit exhausted for this session')
     }
@@ -109,10 +115,14 @@ export class OpenRouterProvider implements IProvider {
         }
       }
 
-      // No reset header — fixed 60s wait
-      console.warn(chalk.yellow('  OpenRouter rate limited. Waiting 60s...'))
+      // No reset header — fixed 60s wait with bounded retries
+      if (attempt >= OpenRouterProvider.MAX_RETRIES) {
+        this.dailyLimitExhausted = true
+        throw new Error('OpenRouter rate limited — retries exhausted')
+      }
+      console.warn(chalk.yellow(`  OpenRouter rate limited. Waiting 60s... (attempt ${attempt + 1}/${OpenRouterProvider.MAX_RETRIES})`))
       await new Promise(r => setTimeout(r, 60_000))
-      return this.complete(req)
+      return this.doComplete(req, attempt + 1)
     }
 
     if (!res.ok) {

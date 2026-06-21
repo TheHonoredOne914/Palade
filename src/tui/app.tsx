@@ -15,12 +15,14 @@ interface AppProps {
   config?: PaladeConfig
   providerStatus: Record<string, boolean>
   projectRoot: string
+  version: string
 }
 
 export function App({
   config,
   providerStatus,
   projectRoot,
+  version,
 }: AppProps): React.JSX.Element {
   const { exit } = useApp()
   const [inputValue, setInputValue] = useState('')
@@ -86,7 +88,7 @@ export function App({
 
   return (
     <Box flexDirection="column" height="100%">
-      <Header providerStatus={providerStatus} projectRoot={projectRoot} />
+      <Header providerStatus={providerStatus} projectRoot={projectRoot} version={version} />
 
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         <OutputPane lines={lines} />

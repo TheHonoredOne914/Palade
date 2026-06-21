@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, appendFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import inquirer from 'inquirer'
 import chalk from 'chalk'
@@ -114,8 +114,13 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
   // e) .gitignore
   const gitignorePath = join(cwd, '.gitignore')
   if (existsSync(gitignorePath)) {
-    appendFileSync(gitignorePath, GITIGNORE_APPEND, 'utf-8')
-    results.push('.gitignore updated')
+    const existing = readFileSync(gitignorePath, 'utf-8')
+    if (!existing.includes('# Palade')) {
+      appendFileSync(gitignorePath, GITIGNORE_APPEND, 'utf-8')
+      results.push('.gitignore updated')
+    } else {
+      results.push('.gitignore already has Palade entries, skipping')
+    }
   } else {
     writeFileSync(gitignorePath, GITIGNORE_APPEND.trimStart(), 'utf-8')
     results.push('.gitignore created')

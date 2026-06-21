@@ -1,5 +1,5 @@
-import { readdir, stat, readFile } from 'node:fs/promises'
-import { join, relative, extname } from 'node:path'
+import { readdir, stat, readFile, realpath } from 'node:fs/promises'
+import { join, relative, extname, sep } from 'node:path'
 import ignore, { Ignore } from 'ignore'
 import type { FileManifest, Language, ScopeOptions } from './types.js'
 import { parseFile } from './annotationParser.js'
@@ -43,9 +43,22 @@ function matchesGlobs(filePath: string, globs: string[]): boolean {
 async function walkDir(
   dir: string,
   ig: Ignore,
-  projectRoot: string
+  projectRoot: string,
+  visitedDirs: Set<string>
 ): Promise<FileManifest[]> {
   const results: FileManifest[] = []
+
+  // Resolve the canonical path of this directory so we can detect cycles.
+  // A symlink loop (common under node_modules / tooling caches) would otherwise
+  // recurse until the stack overflows.
+  let realDir: string
+  try {
+    realDir = await realpath(dir)
+  } catch {
+    return results
+  }
+  if (visitedDirs.has(realDir)) return results
+  visitedDirs.add(realDir)
 
   let entries: import('node:fs').Dirent[]
   try {
@@ -61,11 +74,14 @@ async function walkDir(
     if (ig.ignores(relPath)) continue
 
     if (entry.isDirectory()) {
-      const subResults = await walkDir(fullPath, ig, projectRoot)
+      const subResults = await walkDir(fullPath, ig, projectRoot, visitedDirs)
       results.push(...subResults)
       continue
     }
 
+    // Skip symlinks pointing to non-files (sockets, pipes, etc.) and dangling
+    // symlinks — entry.isFile() is false for those, and we never want to
+    // follow a symlinked file into a different location than its target logic.
     if (!entry.isFile()) continue
 
     const language = detectLanguage(fullPath)
@@ -89,7 +105,7 @@ async function walkDir(
     const annotations = await parseFile(fullPath, language === 'python')
 
     results.push({
-      path: relPath,
+      path: relPath.split(sep).join('/'),
       absolutePath: fullPath,
       language,
       sizeBytes: fileStat.size,
@@ -140,7 +156,7 @@ export async function walkProject(
   }
 
   // Walk all files
-  let manifests = await walkDir(projectRoot, ig, projectRoot)
+  let manifests = await walkDir(projectRoot, ig, projectRoot, new Set())
 
   // Apply scope filtering
   if (scope.dirs && scope.dirs.length > 0) {

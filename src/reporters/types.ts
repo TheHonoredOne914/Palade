@@ -49,6 +49,7 @@ export interface HtmlTemplateData {
   executiveSummary: string
   categoryScoresHtml: string
   priorityFixesHtml: string
+  observationsHtml: string
   crossAgentFindingsHtml: string
   findingsSummaryHtml: string
   debtEstimateHtml: string

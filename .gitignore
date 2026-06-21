@@ -1,5 +1,13 @@
-﻿node_modules
+node_modules
 dist
 .palade
 *.log
 .env
+
+# Runtime-generated artifacts
+palade-badge.svg
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp

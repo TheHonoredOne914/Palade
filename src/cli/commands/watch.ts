@@ -8,6 +8,7 @@ import type { AgentFinding, AgentContext } from '../../agents/base.js'
 import { MaintainabilityAgent } from '../../agents/specialist/maintainability.js'
 import { ArchitectureAgent } from '../../agents/specialist/architecture.js'
 import { theme } from '../../ui/theme.js'
+import { CliExitError } from '../../errors/types.js'
 
 const DEBOUNCE_MS: Record<string, number> = {
   low: 5000,
@@ -29,7 +30,7 @@ export async function watchCommand(opts: {
     console.error(
       chalk.red(`Failed to initialise: ${(err as Error).message}`)
     )
-    process.exit(1)
+    throw new CliExitError(1)
   }
 
   console.log(

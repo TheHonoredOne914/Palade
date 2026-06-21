@@ -20,7 +20,7 @@ export const PaladeConfigSchema = z.object({
   swarm: z.object({
     primary: z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']).default('opencode-zen'),
     synthesis: z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']).default('nvidia'),
-    agentCount: z.number().int().min(1).max(12).default(8),
+    agentCount: z.number().int().min(1).max(12).default(6),
     timeoutMs: z.number().int().default(600000)
   }).default({}),
   output: z.object({

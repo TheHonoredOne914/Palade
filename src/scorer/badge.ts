@@ -18,7 +18,7 @@ export function getScoreColor(score: number): BadgeColor {
 
 export function getBadgeData(score: number): BadgeData {
   return {
-    score,
+    score: `${score}/100`,
     color: getScoreColor(score),
     label: 'palade'
   }

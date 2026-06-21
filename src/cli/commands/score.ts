@@ -4,6 +4,7 @@ import { readHistory } from '../../scorer/history.js'
 import { loadConfig } from '../../config/loader.js'
 import { theme, scoreTheme } from '../../ui/theme.js'
 import { sectionBox, kvTable, sparkline, scoreGrade, formatDelta, divider } from '../../ui/layout.js'
+import { CliExitError } from '../../errors/types.js'
 
 export async function scoreCommand(opts: {
   history?: boolean
@@ -79,6 +80,6 @@ export async function scoreCommand(opts: {
     console.error(
       theme.error(`Score lookup failed: ${(err as Error).message}`)
     )
-    process.exit(1)
+    throw new CliExitError(1)
   }
 }

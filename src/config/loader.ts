@@ -5,6 +5,7 @@ import { config as dotenvConfig } from 'dotenv'
 import { pathToFileURL } from 'node:url'
 import { PaladeConfigSchema, type PaladeConfig } from './schema.js'
 import { DEFAULT_CONFIG } from './defaults.js'
+import { PaladeConfigError } from '../errors/types.js'
 
 dotenvConfig()
 
@@ -87,30 +88,28 @@ export async function loadConfig(): Promise<PaladeConfig> {
   }
 
   const envConfig = buildEnvConfig()
+  const rawProviders = (raw as Record<string, unknown>)?.providers as Record<string, unknown> | undefined
+  const envProviders = (envConfig as Record<string, unknown>).providers as Record<string, unknown> | undefined
+
   const merged = {
     ...DEFAULT_CONFIG,
     ...envConfig,
     ...(raw ?? {}),
+    // For providers: env vars fill in missing keys, file config overrides
     providers: {
-      ...((envConfig as Record<string, unknown>).providers as Record<string, unknown> ?? {}),
-      ...((raw as Record<string, unknown>)?.providers as Record<string, unknown> ?? {})
+      ...envProviders,
+      ...rawProviders,
     }
   } as Record<string, unknown>
-
-  if (raw && typeof raw === 'object' && 'providers' in raw) {
-    merged.providers = {
-      ...(envConfig as Record<string, unknown>).providers as Record<string, unknown>,
-      ...((raw as Record<string, unknown>).providers as Record<string, unknown>)
-    }
-  } else {
-    merged.providers = (envConfig as Record<string, unknown>).providers as Record<string, unknown>
-  }
 
   const result = PaladeConfigSchema.safeParse(merged)
 
   if (!result.success) {
-    console.error(formatZodError(result.error))
-    process.exit(1)
+    throw new PaladeConfigError(
+      formatZodError(result.error),
+      'schema',
+      'Check your palade.config.ts against the schema.'
+    )
   }
 
   return result.data

@@ -36,7 +36,7 @@ export interface ScoreHistoryEntry {
 export type BadgeColor = 'brightgreen' | 'green' | 'yellow' | 'orange' | 'red'
 
 export interface BadgeData {
-  score: number
+  score: number | string
   color: BadgeColor
   label: string
 }

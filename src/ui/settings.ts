@@ -351,8 +351,52 @@ async function writeConfigPatch(
   patch: Record<string, unknown>
 ): Promise<void> {
   const configPath = join(projectRoot, 'palade.config.ts')
-  const newConfig = generateConfigString(patch)
+  let existing: Record<string, unknown> = {}
+  try {
+    const content = await readFile(configPath, 'utf-8')
+    // Extract the object from export default { ... }
+    const match = content.match(/export\s+default\s+(\{[\s\S]*\})\s*$/)
+    if (match) {
+      // Simple eval-like parse: strip single quotes, replace with double quotes for JSON
+      const jsonStr = match[1]
+        .replace(/'/g, '"')
+        .replace(/(\w+)\s*:/g, '"$1":')
+        .replace(/,\s*\}/g, '}')
+      try {
+        existing = JSON.parse(jsonStr) as Record<string, unknown>
+      } catch {
+        // Fall back to empty — will write patch only
+      }
+    }
+  } catch {
+    // No existing config
+  }
+
+  // Deep merge patch into existing
+  const merged = deepMerge(existing, patch)
+  const newConfig = generateConfigString(merged)
   await writeFile(configPath, newConfig, 'utf-8')
+}
+
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...target }
+  for (const key of Object.keys(source)) {
+    const srcVal = source[key]
+    const tgtVal = result[key]
+    if (
+      srcVal !== null &&
+      typeof srcVal === 'object' &&
+      !Array.isArray(srcVal) &&
+      tgtVal !== null &&
+      typeof tgtVal === 'object' &&
+      !Array.isArray(tgtVal)
+    ) {
+      result[key] = deepMerge(tgtVal as Record<string, unknown>, srcVal as Record<string, unknown>)
+    } else {
+      result[key] = srcVal
+    }
+  }
+  return result
 }
 
 function generateConfigString(patch: Record<string, unknown>): string {

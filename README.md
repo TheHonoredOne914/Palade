@@ -269,8 +269,4 @@ Issues and PRs welcome. If you've encoded a great review spec for your stack, co
 
 ## License
 
-<<<<<<< HEAD
 MIT
-=======
-MIT
->>>>>>> 52d3eaa49d73913599074b10489a34ffafa3755e
