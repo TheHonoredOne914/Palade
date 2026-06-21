@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { theme } from '../../ui/theme.js'
 import { loadConfig } from '../../config/loader.js'
+import { CliExitError } from '../../errors/types.js'
 
 interface SettingsOptions {
   set?: string[]
@@ -170,7 +171,7 @@ async function applySets(projectRoot: string, sets: string[]): Promise<void> {
     configContent = await readFile(configPath, 'utf-8')
   } catch {
     console.error(chalk.red('  Config not found. Run: palade settings --init'))
-    process.exit(1)
+    throw new CliExitError(1)
   }
 
   for (const set of sets) {
@@ -212,72 +213,89 @@ function formatValue(v: unknown): string {
 function setNestedValue(content: string, dotPath: string, value: unknown): string {
   const parts = dotPath.split('.')
   const valueStr = typeof value === 'string' ? `'${value}'` : String(value)
+  const lines = content.split('\n')
 
-  if (parts.length === 2) {
-    const [section, key] = parts
-    const lines = content.split('\n')
-    let inSection = false
-    let sectionDepth = 0
-    let keyFound = false
-    let sectionFound = false
+  // Build regex to find a line like "  key:" at any nesting depth,
+  // scoped to a section matching the first N-1 parts.
+  // e.g. "swarm.primary" → find "primary:" inside the "swarm" section.
+  // e.g. "providers.groq.model" → find "model:" inside "providers" > "groq" section.
 
-    function ensureComma(line: string): string {
-      const trimmed = line.trimEnd()
-      if (trimmed.endsWith(',') || trimmed.endsWith('{') || trimmed.endsWith('}') || trimmed.endsWith('//') || trimmed === '') {
-        return line
-      }
-      return line + ','
+  const keyName = parts[parts.length - 1]
+  // Escape regex special chars in key
+  const escapedKey = keyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  // Track nesting sections we've entered
+  let matched = false
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trimStart()
+    const indent = line.length - trimmed.length
+
+    // Track which section(s) we're inside via brace counting per section
+    // Simple approach: match the key at any depth, but only if the
+    // surrounding section context matches.
+
+    // Direct pattern: "  key: value" or "  key: value," etc.
+    const keyPattern = new RegExp(`^\\s*${escapedKey}\\s*:\\s*`)
+    if (keyPattern.test(line) && !trimmed.startsWith('//')) {
+      lines[i] = `${line.replace(/:\s*.*$/, '')}: ${valueStr}`
+      matched = true
+      break
     }
+  }
+
+  if (matched) {
+    return lines.join('\n')
+  }
+
+  // Key not found — insert it inside the parent section.
+  // For "swarm.primary", find "swarm: {" section and insert "primary: value" inside it.
+  if (parts.length >= 2) {
+    const sectionName = parts[0]
+    const escapedSection = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const sectionPattern = new RegExp(`^\\s*${escapedSection}\\s*:`)
+
+    let inSection = false
+    let sectionEnd = -1
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
-      const trimmed = line.trimStart()
+      const trimmed = lines[i].trimStart()
+      const lineIndent = lines[i].length - trimmed.length
 
-      if (trimmed.startsWith(`${section}:`)) {
+      if (sectionPattern.test(trimmed) && !trimmed.startsWith('//')) {
         inSection = true
-        sectionFound = true
-        sectionDepth = line.length - trimmed.length
         continue
       }
 
       if (inSection) {
-        const currentDepth = line.length - trimmed.length
-
-        if (currentDepth <= sectionDepth && trimmed.startsWith('}')) {
-          if (!keyFound) {
-            const prevLine = i > 0 ? lines[i - 1] : ''
-            lines.splice(i, 0, `${' '.repeat(sectionDepth + 2)}${key}: ${valueStr}`)
-          }
-          break
-        }
-
-        const keyPattern = new RegExp(`^\\s*${key}:\\s*`)
-        if (keyPattern.test(line)) {
-          lines[i] = ensureComma(`${' '.repeat(currentDepth)}${key}: ${valueStr}`)
-          keyFound = true
-        }
-      }
-    }
-
-    if (!sectionFound) {
-      for (let i = lines.length - 1; i >= 0; i--) {
-        if (lines[i].trim() === '}') {
-          const prevIdx = i - 1
-          if (prevIdx >= 0) {
-            lines[prevIdx] = ensureComma(lines[prevIdx])
-          }
-          lines.splice(i, 0,
-            ``,
-            `  ${section}: {`,
-            `    ${key}: ${valueStr}`,
-            `  }`,
-          )
+        // Find the closing brace of this section (matching indent or less)
+        if (trimmed.startsWith('}') && lineIndent <= 2) {
+          sectionEnd = i
           break
         }
       }
     }
 
-    return lines.join('\n')
+    if (sectionEnd !== -1) {
+      // Insert before the closing brace, with proper indentation
+      const innerIndent = parts.length >= 3 ? '    '.repeat(parts.length - 1) : '  '
+      const insertLine = `${innerIndent}${keyName}: ${valueStr}`
+
+      // Ensure the line before the closing brace has a trailing comma
+      for (let j = sectionEnd - 1; j >= 0; j--) {
+        const prev = lines[j].trimEnd()
+        if (prev && !prev.startsWith('//')) {
+          if (!prev.endsWith(',') && !prev.endsWith('{') && !prev.endsWith('}')) {
+            lines[j] = lines[j].trimEnd() + ','
+          }
+          break
+        }
+      }
+
+      lines.splice(sectionEnd, 0, insertLine)
+      return lines.join('\n')
+    }
   }
 
   console.log(theme.dim(`  ⚠ Could not set ${dotPath} — edit palade.config.ts manually`))

@@ -43,7 +43,9 @@ export async function generateReport(
       const result = writeHtmlReport(ctx, outputPath)
       
       if (options.openBrowser !== false && outputPath) {
-        startLocalServer(outputPath, options.port ?? 4242)
+        startLocalServer(outputPath, options.port ?? 4242, {
+          openBrowser: options.openBrowser,
+        })
       }
       
       return result

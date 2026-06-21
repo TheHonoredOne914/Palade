@@ -132,7 +132,11 @@ async function runClassicCLI(): Promise<void> {
     .option('--base <branch>', 'Base branch to diff against', 'main')
     .option('--ci', 'CI mode: exit 1 if critical findings introduced')
     .action(async (opts: { base?: string; ci?: boolean }): Promise<void> => {
-      await diffCommand(opts)
+      try {
+        await diffCommand(opts)
+      } catch (err) {
+        handleFatalError(err)
+      }
     })
 
   program
@@ -145,7 +149,11 @@ async function runClassicCLI(): Promise<void> {
     )
     .action(
       async (opts: { sensitivity?: string }): Promise<void> => {
-        await watchCommand(opts)
+        try {
+          await watchCommand(opts)
+        } catch (err) {
+          handleFatalError(err)
+        }
       }
     )
 
@@ -155,7 +163,11 @@ async function runClassicCLI(): Promise<void> {
     .option('--history', 'Show full score history')
     .action(
       async (opts: { history?: boolean }): Promise<void> => {
-        await scoreCommand(opts)
+        try {
+          await scoreCommand(opts)
+        } catch (err) {
+          handleFatalError(err)
+        }
       }
     )
 
@@ -169,7 +181,11 @@ async function runClassicCLI(): Promise<void> {
     .option('--list', 'Show current config (default)')
     .action(
       async (opts: { set?: string[]; init?: boolean; list?: boolean }): Promise<void> => {
-        await settingsCommand(opts)
+        try {
+          await settingsCommand(opts)
+        } catch (err) {
+          handleFatalError(err)
+        }
       }
     )
 
@@ -179,7 +195,11 @@ async function runClassicCLI(): Promise<void> {
     .option('-y, --yes', 'Skip confirmation prompts')
     .action(
       async (opts: { yes?: boolean }): Promise<void> => {
-        await initCommand(opts)
+        try {
+          await initCommand(opts)
+        } catch (err) {
+          handleFatalError(err)
+        }
       }
     )
 

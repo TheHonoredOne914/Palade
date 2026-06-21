@@ -1,6 +1,5 @@
 import chalk from 'chalk'
-import ora from 'ora'
-import type { ReporterContext, TerminalColors, ReporterOutput } from './types.js'
+import type { ReporterContext, ReporterOutput } from './types.js'
 import type { ScoreCategory, ScoreResult } from '../scorer/types.js'
 import type { Severity, AgentFinding } from '../agents/base.js'
 import type { FindingDiff, ChangedFile, DiffResult } from '../diff/types.js'
@@ -46,21 +45,6 @@ function formatDelta(delta: number): string {
   return chalk.red(`  ${delta}`)
 }
 
-function createColors(): TerminalColors {
-  return {
-    score: getScoreColor(0),
-    critical: SEVERITY_COLORS.critical,
-    high: SEVERITY_COLORS.high,
-    medium: SEVERITY_COLORS.medium,
-    low: SEVERITY_COLORS.low,
-    info: SEVERITY_COLORS.info,
-    dim: chalk.gray,
-    bold: chalk.bold,
-    success: chalk.green,
-    warning: chalk.yellow
-  }
-}
-
 function renderScoreBar(score: number, width: number = 20): string {
   const filled = Math.round((score / 100) * width)
   const empty = width - filled
@@ -83,9 +67,8 @@ function renderFinding(finding: { severity: Severity; title: string; filePath?: 
 }
 
 export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutput> {
-  const colors = createColors()
   const lines: string[] = []
-  
+
   lines.push('')
   lines.push(chalk.bold.blue('╔══════════════════════════════════════════════════════════════╗'))
   lines.push(chalk.bold.blue('║                    PALADE ANALYSIS REPORT                   ║'))

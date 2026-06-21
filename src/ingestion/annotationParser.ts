@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import type { Annotation, FileManifest, CodeChunk } from './types.js'
+import type { AnnotationSummary } from '../agents/base.js'
 
 const REVIEW_RE = /\/\/\s*@palade\s+review\s*:\s*(.+)/i
 const FOCUS_RE = /\/\/\s*@palade\s+focus\s*:\s*(.+)/i
@@ -79,24 +80,6 @@ async function parseAnnotationsAsync(manifests: FileManifest[]): Promise<Map<str
 }
 
 // ── Phase 11: Annotation Summary ─────────────────────────────
-
-export interface AnnotationSummary {
-  reviewRequests: Array<{
-    filePath: string
-    line: number
-    reason: string
-  }>
-  focusRequests: Array<{
-    filePath: string
-    line: number
-    domain: string
-  }>
-  ignoredFiles: string[]
-  ignoredLines: Array<{
-    filePath: string
-    startLine: number
-  }>
-}
 
 export function buildAnnotationSummary(
   manifests: FileManifest[],

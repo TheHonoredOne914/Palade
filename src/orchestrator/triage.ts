@@ -24,9 +24,9 @@ export async function triageFiles(
     .map(m => `${m.path} (${m.linesOfCode} lines)`)
     .join('\n')
 
-  const provider = getProvider('primary')
-
   try {
+    const provider = getProvider('primary')
+
     const response = await provider.complete({
       systemPrompt: TRIAGE_SYSTEM_PROMPT,
       userPrompt: `Project files:\n${compactManifest}\n\nReturn the 15 most important files to review as a JSON array.`,
@@ -45,9 +45,21 @@ export async function triageFiles(
     }
 
     if (selectedPaths.length > 0) {
-      const selected = allChunks.filter(c =>
-        selectedPaths.some(p => c.filePath.includes(p) || p.includes(c.filePath))
+      // Normalize selections (strip ./, leading/trailing slashes, whitespace) and
+      // match a chunk when its path equals the selection or ends with "/<selection>".
+      // This is tighter than the old bidirectional substring match, which would pull
+      // in "oauth.ts" when "auth.ts" was selected.
+      const normalized = new Set(
+        selectedPaths.map(p => p.trim().replace(/^\.?\/+/, '').replace(/\/+$/, ''))
       )
+      const selected = allChunks.filter(c => {
+        const cp = c.filePath.replace(/^\.?\/+/, '')
+        if (normalized.has(cp)) return true
+        for (const sel of normalized) {
+          if (cp === sel || cp.endsWith('/' + sel)) return true
+        }
+        return false
+      })
       if (selected.length > 0) {
         console.log(chalk.cyan(`  [triage] Selected ${selected.length} chunks from ${selectedPaths.length} files`))
         return selected

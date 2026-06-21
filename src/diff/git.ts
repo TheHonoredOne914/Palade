@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { relative, sep } from 'node:path'
 import type { ChangedFile } from './types.js'
 
 const GIT_STATUS_MAP: Record<string, ChangedFile['status']> = {
@@ -92,12 +93,27 @@ export async function getBaseScore(
   historyFile: string,
   cwd: string
 ): Promise<number | null> {
+  // Try to read the history file as it exists on the base branch.
+  // historyFile is typically gitignored (.palade/), so this returns null
+  // unless the file was committed — in which case we get the real base score.
+  const relPath = relative(cwd, historyFile).split(sep).join('/')
   try {
-    const content = readFileSync(historyFile, 'utf-8')
+    const content = execSync(
+      `git show ${baseBranch}:${relPath}`,
+      { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    )
     const entries = JSON.parse(content) as Array<{ score: number; timestamp: string }>
     if (entries.length === 0) return null
     return entries[entries.length - 1].score
   } catch {
-    return null
+    // Not tracked on base branch — fall back to local history's last entry
+    try {
+      const content = readFileSync(historyFile, 'utf-8')
+      const entries = JSON.parse(content) as Array<{ score: number; timestamp: string }>
+      if (entries.length === 0) return null
+      return entries[entries.length - 1].score
+    } catch {
+      return null
+    }
   }
 }

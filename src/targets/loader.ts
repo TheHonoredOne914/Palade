@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url'
-import { resolve } from 'node:path'
+import { resolve, relative, sep } from 'node:path'
 import { existsSync } from 'node:fs'
 import { TargetDefinitionSchema, type TargetDefinition } from './schema.js'
 
@@ -14,7 +14,7 @@ export async function loadTargets(projectRoot: string): Promise<TargetDefinition
 
   let raw: unknown
   try {
-    const fileUrl = pathToFileURL(filePath).href
+    const fileUrl = pathToFileURL(filePath).href + `?t=${Date.now()}`
     const mod = await import(fileUrl)
     raw = mod.default ?? mod
   } catch {
@@ -46,5 +46,8 @@ export function resolveTargetPaths(
   projectRoot: string
 ): string[] {
   const entry = Array.isArray(target.entry) ? target.entry : [target.entry]
-  return entry.map((p) => resolve(projectRoot, p))
+  return entry.map((p) => {
+    const abs = resolve(projectRoot, p)
+    return relative(projectRoot, abs).split(sep).join('/')
+  })
 }

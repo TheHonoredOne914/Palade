@@ -16,16 +16,6 @@ export class NoProvidersError extends Error {
   }
 }
 
-export class ProviderRateLimitError extends Error {
-  constructor(
-    public provider: string,
-    public retryAfterMs: number
-  ) {
-    super(`${provider} rate limit exceeded. Retry after ${retryAfterMs}ms.`)
-    this.name = 'ProviderRateLimitError'
-  }
-}
-
 export class SwarmTimeoutError extends Error {
   constructor(
     public completedAgents: number,
@@ -46,10 +36,20 @@ export class TargetNotFoundError extends Error {
   }
 }
 
-export class IngestionError extends Error {
-  constructor(filePath: string, cause: Error) {
-    super(`Failed to process ${filePath}: ${cause.message}`)
-    this.name = 'IngestionError'
-    this.cause = cause
+/**
+ * Signals that a command wants the CLI process to exit with a specific code.
+ * Command modules THROW this instead of calling process.exit() directly, so the
+ * same command can run inside the TUI (where the host process must survive) and
+ * the classic CLI (where the entry layer translates it into a real exit).
+ */
+export class CliExitError extends Error {
+  constructor(
+    public exitCode: number,
+    message?: string
+  ) {
+    super(message)
+    this.name = 'CliExitError'
   }
 }
+
+

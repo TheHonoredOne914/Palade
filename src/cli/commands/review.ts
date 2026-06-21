@@ -26,6 +26,8 @@ import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentName } from '../../agents/base.js'
 import type { ResolvedTarget } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
+import { groupBySeverity } from '../../orchestrator/merger.js'
+import { CliExitError } from '../../errors/types.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync, statSync } from 'node:fs'
 import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'node:path'
@@ -64,7 +66,7 @@ export async function reviewCommand(
 
   if (!existsSync(resolvedPath)) {
     console.error(chalk.red(`Path does not exist: ${resolvedPath}`))
-    process.exit(1)
+    throw new CliExitError(1)
   }
 
   // Detect if path is a file or directory
@@ -85,7 +87,7 @@ export async function reviewCommand(
     const chunk = await resolveSymbol(symbolRef, process.cwd())
     if (!chunk) {
       console.error(chalk.red(`  Symbol '${symbolFilter}' not found in ${rawPath || '.'}`))
-      process.exit(1)
+      throw new CliExitError(1)
     }
     resolvedSymbolChunk = chunk
     console.log(theme.success(`  ✓ Resolved symbol: ${chunk.filePath}:${chunk.startLine}-${chunk.endLine}`))
@@ -101,6 +103,12 @@ export async function reviewCommand(
   // 3. Validate mode
   const mode = validateMode(opts.mode ?? 'standard')
   const modeConfig = getModeConfig(mode)
+
+  // 3b. Ghost mode banner
+  if (mode === 'ghost') {
+    const { printGhostBanner } = await import('../../ui/banner.js')
+    printGhostBanner()
+  }
 
   // 4. Build scope
   const normalizeDir = (d: string): string => {
@@ -149,7 +157,7 @@ export async function reviewCommand(
           `Target "${opts.target}" not found. Available: ${allTargets.map((t) => t.name).join(', ') || '(none)'}`
         )
       )
-      process.exit(1)
+      throw new CliExitError(1)
     }
     console.log(theme.accent(`  Running review for target: ${match.name}`))
     resolvedTarget = {
@@ -308,9 +316,11 @@ export async function reviewCommand(
   }
 
   // 14. Print summary
-  const { critical, high, medium, low } = groupBySeverity(
-    swarmResult.findings
-  )
+  const grouped = groupBySeverity(swarmResult.findings)
+  const critical = grouped.critical
+  const high = grouped.high
+  const medium = grouped.medium
+  const low = [...grouped.low, ...grouped.info]
 
   console.log()
   console.log(divider())
@@ -358,16 +368,6 @@ export async function reviewCommand(
 
   // 15. Open browser
   if (htmlPath && opts.open !== false && config.output.openBrowser) {
-    startLocalServer(htmlPath, config.output.port)
+    startLocalServer(htmlPath, config.output.port, { openBrowser: true })
   }
-}
-
-function groupBySeverity(findings: Array<{ severity: string }>) {
-  const critical = findings.filter((f) => f.severity === 'critical')
-  const high = findings.filter((f) => f.severity === 'high')
-  const medium = findings.filter((f) => f.severity === 'medium')
-  const low = findings.filter(
-    (f) => f.severity === 'low' || f.severity === 'info'
-  )
-  return { critical, high, medium, low }
 }

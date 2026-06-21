@@ -59,7 +59,9 @@ export async function searchTargets(query: string): Promise<RegistryTarget[]> {
     const pkg = entry.package as Record<string, unknown> | undefined
     if (!pkg) continue
     if (typeof pkg.name !== 'string') continue
-    if (!pkg.name.startsWith('palade-target-')) continue
+    const hasPaladeKeyword = Array.isArray(pkg.keywords) &&
+      (pkg.keywords as string[]).some((k) => k === 'palade-target' || k === 'palade-targets')
+    if (!pkg.name.startsWith('palade-target-') && !pkg.name.startsWith('@palade-targets/') && !hasPaladeKeyword) continue
 
     results.push({
       name: pkg.name,

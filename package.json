@@ -1,19 +1,35 @@
 {
   "name": "palade",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "description": "AI-powered codebase intelligence — reviewed by a swarm, not a single bot.",
   "type": "module",
   "bin": {
-    "palade": "./bin/palade.js"
+    "palade": "./bin/palade.cjs"
   },
   "files": [
     "bin/",
     "dist/",
     "templates/"
   ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "code-review",
+    "ai",
+    "swarm",
+    "codebase",
+    "health-score",
+    "static-analysis",
+    "cli"
+  ],
+  "license": "MIT",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli/index.ts",
-    "start": "node dist/cli/index.js"
+    "start": "node dist/cli/index.js",
+    "test": "vitest run",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
     "boxen": "^7.1.1",
@@ -41,7 +57,10 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/react": "^18.2.0",
+    "figlet": "^1.11.0",
+    "pngjs": "^7.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.9"
   }
 }

@@ -15,6 +15,7 @@ import { printDiffBanner, printDiffSummary } from '../../reporters/terminal.js'
 import { theme } from '../../ui/theme.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentContext, AgentName, DiffContext } from '../../agents/base.js'
+import { CliExitError } from '../../errors/types.js'
 import chalk from 'chalk'
 import ora from 'ora'
 import { mkdirSync, existsSync } from 'node:fs'
@@ -32,7 +33,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
   try {
     if (!(await isGitRepo(projectRoot))) {
       console.error(theme.error('  Not a git repository. palade diff requires git.'))
-      process.exit(1)
+      throw new CliExitError(1)
     }
 
     const config = await loadConfig()
@@ -45,7 +46,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
 
     if (changedFiles.length === 0) {
       console.log(theme.success(`  ✓ No changed files vs ${base}`))
-      process.exit(0)
+      throw new CliExitError(0)
     }
 
     const additions = changedFiles.reduce((s, f) => s + f.additions, 0)
@@ -197,7 +198,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       writeHtmlReport(reporterCtx, htmlPath)
       console.log(theme.success(`  HTML: ${htmlPath}`))
       if (config.output.openBrowser) {
-        startLocalServer(htmlPath, config.output.port)
+        startLocalServer(htmlPath, config.output.port, { openBrowser: true })
       }
     }
 
@@ -211,15 +212,18 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       console.error(
         theme.error('\n  ✗ Critical findings introduced. Blocking.')
       )
-      process.exit(1)
+      throw new CliExitError(1)
     }
   } catch (err) {
+    // CliExitError is an intentional exit signal — pass it through untouched.
+    // Its message (if any) has already been printed at the throw site.
+    if (err instanceof CliExitError) throw err
     console.error(
       theme.error(`\nDiff review failed: ${(err as Error).message}`)
     )
     if ((err as Error).stack && process.env.DEBUG) {
       console.error(chalk.gray((err as Error).stack))
     }
-    process.exit(1)
+    throw new CliExitError(1)
   }
 }
