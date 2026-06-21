@@ -145,9 +145,7 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
       const shouldChunk =
         type === 'function_declaration' ||
         type === 'class_declaration' ||
-        type === 'method_definition' ||
-        type === 'arrow_function' ||
-        type === 'function'
+        type === 'method_definition'
 
       if (shouldChunk && node.startPosition && node.endPosition) {
         const startLine = node.startPosition.row + 1
@@ -158,7 +156,7 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
         if (node.childCount > 0) {
           for (let i = 0; i < node.childCount; i++) {
             const child = node.child(i)
-            if (child && (child.type === 'identifier' || child.type === 'property_identifier')) {
+            if (child && (child.type === 'identifier' || child.type === 'property_identifier' || child.type === 'type_identifier')) {
               symbolName = child.text
               break
             }
@@ -177,6 +175,7 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
         }
 
         chunks.push(...splitLargeChunk(chunk))
+        return
       }
 
       for (let i = 0; i < node.childCount; i++) {
@@ -246,6 +245,7 @@ function chunkPython(content: string, filePath: string): CodeChunk[] {
         }
 
         chunks.push(...splitLargeChunk(chunk))
+        return
       }
 
       for (let i = 0; i < node.childCount; i++) {

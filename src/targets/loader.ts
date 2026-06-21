@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url'
-import { resolve, relative, sep } from 'node:path'
+import { resolve, relative } from 'node:path'
 import { existsSync } from 'node:fs'
 import { TargetDefinitionSchema, type TargetDefinition } from './schema.js'
 
@@ -48,6 +48,6 @@ export function resolveTargetPaths(
   const entry = Array.isArray(target.entry) ? target.entry : [target.entry]
   return entry.map((p) => {
     const abs = resolve(projectRoot, p)
-    return relative(projectRoot, abs).split(sep).join('/')
+    return relative(projectRoot, abs).replace(/\\/g, '/')
   })
 }

@@ -125,6 +125,39 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
       try {
         parsed = JSON.parse(match[0])
       } catch {
+        // Last resort: try to extract individual JSON objects
+        const objects = raw.match(/\{[\s\S]*?\}/g)
+        if (objects && objects.length > 0) {
+          const findings: AgentFinding[] = []
+          for (const objStr of objects) {
+            try {
+              const obj = JSON.parse(objStr)
+              if (typeof obj.title === 'string' && typeof obj.severity === 'string') {
+                const severity = obj.severity as Severity
+                if (severity in SEVERITY_PENALTY) {
+                  findings.push({
+                    id: crypto.randomUUID(),
+                    agentName,
+                    severity,
+                    title: obj.title,
+                    description: obj.description ?? '',
+                    filePath: obj.filePath,
+                    lineStart: obj.lineStart,
+                    lineEnd: obj.lineEnd,
+                    symbolName: obj.symbolName,
+                    tags: Array.isArray(obj.tags) ? obj.tags : [],
+                    scorePenalty: SEVERITY_PENALTY[severity],
+                  })
+                }
+              }
+            } catch {
+              // skip unparseable objects
+            }
+          }
+          if (findings.length > 0) {
+            return findings
+          }
+        }
         console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
         return []
       }

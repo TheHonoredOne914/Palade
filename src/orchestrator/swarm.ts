@@ -8,9 +8,7 @@ import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
 import { triageFiles } from './triage.js'
 import { AgentMemory } from './memory.js'
 import { mergeFindings } from './merger.js'
-
-const INTER_AGENT_DELAY_MS = 3_000
-const SEQUENTIAL_DELAY_MS = 15_000
+import { scheduleBatches } from './scheduler.js'
 
 export async function runSwarm(
   allChunks: CodeChunk[],
@@ -23,7 +21,7 @@ export async function runSwarm(
 
   // Pass 1: Triage — reduce 400+ chunks to ~45 high-value chunks
   const reviewChunks = manifests
-    ? await triageFiles(manifests, allChunks)
+    ? await triageFiles(manifests, allChunks, options.maxReviewTokens)
     : allChunks
 
   const agents: IAgent[] = getAgentsForMode(context.mode, context.modeConfig?.agentOverrides)
@@ -33,56 +31,41 @@ export async function runSwarm(
   let completedCount = 0
   const totalAgents = agents.length
 
-  let consecutiveRateLimits = 0
-  let sequentialMode = false
-
-  // Run agents one at a time so rate-limit state (sequentialMode) set by an
-  // earlier agent actually influences the delay of later ones. The previous
-  // Promise.all version captured these flags by closure but computed each
-  // agent's delay before its predecessor had finished, so the flag never had
-  // any effect.
-  for (let index = 0; index < agents.length; index++) {
-    const agent = agents[index]
-
-    if (index > 0) {
-      const delay = sequentialMode ? SEQUENTIAL_DELAY_MS : INTER_AGENT_DELAY_MS
-      await new Promise(r => setTimeout(r, delay))
-    }
-
+  // Run agents concurrently — rate-limit handling is done at the provider
+  // layer (fetchWithRetry + FallbackProvider), not serialized here.
+  const agentPromises = agents.map(async (agent) => {
     const agentStart = Date.now()
     options.onAgentStart?.(agent.name)
 
     let allFindings: AgentFinding[] = []
     try {
-      const agentTimeoutMs = options.timeoutMs ?? 300_000
-      let timeoutHandle: ReturnType<typeof setTimeout> | undefined
-      const timeoutPromise = new Promise<AgentFinding[]>((_, reject) => {
-        timeoutHandle = setTimeout(
-          () => reject(new Error(`Agent ${agent.name} timed out`)),
-          agentTimeoutMs
-        )
-        // Don't keep the event loop alive solely for this timeout.
-        timeoutHandle.unref?.()
-      })
-      try {
-        allFindings = await Promise.race([
-          agent.analyze(reviewChunks, context),
-          timeoutPromise,
-        ])
-      } finally {
-        if (timeoutHandle) clearTimeout(timeoutHandle)
+      const batches = scheduleBatches(reviewChunks)
+      for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+        const batch = batches[batchIdx]
+        const agentTimeoutMs = options.timeoutMs ?? 300_000
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+        const timeoutPromise = new Promise<AgentFinding[]>((_, reject) => {
+          timeoutHandle = setTimeout(
+            () => reject(new Error(`Agent ${agent.name} timed out`)),
+            agentTimeoutMs
+          )
+          timeoutHandle.unref?.()
+        })
+        let batchFindings: AgentFinding[] = []
+        try {
+          batchFindings = await Promise.race([
+            agent.analyze(batch, context),
+            timeoutPromise,
+          ])
+          allFindings.push(...batchFindings)
+        } finally {
+          if (timeoutHandle) clearTimeout(timeoutHandle)
+        }
+        options.onAgentBatchComplete?.(agent.name, batchIdx + 1, batches.length, batchFindings.length)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.warn(chalk.yellow(`⚠ ${agent.name}: ${msg}`))
-
-      if (msg.includes('429') || msg.includes('rate limit')) {
-        consecutiveRateLimits++
-        if (consecutiveRateLimits >= 3 && !sequentialMode) {
-          console.warn(chalk.yellow('  Rate limits hit repeatedly — switching to sequential mode'))
-          sequentialMode = true
-        }
-      }
       allFindings = []
     }
 
@@ -90,7 +73,9 @@ export async function runSwarm(
     agentTimings[agent.name] = Date.now() - agentStart
     completedCount++
     options.onAgentComplete?.(agent.name, allFindings.length, agentTimings[agent.name]!)
-  }
+  })
+
+  await Promise.all(agentPromises)
 
   const crossAgentFindings: CrossAgentFinding[] = memory.crossReference()
   const mergedFindings: AgentFinding[] = mergeFindings(memory.getAll())

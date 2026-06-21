@@ -1,6 +1,6 @@
 import type { CodeChunk } from '../ingestion/types.js'
 
-const SOFT_TOKEN_LIMIT = 4_000
+const SOFT_TOKEN_LIMIT = 8_000
 const HARD_CHUNK_LIMIT = 3_000
 
 function splitChunk(chunk: CodeChunk): CodeChunk[] {

@@ -37,7 +37,9 @@ export interface CrossAgentFinding {
 export interface SwarmOptions {
   onAgentStart?: (agentName: AgentName) => void
   onAgentComplete?: (agentName: AgentName, findingCount: number, durationMs: number) => void
+  onAgentBatchComplete?: (agentName: AgentName, batchIndex: number, totalBatches: number, batchFindings: number) => void
   onSynthesisStart?: () => void
   onSynthesisComplete?: (durationMs: number) => void
   timeoutMs?: number
+  maxReviewTokens?: number
 }

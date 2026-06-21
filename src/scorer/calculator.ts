@@ -57,7 +57,9 @@ export function calculateCategoryScore(
     }
   }
 
-  const score = Math.max(0, Math.round(100 - penalty))
+  // Cap category penalty at 90 so a single category can't zero out the score
+  const cappedPenalty = Math.min(penalty, 90)
+  const score = Math.max(10, Math.round(100 - cappedPenalty))
 
   return {
     category,
@@ -109,7 +111,11 @@ export function calculateScore(
   const findingPenalty = calculateTotalPenalty(findings)
   const crossAgentPenalty = calculateCrossAgentPenalty(crossAgentFindings)
   const totalPenalty = findingPenalty + crossAgentPenalty
-  const total = Math.max(0, Math.round(100 - totalPenalty))
+  // Average category scores for a balanced overall score
+  const avgCategoryScore = categoryScores.reduce((sum, c) => sum + c.score, 0) / categoryScores.length
+  // Blend: 60% average category score, 40% penalty-based score
+  const penaltyScore = Math.max(5, Math.round(100 - Math.min(totalPenalty, 95)))
+  const total = Math.round(avgCategoryScore * 0.6 + penaltyScore * 0.4)
 
   const breakdown: ScoreBreakdown = {
     total,
