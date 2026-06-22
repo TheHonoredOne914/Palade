@@ -5,7 +5,8 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     primary: 'opencode-zen',
     synthesis: 'nvidia',
     agentCount: 6,
-    timeoutMs: 600000
+    timeoutMs: 600000,
+    maxReviewTokens: 200_000
   },
   output: {
     dir: '.palade/reports',

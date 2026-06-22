@@ -32,7 +32,7 @@ interface JsonCrossAgentFinding {
   description: string
   agents: string[]
   filePaths: string[]
-  severity: 'critical' | 'high' | 'medium'
+  severity: Severity
   blastRadius: number
 }
 

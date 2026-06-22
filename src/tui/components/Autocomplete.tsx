@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { COMMAND_REGISTRY } from '../commands/registry.js'
 
@@ -21,6 +21,10 @@ export function Autocomplete({
         cmd.description.toLowerCase().includes(query)
     ).slice(0, 6)
   }, [input])
+
+  useEffect(() => {
+    setSelectedIdx(0)
+  }, [matches])
 
   useInput((_, key) => {
     if (key.tab || key.downArrow) {

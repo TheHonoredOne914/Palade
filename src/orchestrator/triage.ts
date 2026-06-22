@@ -2,23 +2,38 @@ import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import { getProvider } from '../providers/router.js'
 import chalk from 'chalk'
 
-const TRIAGE_SYSTEM_PROMPT = `You are a codebase triage assistant. Given a list of files in a project, identify which files are most likely to contain bugs, security issues, architectural problems, or dead code.
+const DEFAULT_MAX_REVIEW_TOKENS = 200_000
 
-Return ONLY a valid JSON array of file paths. No explanation. No markdown. Just the array.
+const TRIAGE_SYSTEM_PROMPT = `You are a codebase triage assistant. Given a list of files in a project, rank them by likely importance for a code review (bugs, security issues, architectural problems, dead code).
+
+Return ONLY a valid JSON array of file paths, ordered from most to least important. No explanation. No markdown. Just the array.
 Example: ["src/auth/login.ts", "src/api/users.ts", "src/utils/crypto.ts"]
 
-Select the 15 most interesting files. Prioritise:
+Prioritise:
 - Files with "auth", "api", "route", "handler", "service", "middleware" in their name
 - Large files (high line count)
 - Files with "util", "helper", "common" that could have shared logic issues
 - Config files that might have hardcoded values
 - Files that look like they handle payments, sessions, or user data`
 
+function estimateTokens(chunks: CodeChunk[]): number {
+  return chunks.reduce((sum, c) => sum + c.tokenCount, 0)
+}
+
 export async function triageFiles(
   manifests: FileManifest[],
-  allChunks: CodeChunk[]
+  allChunks: CodeChunk[],
+  maxReviewTokens?: number
 ): Promise<CodeChunk[]> {
-  console.log(chalk.cyan(`  [triage] Selecting high-value files from ${manifests.length} total...`))
+  const budget = maxReviewTokens ?? DEFAULT_MAX_REVIEW_TOKENS
+  const totalTokens = estimateTokens(allChunks)
+
+  if (totalTokens <= budget) {
+    console.log(chalk.cyan(`  [triage] Project fits within token budget (${totalTokens.toLocaleString()}/${budget.toLocaleString()} tokens) — reviewing all files`))
+    return allChunks
+  }
+
+  console.log(chalk.cyan(`  [triage] Selecting high-value files from ${manifests.length} total (${totalTokens.toLocaleString()} tokens exceeds ${budget.toLocaleString()} token budget)...`))
 
   const compactManifest = manifests
     .map(m => `${m.path} (${m.linesOfCode} lines)`)
@@ -29,39 +44,48 @@ export async function triageFiles(
 
     const response = await provider.complete({
       systemPrompt: TRIAGE_SYSTEM_PROMPT,
-      userPrompt: `Project files:\n${compactManifest}\n\nReturn the 15 most important files to review as a JSON array.`,
-      maxTokens: 512,
+      userPrompt: `Project files:\n${compactManifest}\n\nRank all files by importance. Return the full ranked list as a JSON array.`,
+      maxTokens: 2048,
       temperature: 0.1
     })
 
-    let selectedPaths: string[] = []
+    let rankedPaths: string[] = []
     try {
       const match = response.content.match(/\[[\s\S]*\]/)
       if (match) {
-        selectedPaths = JSON.parse(match[0])
+        rankedPaths = JSON.parse(match[0])
       }
     } catch {
       // Triage parse failed — fall back to heuristic
     }
 
-    if (selectedPaths.length > 0) {
-      // Normalize selections (strip ./, leading/trailing slashes, whitespace) and
-      // match a chunk when its path equals the selection or ends with "/<selection>".
-      // This is tighter than the old bidirectional substring match, which would pull
-      // in "oauth.ts" when "auth.ts" was selected.
-      const normalized = new Set(
-        selectedPaths.map(p => p.trim().replace(/^\.?\/+/, '').replace(/\/+$/, ''))
-      )
-      const selected = allChunks.filter(c => {
-        const cp = c.filePath.replace(/^\.?\/+/, '')
-        if (normalized.has(cp)) return true
-        for (const sel of normalized) {
-          if (cp === sel || cp.endsWith('/' + sel)) return true
+    if (rankedPaths.length > 0) {
+      const normalized = new Map<string, string>()
+      for (const p of rankedPaths) {
+        const clean = p.trim().replace(/^\.?\/+/, '').replace(/\/+$/, '')
+        normalized.set(clean, clean)
+      }
+
+      const selected: CodeChunk[] = []
+      let tokensUsed = 0
+
+      for (const rankedPath of rankedPaths) {
+        if (tokensUsed >= budget) break
+        const clean = rankedPath.trim().replace(/^\.?\/+/, '').replace(/\/+$/, '')
+        const matching = allChunks.filter(c => {
+          const cp = c.filePath.replace(/^\.?\/+/, '')
+          if (cp === clean || cp.endsWith('/' + clean)) return true
+          return false
+        })
+        for (const chunk of matching) {
+          if (tokensUsed + chunk.tokenCount > budget) break
+          selected.push(chunk)
+          tokensUsed += chunk.tokenCount
         }
-        return false
-      })
+      }
+
       if (selected.length > 0) {
-        console.log(chalk.cyan(`  [triage] Selected ${selected.length} chunks from ${selectedPaths.length} files`))
+        console.log(chalk.cyan(`  [triage] Selected ${selected.length} chunks (${tokensUsed.toLocaleString()} tokens) from ${selected.length > 0 ? new Set(selected.map(c => c.filePath)).size : 0} files`))
         return selected
       }
     }
@@ -69,10 +93,10 @@ export async function triageFiles(
     console.warn(chalk.yellow(`  [triage] Triage call failed, using heuristic selection`))
   }
 
-  return heuristicSelect(manifests, allChunks)
+  return heuristicSelect(manifests, allChunks, budget)
 }
 
-function heuristicSelect(manifests: FileManifest[], allChunks: CodeChunk[]): CodeChunk[] {
+function heuristicSelect(manifests: FileManifest[], allChunks: CodeChunk[], budget: number): CodeChunk[] {
   const scored = manifests.map(m => {
     let score = 0
     const p = m.path.toLowerCase()
@@ -94,12 +118,23 @@ function heuristicSelect(manifests: FileManifest[], allChunks: CodeChunk[]): Cod
     return { path: m.path, score }
   })
 
-  const topPaths = scored
+  const sortedPaths = scored
     .sort((a, b) => b.score - a.score)
-    .slice(0, 15)
     .map(s => s.path)
 
-  const selected = allChunks.filter(c => topPaths.includes(c.filePath))
-  console.log(chalk.cyan(`  [triage] Heuristic selected ${selected.length} chunks from ${topPaths.length} files`))
+  const selected: CodeChunk[] = []
+  let tokensUsed = 0
+
+  for (const path of sortedPaths) {
+    if (tokensUsed >= budget) break
+    const matching = allChunks.filter(c => c.filePath === path)
+    for (const chunk of matching) {
+      if (tokensUsed + chunk.tokenCount > budget) break
+      selected.push(chunk)
+      tokensUsed += chunk.tokenCount
+    }
+  }
+
+  console.log(chalk.cyan(`  [triage] Heuristic selected ${selected.length} chunks (${tokensUsed.toLocaleString()} tokens) from ${new Set(selected.map(c => c.filePath)).size} files`))
   return selected
 }

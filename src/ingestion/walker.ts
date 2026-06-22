@@ -34,8 +34,20 @@ function detectLanguage(filePath: string): Language {
 
 function matchesGlobs(filePath: string, globs: string[]): boolean {
   for (const pattern of globs) {
-    if (filePath.includes(pattern.replace(/^\*/, ''))) return true
-    if (filePath.startsWith(pattern.replace(/\/\*$/, '/'))) return true
+    // *.ext — suffix match (e.g. "*.service.ts" matches "src/x.service.ts")
+    if (pattern.startsWith('*.')) {
+      const suffix = pattern.slice(1) // keep the leading "."
+      if (filePath.endsWith(suffix)) return true
+      continue
+    }
+    // dir/* or dir/ — prefix match on a path segment boundary
+    if (pattern.endsWith('/*') || pattern.endsWith('/')) {
+      const prefix = pattern.replace(/\/?\*?$/, '/')
+      if (filePath.startsWith(prefix) || filePath.includes('/' + prefix)) return true
+      continue
+    }
+    // Literal substring (covers "src/foo.ts", "auth", etc.)
+    if (filePath === pattern || filePath.endsWith('/' + pattern)) return true
   }
   return false
 }

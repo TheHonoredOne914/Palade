@@ -33,15 +33,15 @@ describe('orchestrator/scheduler', () => {
     })
 
     it('splits into multiple batches over the soft limit', () => {
-      // SOFT_TOKEN_LIMIT = 4000
+      // SOFT_TOKEN_LIMIT = 8000
       const batches = scheduleBatches([chunk(3000), chunk(3000), chunk(3000)])
       expect(batches.length).toBeGreaterThan(1)
       // every batch respects the limit (except one that may hold a single oversize chunk)
       for (const batch of batches) {
         const total = batch.reduce((s, c) => s + c.tokenCount, 0)
         // a single chunk that alone exceeds the limit lands in its own batch
-        const isSingleOversized = batch.length === 1 && batch[0].tokenCount > 4000
-        expect(isSingleOversized || total <= 4000).toBe(true)
+        const isSingleOversized = batch.length === 1 && batch[0].tokenCount > 8000
+        expect(isSingleOversized || total <= 8000).toBe(true)
       }
     })
 
@@ -54,6 +54,17 @@ describe('orchestrator/scheduler', () => {
 
     it('handles empty input', () => {
       expect(scheduleBatches([])).toEqual([[]])
+    })
+
+    it('splits a large chunk set into multiple batches under the soft limit', () => {
+      const manyChunks = Array.from({ length: 10 }, (_, i) => chunk(2000, `c${i}`))
+      const batches = scheduleBatches(manyChunks)
+      expect(batches.length).toBeGreaterThan(1)
+      for (const batch of batches) {
+        const total = batch.reduce((s, c) => s + c.tokenCount, 0)
+        const isSingleOversized = batch.length === 1 && batch[0].tokenCount > 8000
+        expect(isSingleOversized || total <= 8000).toBe(true)
+      }
     })
   })
 })

@@ -218,6 +218,7 @@ export async function reviewCommand(
         progress?.synthesisDone(durationMs)
       },
       timeoutMs: config.swarm.timeoutMs,
+      maxReviewTokens: config.swarm.maxReviewTokens,
     },
     target: resolvedTarget,
   })

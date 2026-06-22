@@ -1,4 +1,4 @@
-import type { AgentFinding, AgentName } from '../agents/base.js'
+import type { AgentFinding, AgentName, Severity } from '../agents/base.js'
 import type { CodeChunk } from '../ingestion/types.js'
 import type { SynthesisResult } from '../agents/synthesis.js'
 import type { TargetDefinition } from '../targets/schema.js'
@@ -30,14 +30,16 @@ export interface CrossAgentFinding {
   description: string
   agents: AgentName[]
   filePaths: string[]
-  severity: 'critical' | 'high' | 'medium'
+  severity: Severity
   blastRadius: number
 }
 
 export interface SwarmOptions {
   onAgentStart?: (agentName: AgentName) => void
   onAgentComplete?: (agentName: AgentName, findingCount: number, durationMs: number) => void
+  onAgentBatchComplete?: (agentName: AgentName, batchIndex: number, totalBatches: number, batchFindings: number) => void
   onSynthesisStart?: () => void
   onSynthesisComplete?: (durationMs: number) => void
   timeoutMs?: number
+  maxReviewTokens?: number
 }

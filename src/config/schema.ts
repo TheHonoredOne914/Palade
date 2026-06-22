@@ -21,7 +21,8 @@ export const PaladeConfigSchema = z.object({
     primary: z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']).default('opencode-zen'),
     synthesis: z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']).default('nvidia'),
     agentCount: z.number().int().min(1).max(12).default(6),
-    timeoutMs: z.number().int().default(600000)
+    timeoutMs: z.number().int().default(600000),
+    maxReviewTokens: z.number().int().min(10_000).default(200_000)
   }).default({}),
   output: z.object({
     dir: z.string().default('.palade/reports'),

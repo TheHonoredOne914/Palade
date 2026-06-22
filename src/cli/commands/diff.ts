@@ -119,6 +119,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
         progressSpinner.text = `  Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`
       },
       timeoutMs: config.swarm.timeoutMs,
+      maxReviewTokens: config.swarm.maxReviewTokens,
     })
 
     progressSpinner.succeed(

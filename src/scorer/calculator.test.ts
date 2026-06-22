@@ -56,11 +56,11 @@ describe('scorer/calculator', () => {
       expect(sec.criticalCount).toBe(1)
     })
 
-    it('floors at 0 for extreme penalties', () => {
+    it('floors at 10 for extreme penalties', () => {
       const findings = Array.from({ length: 15 }, () =>
         finding('security', 'critical')
       )
-      expect(calculateCategoryScore(findings, 'security').score).toBe(0)
+      expect(calculateCategoryScore(findings, 'security').score).toBe(10)
     })
 
     it('scores 100 with no findings', () => {
@@ -87,9 +87,9 @@ describe('scorer/calculator', () => {
         [],
         90
       )
-      // penalty = 5 + 2 = 7 -> 93 ; delta = 93 - 90 = 3
-      expect(result.score).toBe(93)
-      expect(result.delta).toBe(3)
+      // Blended: 60% avg-category (98.83) + 40% penalty-score (93) = 96.5 -> 97
+      expect(result.score).toBe(97)
+      expect(result.delta).toBe(7)   // 97 - 90
       expect(result.previousScore).toBe(90)
       expect(result.breakdown.findingCount).toBe(2)
       expect(result.breakdown.categories).toHaveLength(6)
