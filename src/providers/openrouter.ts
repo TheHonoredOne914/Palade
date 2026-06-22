@@ -33,7 +33,7 @@ export class OpenRouterProvider implements IProvider {
 
     const start = Date.now()
 
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await fetchWithRetry('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.apiKey}`,

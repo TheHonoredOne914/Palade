@@ -82,7 +82,7 @@ export async function runSwarm(
 
   options.onSynthesisStart?.()
   const synthStart = Date.now()
-  const synthesis = await analyzeSynthesis(mergedFindings, [], context)
+  const synthesis = await analyzeSynthesis(mergedFindings, crossAgentFindings, context)
   options.onSynthesisComplete?.(Date.now() - synthStart)
 
   return {

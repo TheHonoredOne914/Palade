@@ -1,6 +1,7 @@
 import type { IProvider } from '../providers/base.js'
 import { getProvider } from '../providers/router.js'
 import type { AgentContext, AgentFinding } from './base.js'
+import type { CrossAgentFinding } from '../orchestrator/types.js'
 
 export interface PriorityFix {
   rank: number
@@ -137,7 +138,7 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
 
 export async function synthesize(
   allFindings: AgentFinding[],
-  crossTargetFindings: AgentFinding[],
+  crossAgentFindings: CrossAgentFinding[],
   context: AgentContext
 ): Promise<SynthesisResult> {
   try {
@@ -151,7 +152,7 @@ export async function synthesize(
       {
         allFindings: cappedFindings,
         totalFindings: allFindings.length,
-        crossTargetFindings,
+        crossAgentFindings,
         context,
       },
       null,
@@ -169,7 +170,7 @@ export async function synthesize(
       )
     ])
 
-    const result = parseSynthesisResponse(response.content)
+    const result = parseSynthesisResponse(response.content ?? '')
     if (!result) {
       return {
         executiveSummary: 'Synthesis failed to produce a valid response.',

@@ -21,7 +21,10 @@ export class NvidiaProvider implements IProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    const maxTokens = Math.max(req.maxTokens ?? 4096, 16384)
+    // Reasoning models burn tokens on internal thinking, so when the caller
+    // doesn't specify a budget we default generously. But we never override an
+    // explicit caller request (e.g. triage's 512-token cheap calls).
+    const maxTokens = req.maxTokens ?? 8192
     return this.doComplete(req, maxTokens, 0)
   }
 

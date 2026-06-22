@@ -10,12 +10,14 @@ import { useCommandRunner } from './hooks/useCommandRunner.js'
 import { useCommandHistory } from './hooks/useCommandHistory.js'
 import { mountOutputAdapter, unmountOutputAdapter } from './outputAdapter.js'
 import type { PaladeConfig } from '../config/schema.js'
+import { Text } from 'ink'
 
 interface AppProps {
   config?: PaladeConfig
   providerStatus: Record<string, boolean>
   projectRoot: string
   version: string
+  configError?: string
 }
 
 export function App({
@@ -23,6 +25,7 @@ export function App({
   providerStatus,
   projectRoot,
   version,
+  configError,
 }: AppProps): React.JSX.Element {
   const { exit } = useApp()
   const [inputValue, setInputValue] = useState('')
@@ -89,6 +92,15 @@ export function App({
   return (
     <Box flexDirection="column" height="100%">
       <Header providerStatus={providerStatus} projectRoot={projectRoot} version={version} />
+
+      {configError && (
+        <Box borderStyle="single" borderColor="#F59E0B" paddingX={1} marginX={1}>
+          <Text color="#F59E0B" bold>
+            ⚠ Config:
+          </Text>
+          <Text color="#D1D5DB"> {configError}</Text>
+        </Box>
+      )}
 
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         <OutputPane lines={lines} />

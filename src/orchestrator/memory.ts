@@ -76,7 +76,7 @@ export class AgentMemory {
         description: titles.join('; '),
         agents,
         filePaths: [filePath],
-        severity: severity as 'critical' | 'high' | 'medium',
+        severity,
         blastRadius: 1,
       })
     }
@@ -97,7 +97,7 @@ export class AgentMemory {
         description: titles.join('; '),
         agents: Array.from(entry.agents),
         filePaths: Array.from(entry.files),
-        severity: severity as 'critical' | 'high' | 'medium',
+        severity,
         blastRadius: entry.files.size,
       })
     }

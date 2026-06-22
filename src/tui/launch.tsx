@@ -15,6 +15,7 @@ const pkg = JSON.parse(
 export async function launchTUI(): Promise<void> {
   let config
   const providerStatus: Record<string, boolean> = {}
+  let configError: string | undefined
 
   try {
     config = await loadConfig()
@@ -22,8 +23,8 @@ export async function launchTUI(): Promise<void> {
     providerStatus.groq = !!config.providers?.groq?.apiKey
     providerStatus.cerebras = !!config.providers?.cerebras?.apiKey
     providerStatus.nvidia = !!config.providers?.nvidia?.apiKey
-  } catch {
-    // TUI will show the config error inline, not crash
+  } catch (err: unknown) {
+    configError = err instanceof Error ? err.message : String(err)
   }
 
   const { waitUntilExit } = render(
@@ -32,6 +33,7 @@ export async function launchTUI(): Promise<void> {
       providerStatus={providerStatus}
       projectRoot={process.cwd()}
       version={pkg.version}
+      configError={configError}
     />,
     {
       exitOnCtrlC: false,
