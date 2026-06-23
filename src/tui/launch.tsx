@@ -19,12 +19,24 @@ export async function launchTUI(): Promise<void> {
 
   try {
     config = await loadConfig()
-    await initRouter(config)
-    providerStatus.groq = !!config.providers?.groq?.apiKey
-    providerStatus.cerebras = !!config.providers?.cerebras?.apiKey
-    providerStatus.nvidia = !!config.providers?.nvidia?.apiKey
   } catch (err: unknown) {
     configError = err instanceof Error ? err.message : String(err)
+  }
+
+  // Router init is separate from config loading: a config can be valid while
+  // provider initialization fails. If it does, surface the error and null out
+  // config so the TUI commands (which depend on a working router) don't run
+  // against half-initialized providers.
+  if (config) {
+    try {
+      await initRouter(config)
+      providerStatus.groq = !!config.providers?.groq?.apiKey
+      providerStatus.cerebras = !!config.providers?.cerebras?.apiKey
+      providerStatus.nvidia = !!config.providers?.nvidia?.apiKey
+    } catch (err: unknown) {
+      configError = `Provider init failed: ${err instanceof Error ? err.message : String(err)}`
+      config = undefined
+    }
   }
 
   const { waitUntilExit } = render(

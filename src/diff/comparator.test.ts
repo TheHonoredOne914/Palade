@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compareFindings, rankIntroducedFindings } from './comparator.js'
+import { compareFindings, rankIntroducedFindings, scopeToDiff } from './comparator.js'
 import type { AgentFinding } from '../agents/base.js'
 import type { ChangedFile } from './types.js'
 
@@ -19,15 +19,54 @@ function finding(
   }
 }
 
+// Diff: @@ -7,6 +7,7 @@ puts HEAD at line 7. The context line is line 7,
+// so the + line lands at HEAD line 8.
 const changed: ChangedFile[] = [
-  { path: 'src/auth.ts', status: 'modified', additions: 1, deletions: 0, diff: '' },
+  {
+    path: 'src/auth.ts',
+    status: 'modified',
+    additions: 1,
+    deletions: 0,
+    diff: `--- a/src/auth.ts\n+++ b/src/auth.ts\n@@ -7,6 +7,7 @@\n export function login() {\n+  const q = query\n   return session\n }`,
+  },
 ]
 
 describe('diff/comparator', () => {
+  describe('scopeToDiff', () => {
+    it('keeps findings overlapping added lines', () => {
+      const findings = [
+        finding({ severity: 'critical', filePath: 'src/auth.ts', lineStart: 8 }),
+        finding({ severity: 'high', filePath: 'src/auth.ts', lineStart: 100 }),
+      ]
+      const scoped = scopeToDiff(findings, changed)
+      expect(scoped).toHaveLength(1)
+      expect(scoped[0].lineStart).toBe(8)
+    })
+
+    it('returns empty when changedFiles have no diff', () => {
+      const noDiff: ChangedFile[] = [
+        { path: 'src/auth.ts', status: 'modified', additions: 1, deletions: 0, diff: '' },
+      ]
+      const scoped = scopeToDiff(
+        [finding({ severity: 'critical', filePath: 'src/auth.ts', lineStart: 1 })],
+        noDiff
+      )
+      expect(scoped).toHaveLength(0)
+    })
+
+    it('includes file-level findings (lineStart 0) when added ranges exist', () => {
+      const scoped = scopeToDiff(
+        [finding({ severity: 'medium', filePath: 'src/auth.ts', lineStart: 0 })],
+        changed
+      )
+      expect(scoped).toHaveLength(1)
+    })
+  })
+
   describe('compareFindings', () => {
     it('marks a finding not present in base as introduced', () => {
       const diff = compareFindings(
-        [finding({ severity: 'critical', filePath: 'src/auth.ts', lineStart: 10 })],
+        [finding({ severity: 'critical', filePath: 'src/auth.ts', lineStart: 8 })],
         [],
         changed
       )

@@ -39,22 +39,22 @@ export function estimateTotalTokens(chunks: CodeChunk[]): number {
 }
 
 export function scheduleBatches(chunks: CodeChunk[]): CodeChunk[][] {
-  // Split oversized chunks
+  // Split oversized chunks recursively to ensure all pieces are under HARD_CHUNK_LIMIT
+  function splitToLimit(chunk: CodeChunk, depth = 0): CodeChunk[] {
+    if (depth > 10) {
+      // Safety guard: stop recursing if we can't split below limit
+      return [chunk]
+    }
+    if (chunk.tokenCount <= HARD_CHUNK_LIMIT) {
+      return [chunk]
+    }
+    const halves = splitChunk(chunk)
+    return halves.flatMap(h => splitToLimit(h, depth + 1))
+  }
+
   const processedChunks: CodeChunk[] = []
   for (const chunk of chunks) {
-    if (chunk.tokenCount > HARD_CHUNK_LIMIT) {
-      const halves = splitChunk(chunk)
-      for (const half of halves) {
-        if (half.tokenCount > HARD_CHUNK_LIMIT) {
-          const subHalves = splitChunk(half)
-          processedChunks.push(...subHalves)
-        } else {
-          processedChunks.push(half)
-        }
-      }
-    } else {
-      processedChunks.push(chunk)
-    }
+    processedChunks.push(...splitToLimit(chunk))
   }
 
   const totalTokens = processedChunks.reduce((sum, c) => sum + c.tokenCount, 0)

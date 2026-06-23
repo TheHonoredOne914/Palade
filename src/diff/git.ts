@@ -1,5 +1,4 @@
-import { execSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { relative, sep } from 'node:path'
 import type { ChangedFile } from './types.js'
 
@@ -8,11 +7,13 @@ const GIT_STATUS_MAP: Record<string, ChangedFile['status']> = {
   M: 'modified',
   D: 'deleted',
   R: 'modified',
+  // Copy (C) is treated as a modification of the destination file.
+  C: 'modified',
 }
 
 export async function isGitRepo(cwd: string): Promise<boolean> {
   try {
-    execSync('git rev-parse --git-dir', { cwd, stdio: 'pipe' })
+    execFileSync('git', ['rev-parse', '--git-dir'], { cwd, stdio: 'pipe' })
     return true
   } catch {
     return false
@@ -21,7 +22,11 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
 
 export async function getCurrentBranch(cwd: string): Promise<string> {
   try {
-    return execSync('git rev-parse --abbrev-ref HEAD', { cwd, encoding: 'utf-8' }).trim()
+    return execFileSync(
+      'git',
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      { cwd, encoding: 'utf-8' }
+    ).trim()
   } catch {
     return 'HEAD'
   }
@@ -33,10 +38,12 @@ export async function getChangedFiles(
 ): Promise<ChangedFile[]> {
   let output: string
   try {
-    output = execSync(`git diff --name-status ${baseBranch}...HEAD`, {
-      cwd,
-      encoding: 'utf-8',
-    })
+    // Array form — bypasses the shell, so baseBranch cannot inject commands.
+    output = execFileSync(
+      'git',
+      ['diff', '--name-status', `${baseBranch}...HEAD`],
+      { cwd, encoding: 'utf-8' }
+    )
   } catch {
     return []
   }
@@ -50,8 +57,9 @@ export async function getChangedFiles(
     const statusChar = statusCode.charAt(0)
     const status = GIT_STATUS_MAP[statusChar] ?? 'modified'
 
-    // Handle renamed files (R100\told\tnew)
-    const filePath = statusChar === 'R' ? parts[2] : parts[1]
+    // Rename (R) and Copy (C) lines carry a score suffix and three columns:
+    // `<status><score>\told\tnew`. The destination path is parts[2].
+    const filePath = statusChar === 'R' || statusChar === 'C' ? parts[2] : parts[1]
     if (!filePath) continue
 
     let additions = 0
@@ -60,10 +68,11 @@ export async function getChangedFiles(
 
     if (status !== 'deleted') {
       try {
-        diff = execSync(`git diff ${baseBranch}...HEAD -- "${filePath}"`, {
-          cwd,
-          encoding: 'utf-8',
-        })
+        diff = execFileSync(
+          'git',
+          ['diff', `${baseBranch}...HEAD`, '--', filePath],
+          { cwd, encoding: 'utf-8' }
+        )
 
         // Parse additions/deletions from diff
         const diffLines = diff.split('\n')
@@ -93,27 +102,21 @@ export async function getBaseScore(
   historyFile: string,
   cwd: string
 ): Promise<number | null> {
-  // Try to read the history file as it exists on the base branch.
-  // historyFile is typically gitignored (.palade/), so this returns null
-  // unless the file was committed — in which case we get the real base score.
+  // Read the history file as it exists on the base branch. historyFile is
+  // typically gitignored (.palade/), so this returns null unless the file was
+  // committed — in which case we get the real base score.
   const relPath = relative(cwd, historyFile).split(sep).join('/')
   try {
-    const content = execSync(
-      `git show ${baseBranch}:${relPath}`,
+    const content = execFileSync(
+      'git',
+      ['show', `${baseBranch}:${relPath}`],
       { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
     )
     const entries = JSON.parse(content) as Array<{ score: number; timestamp: string }>
     if (entries.length === 0) return null
     return entries[entries.length - 1].score
   } catch {
-    // Not tracked on base branch — fall back to local history's last entry
-    try {
-      const content = readFileSync(historyFile, 'utf-8')
-      const entries = JSON.parse(content) as Array<{ score: number; timestamp: string }>
-      if (entries.length === 0) return null
-      return entries[entries.length - 1].score
-    } catch {
-      return null
-    }
+    // Not tracked on base branch — no real base score available.
+    return null
   }
 }

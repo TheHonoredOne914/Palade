@@ -38,9 +38,10 @@ export async function fetchWithRetry(
       const res = await fetch(url, init)
       if (res.status === 429 && attempt < retries) {
         const retryAfter = res.headers.get('retry-after')
-        const delayMs = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS)
+        const parsed = retryAfter ? parseInt(retryAfter, 10) * 1000 : NaN
+        const delayMs = isNaN(parsed)
+          ? Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS)
+          : Math.min(parsed, MAX_DELAY_MS)
         await sleep(delayMs)
         continue
       }

@@ -14,6 +14,7 @@ export class OpenCodeZenProvider implements IProvider {
   private readonly baseUrl = 'https://opencode.ai/zen/v1'
   private availabilityCache: { result: boolean; timestamp: number } | null = null
   private dailyLimitExhausted = false
+  private static readonly MAX_429_RETRIES = 3
 
   constructor(apiKey: string, model = 'deepseek-v4-flash-free') {
     this.apiKey = apiKey
@@ -25,9 +26,11 @@ export class OpenCodeZenProvider implements IProvider {
       throw new Error('OpenCode Zen daily limit exhausted for this session')
     }
 
-    // Reasoning models consume tokens for thinking — give them room
-    const requestedTokens = req.maxTokens ?? 4096
-    const maxTokens = Math.max(requestedTokens, 16384)
+    // Reasoning models consume tokens for thinking, so when the caller doesn't
+    // specify a budget we default generously. But we never inflate an explicit
+    // caller request (e.g. triage's 512-token cheap calls) — that would waste
+    // tokens and slow down the request.
+    const maxTokens = req.maxTokens ?? 16384
 
     return this.doComplete(req, maxTokens, 0)
   }
@@ -67,9 +70,14 @@ export class OpenCodeZenProvider implements IProvider {
         throw new Error(`OpenCode Zen daily limit exceeded. ${msg}`)
       }
 
-      console.warn(chalk.yellow('  OpenCode Zen rate limited. Waiting 60s...'))
+      if (attempt >= OpenCodeZenProvider.MAX_429_RETRIES) {
+        this.dailyLimitExhausted = true
+        throw new Error(`OpenCode Zen rate limited — 429 retries exhausted`)
+      }
+
+      console.warn(chalk.yellow(`  OpenCode Zen rate limited. Waiting 60s... (${attempt + 1}/${OpenCodeZenProvider.MAX_429_RETRIES})`))
       await new Promise(r => setTimeout(r, 60_000))
-      return this.doComplete(req, maxTokens, attempt)
+      return this.doComplete(req, maxTokens, attempt + 1)
     }
 
     if (res.status >= 500 && attempt < 2) {

@@ -240,9 +240,9 @@ function replacePlaceholders(template: string, data: HtmlTemplateData, ctx: Repo
   let result = template
 
   result = result.replace(/\{\{OWL_MASCOT\}\}/g, '<div style="font-size: 3rem;">🦉</div>')
-  result = result.replace(/\{\{TITLE\}\}/g, data.title)
-  result = result.replace(/\{\{TIMESTAMP\}\}/g, data.timestamp)
-  result = result.replace(/\{\{PROJECT_NAME\}\}/g, data.projectName)
+  result = result.replace(/\{\{TITLE\}\}/g, escapeHtml(data.title))
+  result = result.replace(/\{\{TIMESTAMP\}\}/g, escapeHtml(data.timestamp))
+  result = result.replace(/\{\{PROJECT_NAME\}\}/g, escapeHtml(data.projectName))
   result = result.replace(/\{\{SCORE\}\}/g, String(data.score))
   result = result.replace(/\{\{SCORE_COLOR\}\}/g, data.scoreColor)
   result = result.replace(/\{\{SCORE_GRADE\}\}/g, data.scoreGrade)
@@ -266,7 +266,7 @@ function replacePlaceholders(template: string, data: HtmlTemplateData, ctx: Repo
   result = result.replace(/\{\{FINDINGS_SUMMARY\}\}/g, data.findingsSummaryHtml)
   result = result.replace(/\{\{SPARKLINE_DATA\}\}/g, data.sparklineData)
   result = result.replace(/\{\{SPARKLINE_LABELS\}\}/g, data.sparklineLabels)
-  result = result.replace(/\{\{RUN_ID\}\}/g, ctx.swarm.runId)
+  result = result.replace(/\{\{RUN_ID\}\}/g, escapeHtml(ctx.swarm.runId))
   result = result.replace(/\{\{DURATION\}\}/g, `${(ctx.swarm.durationMs / 1000).toFixed(1)}s`)
   result = result.replace(/\{\{TOTAL_CHUNKS\}\}/g, String(ctx.swarm.totalChunks))
   result = result.replace(/\{\{TOTAL_TOKENS\}\}/g, ctx.swarm.totalTokensEstimated.toLocaleString())

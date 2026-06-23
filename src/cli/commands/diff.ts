@@ -166,7 +166,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       durationMs: swarmResult.durationMs,
     })
 
-    const outputDir = join(projectRoot, '.palade/reports')
+    const outputDir = join(projectRoot, config.output.dir)
     if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
 
     const dateStr = new Date().toISOString().slice(0, 10)

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { loadConfig } from '../../config/loader.js'
 import { initRouter } from '../../providers/router.js'
 import { loadTargets, resolveTargetPaths } from '../../targets/loader.js'
@@ -270,7 +271,8 @@ export async function reviewCommand(
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
 
   const dateStr = new Date().toISOString().slice(0, 10)
-  const reportName = `${dateStr}-${scoreResult.score}`
+  const runId = crypto.randomBytes(3).toString('hex') // 6-char hex, avoids same-day collisions
+  const reportName = `${dateStr}-${scoreResult.score}-${runId}`
   const formats = (opts.format ?? config.output.formats.join(','))
     .split(',')
     .map((f) => f.trim())
@@ -356,9 +358,11 @@ export async function reviewCommand(
       `  ${theme.dim('→ Report')}   ${chalk.cyan(htmlPath)}`
     )
   }
-  console.log(
-    `  ${theme.dim('→ Badge')}     ${chalk.cyan(config.score.badgePath)} ${theme.success('updated')}`
-  )
+  if (config.score.badge) {
+    console.log(
+      `  ${theme.dim('→ Badge')}     ${chalk.cyan(config.score.badgePath)} ${theme.success('updated')}`
+    )
+  }
 
   console.log()
   console.log(divider())

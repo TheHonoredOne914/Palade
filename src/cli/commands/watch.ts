@@ -126,7 +126,9 @@ export async function watchCommand(opts: {
   watcher.on('change', (path: string) => {
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
-      void analyzeFile(path)
+      // chokidar emits OS-native separators (backslash on Windows). walkProject
+      // produces forward-slash paths, so normalise before passing as scope.
+      void analyzeFile(path.split('\\').join('/'))
     }, debounceMs)
   })
 

@@ -61,7 +61,7 @@ export class SecurityAgent implements IAgent {
       const systemPrompt = buildSystemPrompt(SYSTEM_PROMPT, context)
       const userPrompt = buildChunkContext(chunks)
       const response = await provider.complete({ systemPrompt, userPrompt, maxTokens: 4096 })
-      return parseFindingsResponse(response.content, this.name)
+      return parseFindingsResponse(response.content ?? '', this.name)
     } catch (err) {
       console.error(`[security] analyze failed:`, err)
       return []
