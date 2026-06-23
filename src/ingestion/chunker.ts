@@ -138,6 +138,11 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
     const chunks: CodeChunk[] = []
     const lines = content.split('\n')
 
+    // Collect line ranges covered by symbol chunks so we can fill gaps
+    // (top-level imports, constants, statements) that tree-sitter would
+    // otherwise drop entirely.
+    const coveredRanges: Array<[number, number]> = []
+
     function walkNode(node: any): void {
       if (!node) return
 
@@ -150,6 +155,7 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
       if (shouldChunk && node.startPosition && node.endPosition) {
         const startLine = node.startPosition.row + 1
         const endLine = node.endPosition.row + 1
+        coveredRanges.push([startLine, endLine])
         const chunkContent = lines.slice(startLine - 1, endLine).join('\n')
         let symbolName: string | undefined
 
@@ -188,6 +194,40 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
     if (chunks.length === 0) {
       return chunkBySlidingWindow(content, filePath, language)
     }
+
+    // Fill gaps: top-level code not inside any chunked symbol. This captures
+    // imports, exports, module-level constants, and standalone statements that
+    // would otherwise be invisible to the agents.
+    coveredRanges.sort((a, b) => a[0] - b[0])
+    let cursor = 1
+    const gaps: Array<[number, number]> = []
+    for (const [s, e] of coveredRanges) {
+      if (s > cursor) {
+        gaps.push([cursor, s - 1])
+      }
+      cursor = Math.max(cursor, e + 1)
+    }
+    if (cursor <= lines.length) {
+      gaps.push([cursor, lines.length])
+    }
+
+    for (const [gStart, gEnd] of gaps) {
+      const gapContent = lines.slice(gStart - 1, gEnd).join('\n')
+      if (gapContent.trim().length === 0) continue
+      const gapChunk: CodeChunk = {
+        id: makeChunkId(filePath, gStart, gEnd),
+        filePath,
+        startLine: gStart,
+        endLine: gEnd,
+        content: gapContent,
+        tokenCount: estimateTokens(gapContent),
+        language: language as CodeChunk['language']
+      }
+      chunks.push(...splitLargeChunk(gapChunk))
+    }
+
+    // Sort by start line so chunks are in source order
+    chunks.sort((a, b) => a.startLine - b.startLine)
 
     return chunks
   } catch {

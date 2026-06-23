@@ -14,6 +14,9 @@ export interface OutputLine {
     | 'raw'
   text: string
   severity?: 'critical' | 'high' | 'medium' | 'low' | 'info'
+  /** Stable identifier assigned when the line is appended. Used as the React
+   * key so rolling-window re-renders don't reuse DOM nodes for wrong lines. */
+  id?: number
 }
 
 interface OutputPaneProps {
@@ -26,7 +29,7 @@ export function OutputPane({ lines }: OutputPaneProps): React.JSX.Element {
   return (
     <Box flexDirection="column">
       {displayLines.map((line, i) => (
-        <OutputLineItem key={i} line={line} />
+        <OutputLineItem key={line.id ?? i} line={line} />
       ))}
     </Box>
   )

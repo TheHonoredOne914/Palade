@@ -64,7 +64,9 @@ export class OpenRouterProvider implements IProvider {
       }
 
       if (resetHeader) {
-        const resetMs = parseInt(resetHeader, 10)
+        // x-ratelimit-reset is a Unix epoch in seconds — convert to ms
+        const resetEpochSec = parseInt(resetHeader, 10)
+        const resetMs = isNaN(resetEpochSec) ? 0 : resetEpochSec * 1000
         const waitMs = Math.max(resetMs - Date.now(), 1000)
 
         if (waitMs > 60_000) {
@@ -117,7 +119,6 @@ export class OpenRouterProvider implements IProvider {
 
       // No reset header — fixed 60s wait with bounded retries
       if (attempt >= OpenRouterProvider.MAX_RETRIES) {
-        this.dailyLimitExhausted = true
         throw new Error('OpenRouter rate limited — retries exhausted')
       }
       console.warn(chalk.yellow(`  OpenRouter rate limited. Waiting 60s... (attempt ${attempt + 1}/${OpenRouterProvider.MAX_RETRIES})`))

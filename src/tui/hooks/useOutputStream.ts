@@ -1,8 +1,16 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { OutputLine } from '../components/OutputPane.js'
 
 export function useOutputStream() {
-  const [lines, setLines] = useState<OutputLine[]>([
+  const idRef = useRef(0)
+  const assignId = useCallback((line: OutputLine): OutputLine => {
+    if (line.id === undefined) {
+      line.id = ++idRef.current
+    }
+    return line
+  }, [])
+
+  const [lines, setLines] = useState<OutputLine[]>(([
     { type: 'output', text: '' },
     {
       type: 'output',
@@ -13,19 +21,21 @@ export function useOutputStream() {
       text: '  Type / to start a command with autocomplete.',
     },
     { type: 'output', text: '' },
-  ])
+  ] as OutputLine[]).map((l) => assignId(l)))
 
   const appendLine = useCallback((line: OutputLine) => {
-    setLines((prev) => [...prev, line].slice(-500))
-  }, [])
+    setLines((prev) => [...prev, assignId(line)].slice(-500))
+  }, [assignId])
 
   const appendLines = useCallback((newLines: OutputLine[]) => {
-    setLines((prev) => [...prev, ...newLines].slice(-500))
-  }, [])
+    const withIds = newLines.map((l) => assignId(l))
+    setLines((prev) => [...prev, ...withIds].slice(-500))
+  }, [assignId])
 
   const clearOutput = useCallback(() => {
-    setLines([{ type: 'dim', text: '  Output cleared.' }])
-  }, [])
+    const cleared: OutputLine = { type: 'dim', text: '  Output cleared.' }
+    setLines([assignId(cleared)])
+  }, [assignId])
 
   return { lines, appendLine, appendLines, clearOutput }
 }

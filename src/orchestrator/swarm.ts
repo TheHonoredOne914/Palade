@@ -65,8 +65,11 @@ export async function runSwarm(
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.warn(chalk.yellow(`⚠ ${agent.name}: ${msg}`))
-      allFindings = []
+      console.warn(
+        chalk.yellow(`⚠ ${agent.name}: ${msg} (keeping ${allFindings.length} partial findings)`)
+      )
+      // Keep partial findings from successful batches rather than discarding
+      // everything when a later batch times out or fails.
     }
 
     memory.record(agent.name, allFindings)

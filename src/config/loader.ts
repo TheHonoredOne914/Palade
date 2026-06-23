@@ -80,9 +80,15 @@ export async function loadConfig(): Promise<PaladeConfig> {
   try {
     const configPath = join(process.cwd(), 'palade.config.ts')
     const fileUrl = pathToFileURL(configPath).href
-    const cacheBust = `?t=${Date.now()}`
-    const mod = await import(`${fileUrl}${cacheBust}`)
-    raw = mod.default ?? mod
+    // Dynamic import with invalidation via import specifier — Node's ESM
+    // loader ignores query strings for file:// URLs on most platforms, so we
+    // do not append cache-busting params that break tsx/jiti.
+    const mod = await import(fileUrl)
+    const defaulted = mod.default ?? mod
+    if (defaulted !== null && typeof defaulted === 'object' && !Array.isArray(defaulted)) {
+      raw = defaulted as Record<string, unknown>
+    }
+    // Non-object exports (functions, primitives) are silently ignored.
   } catch (e) {
     // No config file found — fall through to env vars
   }

@@ -352,20 +352,31 @@ async function writeConfigPatch(
 ): Promise<void> {
   const configPath = join(projectRoot, 'palade.config.ts')
   let existing: Record<string, unknown> = {}
+  let hasExistingObject = false
   try {
     const content = await readFile(configPath, 'utf-8')
     // Extract the object from export default { ... }
     const match = content.match(/export\s+default\s+(\{[\s\S]*\})\s*$/)
     if (match) {
-      // Simple eval-like parse: strip single quotes, replace with double quotes for JSON
+      // Convert TS-ish object literal to JSON. This only handles the simple
+      // shape that generateConfigString produces (unquoted keys, single-quoted
+      // strings, no template literals or comments). If parsing fails we leave
+      // existing empty and rewrite the file from the patch alone rather than
+      // risking silent corruption of hand-written configs.
       const jsonStr = match[1]
         .replace(/'/g, '"')
-        .replace(/(\w+)\s*:/g, '"$1":')
-        .replace(/,\s*\}/g, '}')
+        .replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3')
+        .replace(/,\s*([}\]])/g, '$1')
       try {
-        existing = JSON.parse(jsonStr) as Record<string, unknown>
+        const parsed = JSON.parse(jsonStr)
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          existing = parsed as Record<string, unknown>
+          hasExistingObject = true
+        }
       } catch {
-        // Fall back to empty — will write patch only
+        // Non-trivial config — we cannot safely round-trip it. Fall back to
+        // writing the patch alone so the user's manual config is not destroyed.
+        hasExistingObject = false
       }
     }
   } catch {
@@ -374,8 +385,15 @@ async function writeConfigPatch(
 
   // Deep merge patch into existing
   const merged = deepMerge(existing, patch)
-  const newConfig = generateConfigString(merged)
-  await writeFile(configPath, newConfig, 'utf-8')
+  await writeFile(configPath, generateConfigString(merged), 'utf-8')
+
+  // If we couldn't safely parse the prior config, warn the user: their manual
+  // edits outside the patch were not preserved.
+  if (!hasExistingObject) {
+    console.log(
+      theme.warning('  ⚠  Could not safely parse existing config — rewrote with patch only.')
+    )
+  }
 }
 
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {

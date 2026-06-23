@@ -17,8 +17,8 @@ interface OpenAIUsage {
 }
 
 interface OpenAIResponse {
-  choices: OpenAIChoice[]
-  usage: OpenAIUsage
+  choices?: OpenAIChoice[]
+  usage?: OpenAIUsage
 }
 
 export class CerebrasProvider implements IProvider {
@@ -63,9 +63,9 @@ export class CerebrasProvider implements IProvider {
     const durationMs = Date.now() - start
 
     return {
-      content: data.choices[0].message.content,
-      inputTokens: data.usage.prompt_tokens,
-      outputTokens: data.usage.completion_tokens,
+      content: data.choices?.[0]?.message?.content ?? '',
+      inputTokens: data.usage?.prompt_tokens ?? 0,
+      outputTokens: data.usage?.completion_tokens ?? 0,
       durationMs,
       provider: this.name,
       model: this.model,

@@ -173,7 +173,7 @@ export async function walkProject(
   // Apply scope filtering
   if (scope.dirs && scope.dirs.length > 0) {
     manifests = manifests.filter(m =>
-      scope.dirs!.some(d => m.path.startsWith(d))
+      scope.dirs!.some(d => m.path === d || m.path.startsWith(d + '/'))
     )
   }
 

@@ -59,17 +59,17 @@ export async function triageFiles(
       // Triage parse failed — fall back to heuristic
     }
 
-    if (rankedPaths.length > 0) {
+    if (rankedPaths.length > 0 && rankedPaths.every(p => typeof p === 'string')) {
       const normalized = new Map<string, string>()
       for (const p of rankedPaths) {
-        const clean = p.trim().replace(/^\.?\/+/, '').replace(/\/+$/, '')
+        const clean = (p as string).trim().replace(/^\.?\/+/, '').replace(/\/+$/, '')
         normalized.set(clean, clean)
       }
 
       const selected: CodeChunk[] = []
       let tokensUsed = 0
 
-      for (const rankedPath of rankedPaths) {
+      for (const rankedPath of rankedPaths as string[]) {
         if (tokensUsed >= budget) break
         const clean = rankedPath.trim().replace(/^\.?\/+/, '').replace(/\/+$/, '')
         const matching = allChunks.filter(c => {
