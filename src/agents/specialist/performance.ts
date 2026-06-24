@@ -56,14 +56,15 @@ export class PerformanceAgent implements IAgent {
   name: AgentName = 'performance'
   domain = 'performance'
 
-  async analyze(chunks: CodeChunk[], context: AgentContext): Promise<AgentFinding[]> {
+  async analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]> {
     try {
       const provider = getProvider('primary')
       const systemPrompt = buildSystemPrompt(SYSTEM_PROMPT, context)
       const userPrompt = buildChunkContext(chunks)
-      const response = await provider.complete({ systemPrompt, userPrompt, maxTokens: 4096 })
+      const response = await provider.complete({ systemPrompt, userPrompt, maxTokens: 4096, signal })
       return parseFindingsResponse(response.content ?? '', this.name)
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return []
       console.error(`[performance] analyze failed:`, err)
       return []
     }
