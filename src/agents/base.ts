@@ -76,7 +76,7 @@ export interface AgentContext {
 export interface IAgent {
   name: AgentName
   domain: string
-  analyze(chunks: CodeChunk[], context: AgentContext): Promise<AgentFinding[]>
+  analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]>
 }
 
 export const SEVERITY_PENALTY: Record<Severity, number> = {

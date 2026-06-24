@@ -43,10 +43,18 @@ export async function runSwarm(
       for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
         const batch = batches[batchIdx]
         const agentTimeoutMs = options.timeoutMs ?? 300_000
+        // One AbortController per batch. On timeout we abort it so the in-flight
+        // provider fetch is cancelled (the underlying signal flows through
+        // IAgent.analyze → provider.complete → fetchWithRetry) instead of
+        // running to completion and burning provider quota after we've given up.
+        const controller = new AbortController()
         let timeoutHandle: ReturnType<typeof setTimeout> | undefined
         const timeoutPromise = new Promise<AgentFinding[]>((_, reject) => {
           timeoutHandle = setTimeout(
-            () => reject(new Error(`Agent ${agent.name} timed out`)),
+            () => {
+              controller.abort()
+              reject(new Error(`Agent ${agent.name} timed out`))
+            },
             agentTimeoutMs
           )
           timeoutHandle.unref?.()
@@ -54,7 +62,7 @@ export async function runSwarm(
         let batchFindings: AgentFinding[] = []
         try {
           batchFindings = await Promise.race([
-            agent.analyze(batch, context),
+            agent.analyze(batch, context, controller.signal),
             timeoutPromise,
           ])
           allFindings.push(...batchFindings)
