@@ -27,7 +27,7 @@ export function OutputPane({ lines }: OutputPaneProps): React.JSX.Element {
   const displayLines = lines.slice(-200)
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" borderStyle="round" borderColor="#374151" paddingX={1} flexGrow={1}>
       {displayLines.map((line, i) => (
         <OutputLineItem key={line.id ?? i} line={line} />
       ))}
@@ -44,7 +44,7 @@ function OutputLineItem({
     case 'input':
       return (
         <Box>
-          <Text color="#EF4444" bold>
+          <Text color="#FF3366" bold>
             {'❯ '}
           </Text>
           <Text color="#E5E7EB">{line.text}</Text>
@@ -54,7 +54,7 @@ function OutputLineItem({
     case 'success':
       return (
         <Box>
-          <Text color="#10B981">
+          <Text color="#00E676">
             {'  ✓  '}
           </Text>
           <Text color="#D1FAE5">{line.text}</Text>
@@ -64,7 +64,7 @@ function OutputLineItem({
     case 'error':
       return (
         <Box>
-          <Text color="#EF4444">
+          <Text color="#FF3366">
             {'  ✗  '}
           </Text>
           <Text color="#FEE2E2">{line.text}</Text>
@@ -74,7 +74,7 @@ function OutputLineItem({
     case 'warn':
       return (
         <Box>
-          <Text color="#F59E0B">
+          <Text color="#FFEA00">
             {'  ⚠  '}
           </Text>
           <Text color="#FEF3C7">{line.text}</Text>
@@ -115,17 +115,17 @@ function FindingLine({
   severity?: string
 }): React.JSX.Element {
   const chipColors: Record<string, { bg: string; label: string }> = {
-    critical: { bg: '#EF4444', label: 'CRIT' },
-    high: { bg: '#F97316', label: 'HIGH' },
-    medium: { bg: '#F59E0B', label: 'MED ' },
+    critical: { bg: '#FF3366', label: 'CRIT' },
+    high: { bg: '#FF9933', label: 'HIGH' },
+    medium: { bg: '#FFEA00', label: 'MED ' },
     low: { bg: '#6B7280', label: 'LOW ' },
-    info: { bg: '#3B82F6', label: 'INFO' },
+    info: { bg: '#00D0FF', label: 'INFO' },
   }
   const chip = chipColors[severity ?? 'info'] ?? chipColors.info
 
   return (
     <Box paddingLeft={2} gap={1}>
-      <Text backgroundColor={chip.bg} color="white" bold>
+      <Text backgroundColor={chip.bg} color="#000000" bold>
         {' '}
         {chip.label}{' '}
       </Text>

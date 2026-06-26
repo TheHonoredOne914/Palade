@@ -46,21 +46,22 @@ export function Autocomplete({
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor="#4B5563"
+      borderColor="#00D0FF"
       paddingX={1}
       marginX={1}
     >
       {matches.map((cmd, i) => (
         <Box key={cmd.name} gap={2}>
           <Text
-            color={i === selectedIdx ? '#EF4444' : '#E5E7EB'}
+            color={i === selectedIdx ? '#000000' : '#E5E7EB'}
+            backgroundColor={i === selectedIdx ? '#00D0FF' : undefined}
             bold={i === selectedIdx}
           >
-            /{cmd.name}
+            {' /' + cmd.name}
             {cmd.args ? ' ' + cmd.args : ''}
           </Text>
-          <Text color="#6B7280">{cmd.description}</Text>
-          {i === selectedIdx && <Text color="#374151">  ↵ to fill</Text>}
+          <Text color={i === selectedIdx ? '#E5E7EB' : '#6B7280'}>{cmd.description}</Text>
+          {i === selectedIdx && <Text color="#FF9933">  ↵ to fill</Text>}
         </Box>
       ))}
       <Box marginTop={0}>

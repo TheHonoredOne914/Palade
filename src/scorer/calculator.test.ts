@@ -5,9 +5,15 @@ import {
   calculateTotalPenalty,
   calculateCrossAgentPenalty,
 } from './calculator.js'
-import type { AgentFinding } from '../agents/base.js'
+import type { AgentFinding, Severity } from '../agents/base.js'
+import { SEVERITY_PENALTY } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 
+/**
+ * Build a finding as a built-in specialist would produce it: scorePenalty is
+ * whatever parseFindingsResponse sets (the default severity weight). Passing
+ * undefined here mirrors a finding that never had an override applied.
+ */
 function finding(
   agentName: AgentFinding['agentName'],
   severity: AgentFinding['severity'],
@@ -21,7 +27,7 @@ function finding(
     description: '',
     filePath,
     tags: [],
-    scorePenalty: 0,
+    scorePenalty: SEVERITY_PENALTY[severity as Severity],
   }
 }
 
@@ -39,6 +45,27 @@ describe('scorer/calculator', () => {
 
     it('is zero for info-only findings', () => {
       expect(calculateTotalPenalty([finding('security', 'info')])).toBe(0)
+    })
+
+    it('honors an explicit custom scorePenalty override (M1 regression)', () => {
+      // A custom agent configured with severityPenalty { critical: 50 } sets
+      // scorePenalty: 50 on its critical findings. The scorer must use 50, not
+      // the default critical weight of 10.
+      const custom = {
+        ...finding('api-design' as AgentFinding['agentName'], 'critical'),
+        scorePenalty: 50,
+      }
+      expect(calculateTotalPenalty([custom])).toBe(50)
+    })
+
+    it('falls back to severity weight when scorePenalty is unset', () => {
+      // A finding with scorePenalty left undefined (e.g. constructed by hand)
+      // must fall back to the severity-based weight, not contribute 0.
+      const noPenalty: AgentFinding = {
+        ...finding('security', 'high'),
+        scorePenalty: undefined,
+      }
+      expect(calculateTotalPenalty([noPenalty])).toBe(SEVERITY_PENALTY.high)
     })
   })
 

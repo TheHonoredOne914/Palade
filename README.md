@@ -102,6 +102,44 @@ The agents receive your description and focus areas as part of their system prom
 
 ---
 
+## Custom Agents
+
+Define your own specialist agents in `palade.agents.ts` and they run alongside the built-in swarm, through the same provider and synthesis pipeline:
+
+```ts
+// palade.agents.ts
+export default [
+  {
+    // Must be unique — names colliding with built-ins (security, architecture,
+    // performance, maintainability, deadCode, testIntelligence) are rejected.
+    name: "api-design",
+    domain: "API Design",
+    systemPrompt: `You are an API design reviewer. Check for:
+  - Consistent naming conventions across endpoints
+  - Correct HTTP method usage (GET reads, POST creates, PUT/PATCH updates, DELETE removes)
+  - Request/response schema consistency
+  - Pagination, error envelopes, and versioning patterns
+  Return ONLY a valid JSON array of findings.`,
+  },
+  {
+    name: "i18n",
+    domain: "Internationalization",
+    systemPrompt: `Review for hard-coded user-facing strings, missing locale lookups, and pluralization bugs. Return ONLY a valid JSON array of findings.`,
+    // Optional: override how much each severity costs in the score, instead of
+    // the built-in SEVERITY_PENALTY (critical:10, high:5, medium:2, low:0.5).
+    severityPenalty: { critical: 8, high: 4 },
+  },
+]
+```
+
+A custom agent's `systemPrompt` gets the same context injection the built-ins get — diff context, target focus areas, `@palade` review/focus annotations, and mode suffixes — so a custom "API Design" agent reviewing a `--target` knows the subsystem just like the built-in Security agent does.
+
+Validation is fail-fast: a malformed entry (missing or empty `systemPrompt`, a name that collides with a built-in, an unparseable file) fails at config load with a clear error pointing at `palade.agents.ts` — it never silently drops your agent and burns a whole review run without it. `palade init` scaffolds a starter `palade.agents.ts` alongside the targets and ignore files.
+
+---
+
+## Scoped Reviews
+
 ## Scoped Reviews
 
 Review as much or as little as you want — same tool, same output quality:

@@ -1,14 +1,16 @@
 import crypto from 'node:crypto'
 import chalk from 'chalk'
 import type { AgentFinding, AgentContext, AgentName, IAgent } from '../agents/base.js'
-import { getAgentsForMode } from '../agents/registry.js'
+import { getAgentsForMode, registerCustomAgents } from '../agents/registry.js'
 import { synthesize as analyzeSynthesis } from '../agents/synthesis.js'
+import { CombinedAnalyzer } from '../agents/combined.js'
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
 import { triageFiles } from './triage.js'
 import { AgentMemory } from './memory.js'
 import { mergeFindings } from './merger.js'
 import { scheduleBatches } from './scheduler.js'
+import { getFallbackStats } from '../providers/router.js'
 
 export async function runSwarm(
   allChunks: CodeChunk[],
@@ -19,12 +21,25 @@ export async function runSwarm(
   const runId = crypto.randomUUID().slice(0, 8)
   const startTime = Date.now()
 
+  // Register custom agents from palade.agents.ts (if any)
+  if (options.customAgents && options.customAgents.length > 0) {
+    registerCustomAgents(options.customAgents)
+  }
+
   // Pass 1: Triage — reduce 400+ chunks to ~45 high-value chunks
   const reviewChunks = manifests
     ? await triageFiles(manifests, allChunks, options.maxReviewTokens)
     : allChunks
 
-  const agents: IAgent[] = getAgentsForMode(context.mode, context.modeConfig?.agentOverrides)
+  // Economy mode replaces the N parallel per-domain agents with a single
+  // combined multi-domain analyzer that reviews all lenses in one provider
+  // call per batch. This cuts the ~6x resend of the same chunk content.
+  // Tradeoff: latency up, per-domain prompt richness down — see combined.ts.
+  // Custom agents always run as separate per-domain calls even in economy
+  // mode, since they can't be merged into the combined prompt reliably.
+  const agents: IAgent[] = options.economyMode
+    ? [new CombinedAnalyzer()]
+    : getAgentsForMode(context.mode, context.modeConfig?.agentOverrides)
   const memory = new AgentMemory()
 
   const agentTimings: Partial<Record<AgentName, number>> = {}
@@ -105,5 +120,6 @@ export async function runSwarm(
     totalChunks: reviewChunks.length,
     totalTokensEstimated: reviewChunks.reduce((sum, c) => sum + c.tokenCount, 0),
     durationMs: Date.now() - startTime,
+    fallbackStats: getFallbackStats() ?? undefined,
   }
 }

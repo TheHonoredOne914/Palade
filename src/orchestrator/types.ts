@@ -2,6 +2,7 @@ import type { AgentFinding, AgentName, Severity } from '../agents/base.js'
 import type { CodeChunk } from '../ingestion/types.js'
 import type { SynthesisResult } from '../agents/synthesis.js'
 import type { TargetDefinition } from '../targets/schema.js'
+import type { CustomAgentDefinition } from '../agents/custom/schema.js'
 
 export interface ResolvedTarget {
   definition: TargetDefinition
@@ -23,6 +24,7 @@ export interface SwarmResult {
   totalChunks: number
   totalTokensEstimated: number
   durationMs: number
+  fallbackStats?: { primary: { total: number; fallbacks: number }; synthesis: { total: number; fallbacks: number } }
 }
 
 export interface CrossAgentFinding {
@@ -42,4 +44,13 @@ export interface SwarmOptions {
   onSynthesisComplete?: (durationMs: number) => void
   timeoutMs?: number
   maxReviewTokens?: number
+  /** User-defined custom agents loaded from palade.agents.ts. */
+  customAgents?: CustomAgentDefinition[]
+  /**
+   * Economy mode: run all specialist domains in one combined multi-domain call
+   * per batch instead of N parallel per-domain calls. Cuts the ~6x resend of
+   * the same chunk content across agents at the cost of latency and per-domain
+   * prompt richness. See src/agents/combined.ts for the full tradeoff.
+   */
+  economyMode?: boolean
 }

@@ -28,6 +28,23 @@ export default [
 ]
 `
 
+const AGENTS_TEMPLATE = `// palade.agents.ts
+// Define custom specialist agents to run alongside the built-in swarm.
+// Each agent gets its own system prompt and runs through the same provider pipeline.
+export default [
+  // {
+  //   name: 'api-design',
+  //   domain: 'API Design',
+  //   systemPrompt: \`You are an API design reviewer. Check for:
+  //   - Consistent naming conventions across endpoints
+  //   - Proper HTTP method usage (GET for reads, POST for creates, etc.)
+  //   - Request/response schema consistency
+  //   - Pagination, error handling, and versioning patterns
+  //   Return ONLY a valid JSON array of findings.\`,
+  // },
+]
+`
+
 const IGNORE_TEMPLATE = `node_modules/
 dist/
 build/
@@ -50,11 +67,13 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
 
   const configExists = existsSync(join(cwd, 'palade.config.ts'))
   const targetsExists = existsSync(join(cwd, 'palade.targets.ts'))
+  const agentsExists = existsSync(join(cwd, 'palade.agents.ts'))
   const ignoreExists = existsSync(join(cwd, '.paladeignore'))
 
   const existingFiles: string[] = []
   if (configExists) existingFiles.push('palade.config.ts')
   if (targetsExists) existingFiles.push('palade.targets.ts')
+  if (agentsExists) existingFiles.push('palade.agents.ts')
   if (ignoreExists) existingFiles.push('.paladeignore')
 
   if (existingFiles.length > 0 && !opts?.yes) {
@@ -92,6 +111,14 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
   } else {
     writeFileSync(join(cwd, 'palade.targets.ts'), TARGETS_TEMPLATE, 'utf-8')
     results.push('palade.targets.ts created')
+  }
+
+  // b2) palade.agents.ts
+  if (agentsExists) {
+    results.push('palade.agents.ts already exists, skipping')
+  } else {
+    writeFileSync(join(cwd, 'palade.agents.ts'), AGENTS_TEMPLATE, 'utf-8')
+    results.push('palade.agents.ts created')
   }
 
   // c) .paladeignore

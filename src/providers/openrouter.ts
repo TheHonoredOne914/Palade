@@ -50,6 +50,7 @@ export class OpenRouterProvider implements IProvider {
         max_tokens: req.maxTokens ?? 4096,
         temperature: req.temperature ?? 0.1,
       }),
+      signal: req.signal,
     })
 
     if (res.status === 429) {

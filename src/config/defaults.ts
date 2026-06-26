@@ -6,7 +6,8 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     synthesis: 'nvidia',
     agentCount: 6,
     timeoutMs: 600000,
-    maxReviewTokens: 200_000
+    maxReviewTokens: 200_000,
+    economyMode: false
   },
   output: {
     dir: '.palade/reports',

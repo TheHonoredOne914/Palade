@@ -34,6 +34,11 @@ export class NvidiaProvider implements IProvider {
     attempt: number
   ): Promise<CompletionResponse> {
     const start = Date.now()
+    // Combine the caller's cancellation signal with this provider's own 5-min
+    // hard ceiling, so a swarm-level abort still cancels the in-flight request
+    // without losing the provider timeout.
+    const timeoutSignal = AbortSignal.timeout(300_000)
+    const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
     const res = await fetchWithRetry(
       `${this.baseUrl}/chat/completions`,
       {
@@ -51,7 +56,7 @@ export class NvidiaProvider implements IProvider {
           max_tokens: maxTokens,
           temperature: req.temperature ?? 0.1,
         }),
-        signal: AbortSignal.timeout(300_000),
+        signal,
       }
     )
 

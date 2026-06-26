@@ -1,5 +1,6 @@
 import React from 'react'
 import { Box, Text } from 'ink'
+import Spinner from 'ink-spinner'
 
 interface StatusBarProps {
   status: 'idle' | 'running'
@@ -11,24 +12,28 @@ export function StatusBar({
   projectRoot,
 }: StatusBarProps): React.JSX.Element {
   const termWidth = process.stdout.columns || 80
-
-  const leftText = status === 'running' ? '  ⟳  running' : '  ◆  ready'
-  const rightText = 'by Carren Mathew  '
-
-  const pad = Math.max(0, termWidth - leftText.length - rightText.length)
+  const isRunning = status === 'running'
 
   return (
-    <Box>
-      <Text
-        color={status === 'running' ? '#F59E0B' : '#10B981'}
-      >
-        {leftText}
-      </Text>
-      <Text>
-        {' '.repeat(pad)}
-      </Text>
-      <Text color="#EF4444" bold>
-        {rightText}
+    <Box
+      borderStyle="round"
+      borderColor={isRunning ? '#FF9933' : '#00E676'}
+      paddingX={1}
+      justifyContent="space-between"
+    >
+      <Box gap={1}>
+        {isRunning ? (
+          <Text color="#FF9933"><Spinner type="dots" /></Text>
+        ) : (
+          <Text color="#00E676">◆</Text>
+        )}
+        <Text color={isRunning ? '#FF9933' : '#00E676'} bold>
+          {isRunning ? 'Processing...' : 'Ready'}
+        </Text>
+      </Box>
+
+      <Text color="#FF3366" bold>
+        Palade Engine
       </Text>
     </Box>
   )

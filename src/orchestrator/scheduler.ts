@@ -6,17 +6,37 @@ const HARD_CHUNK_LIMIT = 3_000
 function splitChunk(chunk: CodeChunk): CodeChunk[] {
   const lines = chunk.content.split('\n')
   const mid = Math.floor(lines.length / 2)
-  const overlap = 50
-  const splitPoint = Math.max(0, mid - overlap)
+  const overlap = Math.min(50, Math.floor(lines.length * 0.1))
 
-  const leftContent = lines.slice(0, mid).join('\n')
+  // Try to find a natural break point near the midpoint:
+  // blank line, closing brace, or end of a block. This avoids splitting
+  // mid-function and sends more coherent context to specialist agents.
+  let splitIdx = mid
+  const searchRadius = Math.floor(lines.length * 0.15) // up to 15% of lines
+  const breakPatterns = [/^\s*$/, /^\s*\}/, /^\s*\)\s*{?\s*$/]
+  outer:
+  for (let offset = 0; offset <= searchRadius; offset++) {
+    for (const dir of [1, -1]) {
+      const candidate = mid + dir * offset
+      if (candidate > 0 && candidate < lines.length) {
+        if (breakPatterns.some(p => p.test(lines[candidate]))) {
+          splitIdx = candidate
+          break outer
+        }
+      }
+    }
+  }
+
+  const splitPoint = Math.max(0, splitIdx - overlap)
+
+  const leftContent = lines.slice(0, splitIdx).join('\n')
   const rightContent = lines.slice(splitPoint).join('\n')
 
   return [
     {
       ...chunk,
       id: `${chunk.id}-left`,
-      endLine: chunk.startLine + mid - 1,
+      endLine: chunk.startLine + splitIdx - 1,
       content: leftContent,
       tokenCount: estimateTokens(leftContent),
     },

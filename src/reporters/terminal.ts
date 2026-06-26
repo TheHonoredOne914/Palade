@@ -122,6 +122,19 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
     lines.push('')
   }
   
+  // Surface when findings came from a degraded/fallback source, not the
+  // configured primary provider. This is the R2 tagging contract: specialists
+  // stamp each finding with the actual provider/model that answered.
+  const providersUsed = new Set<string>()
+  for (const f of ctx.findings) {
+    if (f.provider) providersUsed.add(f.provider)
+  }
+  if (providersUsed.size > 1) {
+    const providerList = Array.from(providersUsed).join(', ')
+    lines.push(chalk.yellow.bold(`⚠ Providers used: ${providerList} (some findings from fallback)`))
+    lines.push('')
+  }
+
   if (ctx.synthesis.crossCuttingObservations.length > 0) {
     lines.push(chalk.bold.underline('Cross-Cutting Observations:'))
     for (const obs of ctx.synthesis.crossCuttingObservations.slice(0, 3)) {

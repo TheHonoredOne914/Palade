@@ -25,6 +25,8 @@ interface JsonFinding {
   symbolName?: string
   tags: string[]
   scorePenalty: number
+  provider?: string
+  model?: string
 }
 
 interface JsonCrossAgentFinding {
@@ -125,7 +127,9 @@ function mapFindings(findings: ReporterContext['findings']): JsonFinding[] {
     lineEnd: f.lineEnd,
     symbolName: f.symbolName,
     tags: [...f.tags],
-    scorePenalty: f.scorePenalty
+    scorePenalty: f.scorePenalty,
+    provider: f.provider,
+    model: f.model
   }))
 }
 

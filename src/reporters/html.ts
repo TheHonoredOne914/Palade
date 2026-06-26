@@ -103,7 +103,7 @@ function renderCrossAgentFindingHtml(finding: { title: string; description: stri
   return `
         <li class="finding-item">
           <div class="finding-header">
-            <span class="finding-severity ${severityClass}">${finding.severity}</span>
+            <span class="finding-severity ${severityClass}">${escapeHtml(finding.severity)}</span>
             <span class="finding-title">${escapeHtml(finding.title)}</span>
             ${location}
           </div>
@@ -115,7 +115,7 @@ function renderAgentTimingHtml(timing: { agent: string; durationMs: number }, ma
   const width = maxDuration > 0 ? (timing.durationMs / maxDuration) * 100 : 0
   return `
       <div class="agent-timing">
-        <div class="agent-name">${timing.agent}</div>
+        <div class="agent-name">${escapeHtml(timing.agent)}</div>
         <div class="agent-bar">
           <div class="agent-bar-fill" style="width: ${width}%;"></div>
         </div>
@@ -137,7 +137,7 @@ function renderFindingsSummaryHtml(findings: ReporterContext['findings']): strin
   const rows = Array.from(byAgent.entries()).map(([agent, counts]) => {
     return `
         <tr>
-          <td>${agent}</td>
+          <td>${escapeHtml(agent)}</td>
           <td>${counts.total}</td>
           <td style="color: #f85149;">${counts.critical}</td>
           <td style="color: #d29922;">${counts.high}</td>
@@ -208,7 +208,7 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
   const findingsSummaryHtml = renderFindingsSummaryHtml(ctx.findings)
   
   const sparklineData = ctx.history.length > 0 
-    ? ctx.history.map(h => h.score) 
+    ? ctx.history.map(h => typeof h.score === 'number' && Number.isFinite(h.score) ? h.score : 0)
     : [score]
   
   return {
