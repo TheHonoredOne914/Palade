@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{TITLE}} — Palade Report</title>
+  <title>Palade CLI — Palade Report</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -642,24 +642,24 @@
   <div class="container">
     <div class="card header">
       <div class="header-top">
-        <div class="owl-mascot">{{OWL_MASCOT}}</div>
+        <div class="owl-mascot"><div style="font-size: 3rem;">🦉</div></div>
         <div class="header-text">
-          <h1>{{TITLE}}</h1>
+          <h1>Palade CLI</h1>
           <div class="meta">
-            <span>Generated: {{TIMESTAMP}}</span>
-            <span>Run ID: {{RUN_ID}}</span>
-            <span>Duration: {{DURATION}}</span>
+            <span>Generated: 2026-06-26T06:16:16.350Z</span>
+            <span>Run ID: run-alpha-7729</span>
+            <span>Duration: 14.5s</span>
           </div>
         </div>
       </div>
       
       <div class="score-hero">
-        <div class="score-circle {{SCORE_GRADE_CLASS}}" style="--score-pct: {{SCORE}}%;">
-          {{SCORE}}
+        <div class="score-circle grade-a" style="--score-pct: 87%;">
+          87
         </div>
         <div class="score-details">
-          <div class="delta {{DELTA_CLASS}}">
-            {{DELTA_TEXT}}
+          <div class="delta positive">
+            +5 from previous run
           </div>
           <div class="sparkline-container">
             <div class="sparkline" id="sparkline"></div>
@@ -674,27 +674,99 @@
     
     <div class="card">
       <h2>Executive Summary</h2>
-      <div class="summary-text">{{EXECUTIVE_SUMMARY}}</div>
+      <div class="summary-text">The codebase is in excellent shape structurally, but there are some performance bottlenecks and test coverage gaps that should be addressed before the next major release. Overall debt is manageable.</div>
     </div>
     
     <div class="card">
       <h2>Category Scores</h2>
       <div class="category-grid">
-        {{CATEGORY_SCORES}}
+        
+        <div class="category-item">
+          <div class="category-name">Security</div>
+          <div class="category-bar">
+            <div class="category-bar-fill" style="width: 95%; background: #3fb950;"></div>
+          </div>
+          <div class="category-score" style="color: #3fb950;">95</div>
+        </div>
+
+        <div class="category-item">
+          <div class="category-name">Architecture</div>
+          <div class="category-bar">
+            <div class="category-bar-fill" style="width: 82%; background: #3fb950;"></div>
+          </div>
+          <div class="category-score" style="color: #3fb950;">82</div>
+        </div>
+
+        <div class="category-item">
+          <div class="category-name">Performance</div>
+          <div class="category-bar">
+            <div class="category-bar-fill" style="width: 78%; background: #3fb950;"></div>
+          </div>
+          <div class="category-score" style="color: #3fb950;">78</div>
+        </div>
+
+        <div class="category-item">
+          <div class="category-name">Maintainability</div>
+          <div class="category-bar">
+            <div class="category-bar-fill" style="width: 90%; background: #3fb950;"></div>
+          </div>
+          <div class="category-score" style="color: #3fb950;">90</div>
+        </div>
+
+        <div class="category-item">
+          <div class="category-name">Dead Code</div>
+          <div class="category-bar">
+            <div class="category-bar-fill" style="width: 100%; background: #3fb950;"></div>
+          </div>
+          <div class="category-score" style="color: #3fb950;">100</div>
+        </div>
+
+        <div class="category-item">
+          <div class="category-name">Test Intelligence</div>
+          <div class="category-bar">
+            <div class="category-bar-fill" style="width: 75%; background: #3fb950;"></div>
+          </div>
+          <div class="category-score" style="color: #3fb950;">75</div>
+        </div>
       </div>
     </div>
     
     <div class="card">
       <h2>Priority Fixes</h2>
       <div class="priority-fixes-list">
-        {{PRIORITY_FIXES}}
+        
+      <div class="priority-fix">
+        <div class="priority-fix-header">
+          <div class="priority-rank">1</div>
+          <div class="priority-title">Extract Database Connection Pool</div>
+        </div>
+        <div class="priority-rationale">Multiple services are creating their own connection pools leading to exhaustion.</div>
+        <div class="priority-meta">
+          <span>~4h estimated</span>
+          <span>Files: src/db/pool.ts, src/services/*.ts</span>
+        </div>
+      </div>
+
+      <div class="priority-fix">
+        <div class="priority-fix-header">
+          <div class="priority-rank">2</div>
+          <div class="priority-title">Implement E2E test suite</div>
+        </div>
+        <div class="priority-rationale">Critical payment paths lack end-to-end coverage.</div>
+        <div class="priority-meta">
+          <span>~12h estimated</span>
+          <span>Files: tests/e2e/payment.spec.ts</span>
+        </div>
+      </div>
       </div>
     </div>
     
     <div class="card">
       <h2>Cross-Cutting Observations</h2>
       <ul class="observations-list">
-        {{OBSERVATIONS}}
+                <li>Consistent use of TypeScript interfaces across domain boundaries.</li>
+        <li>Slight over-reliance on any types in the legacy parsing modules.</li>
+        <li>Excellent modularity in the new V2 features.</li>
       </ul>
     </div>
     
@@ -702,43 +774,134 @@
       <h2>Debt Estimate</h2>
       <div class="debt-grid">
         <div class="debt-item">
-          <div class="debt-count" style="color: var(--accent-red);">{{DEBT_CRITICAL}}</div>
+          <div class="debt-count" style="color: var(--accent-red);">1</div>
           <div class="debt-label">Critical</div>
         </div>
         <div class="debt-item">
-          <div class="debt-count" style="color: var(--accent-yellow);">{{DEBT_HIGH}}</div>
+          <div class="debt-count" style="color: var(--accent-yellow);">4</div>
           <div class="debt-label">High</div>
         </div>
         <div class="debt-item">
-          <div class="debt-count" style="color: var(--accent-blue);">{{DEBT_MEDIUM}}</div>
+          <div class="debt-count" style="color: var(--accent-blue);">12</div>
           <div class="debt-label">Medium</div>
         </div>
         <div class="debt-item">
-          <div class="debt-count" style="color: var(--text-muted);">{{DEBT_LOW}}</div>
+          <div class="debt-count" style="color: var(--text-muted);">25</div>
           <div class="debt-label">Low</div>
         </div>
       </div>
-      {{DEBT_HIGHEST_ROI}}
+      <div style="margin-top: 1rem; padding: 1rem; background: #0f1117; border-radius: 6px;"><strong style="color: #3fb950;">Highest ROI:</strong> Extract Database Connection Pool (4h for high stability gain)</div>
     </div>
     
     <div class="card">
       <h2>Cross-Agent Findings</h2>
       <ul class="finding-list">
-        {{CROSS_AGENT_FINDINGS}}
+        
+        <li class="finding-item">
+          <div class="finding-header">
+            <span class="finding-severity severity-high">high</span>
+            <span class="finding-title">Inconsistent Error Handling</span>
+            <div class="finding-location">src/api/routes.ts, src/middleware/error.ts</div>
+          </div>
+          <div class="finding-description">Both Architecture and Security agents noticed that errors are frequently swallowed or logged inconsistently across the API boundary.</div>
+        </li>
       </ul>
     </div>
     
     <div class="card">
       <h2>Agent Timings</h2>
       <div class="timings-list">
-        {{AGENT_TIMINGS}}
+        
+      <div class="agent-timing">
+        <div class="agent-name">security</div>
+        <div class="agent-bar">
+          <div class="agent-bar-fill" style="width: 29.268292682926827%;"></div>
+        </div>
+        <div class="agent-time">1200ms</div>
+      </div>
+
+      <div class="agent-timing">
+        <div class="agent-name">architecture</div>
+        <div class="agent-bar">
+          <div class="agent-bar-fill" style="width: 84.14634146341463%;"></div>
+        </div>
+        <div class="agent-time">3450ms</div>
+      </div>
+
+      <div class="agent-timing">
+        <div class="agent-name">performance</div>
+        <div class="agent-bar">
+          <div class="agent-bar-fill" style="width: 68.29268292682927%;"></div>
+        </div>
+        <div class="agent-time">2800ms</div>
+      </div>
+
+      <div class="agent-timing">
+        <div class="agent-name">maintainability</div>
+        <div class="agent-bar">
+          <div class="agent-bar-fill" style="width: 47.5609756097561%;"></div>
+        </div>
+        <div class="agent-time">1950ms</div>
+      </div>
+
+      <div class="agent-timing">
+        <div class="agent-name">deadCode</div>
+        <div class="agent-bar">
+          <div class="agent-bar-fill" style="width: 19.51219512195122%;"></div>
+        </div>
+        <div class="agent-time">800ms</div>
+      </div>
+
+      <div class="agent-timing">
+        <div class="agent-name">testIntelligence</div>
+        <div class="agent-bar">
+          <div class="agent-bar-fill" style="width: 100%;"></div>
+        </div>
+        <div class="agent-time">4100ms</div>
+      </div>
       </div>
     </div>
     
     <div class="card">
       <h2>Findings Summary</h2>
       <div class="findings-table-wrapper" style="overflow-x: auto;">
-        {{FINDINGS_SUMMARY}}
+        
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="border-bottom: 1px solid #30363d;">
+            <th style="text-align: left; padding: 0.5rem;">Agent</th>
+            <th style="text-align: left; padding: 0.5rem;">Total</th>
+            <th style="text-align: left; padding: 0.5rem;">Critical</th>
+            <th style="text-align: left; padding: 0.5rem;">High</th>
+          </tr>
+        </thead>
+        <tbody>
+        <tr>
+          <td>security</td>
+          <td>1</td>
+          <td style="color: #f85149;">0</td>
+          <td style="color: #d29922;">0</td>
+        </tr>
+        <tr>
+          <td>architecture</td>
+          <td>1</td>
+          <td style="color: #f85149;">0</td>
+          <td style="color: #d29922;">1</td>
+        </tr>
+        <tr>
+          <td>performance</td>
+          <td>1</td>
+          <td style="color: #f85149;">0</td>
+          <td style="color: #d29922;">1</td>
+        </tr>
+        <tr>
+          <td>testIntelligence</td>
+          <td>1</td>
+          <td style="color: #f85149;">1</td>
+          <td style="color: #d29922;">0</td>
+        </tr>
+        </tbody>
+      </table>
       </div>
     </div>
     
@@ -749,7 +912,7 @@
   
   <script>
     (function() {
-      var sparklineData = {{SPARKLINE_DATA}};
+      var sparklineData = [70,72,78,75,80,82,87];
       var container = document.getElementById('sparkline');
       if (container && sparklineData.length > 0) {
         var max = Math.max.apply(null, sparklineData);

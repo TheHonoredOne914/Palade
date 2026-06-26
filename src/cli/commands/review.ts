@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import { loadConfig } from '../../config/loader.js'
 import { initRouter } from '../../providers/router.js'
 import { loadTargets, resolveTargetPaths } from '../../targets/loader.js'
+import { loadCustomAgents } from '../../agents/custom/loader.js'
 import { launchPicker } from '../picker.js'
 import { runPipeline } from '../../orchestrator/pipeline.js'
 import { calculateScore } from '../../scorer/calculator.js'
@@ -46,6 +47,7 @@ interface ReviewOptions {
   format?: string
   open?: boolean
   quiet?: boolean
+  economy?: boolean
 }
 
 export async function reviewCommand(
@@ -100,6 +102,9 @@ export async function reviewCommand(
 
   // 2. Load targets
   const allTargets = await loadTargets(projectRoot)
+
+  // 2b. Load custom agents
+  const customAgentDefs = await loadCustomAgents(projectRoot)
 
   // 3. Validate mode
   const mode = validateMode(opts.mode ?? 'standard')
@@ -220,6 +225,8 @@ export async function reviewCommand(
       },
       timeoutMs: config.swarm.timeoutMs,
       maxReviewTokens: config.swarm.maxReviewTokens,
+      customAgents: customAgentDefs,
+      economyMode: opts.economy ?? config.swarm.economyMode,
     },
     target: resolvedTarget,
   })
@@ -369,6 +376,17 @@ export async function reviewCommand(
   console.log(
     `  ${theme.dim('Total time:')}  ${(swarmResult.durationMs / 1000).toFixed(1)}s`
   )
+  if (swarmResult.fallbackStats) {
+    const fs = swarmResult.fallbackStats
+    const pFallbacks = fs.primary.fallbacks
+    const sFallbacks = fs.synthesis.fallbacks
+    if (pFallbacks > 0 || sFallbacks > 0) {
+      const parts: string[] = []
+      if (pFallbacks > 0) parts.push(`primary: ${pFallbacks}/${fs.primary.total} calls used fallback`)
+      if (sFallbacks > 0) parts.push(`synthesis: ${sFallbacks}/${fs.synthesis.total} calls used fallback`)
+      console.log(`  ${chalk.yellow('⚠')} ${theme.dim(parts.join(' | '))}`)
+    }
+  }
   console.log()
 
   // 15. Open browser

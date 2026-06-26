@@ -13,6 +13,7 @@ import { isGitRepo, getCurrentBranch, getChangedFiles, getBaseScore } from '../.
 import { compareFindings, rankIntroducedFindings } from '../../diff/comparator.js'
 import { printDiffBanner, printDiffSummary } from '../../reporters/terminal.js'
 import { theme } from '../../ui/theme.js'
+import { loadCustomAgents } from '../../agents/custom/loader.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentContext, AgentName, DiffContext } from '../../agents/base.js'
 import { CliExitError } from '../../errors/types.js'
@@ -38,6 +39,9 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
 
     const config = await loadConfig()
     await initRouter(config)
+
+    // Load custom agents
+    const customAgentDefs = await loadCustomAgents(projectRoot)
 
     const headBranch = await getCurrentBranch(projectRoot)
     console.log(theme.dim(`  Comparing ${headBranch} → ${base}...`))
@@ -120,11 +124,25 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       },
       timeoutMs: config.swarm.timeoutMs,
       maxReviewTokens: config.swarm.maxReviewTokens,
+      customAgents: customAgentDefs,
+      economyMode: config.swarm.economyMode,
     })
 
     progressSpinner.succeed(
       `  Analysis complete — ${swarmResult.findings.length} findings in ${(swarmResult.durationMs / 1000).toFixed(1)}s`
     )
+
+    if (swarmResult.fallbackStats) {
+      const fs = swarmResult.fallbackStats
+      const pFallbacks = fs.primary.fallbacks
+      const sFallbacks = fs.synthesis.fallbacks
+      if (pFallbacks > 0 || sFallbacks > 0) {
+        const parts: string[] = []
+        if (pFallbacks > 0) parts.push(`primary: ${pFallbacks}/${fs.primary.total} calls used fallback`)
+        if (sFallbacks > 0) parts.push(`synthesis: ${sFallbacks}/${fs.synthesis.total} calls used fallback`)
+        console.log(chalk.yellow(`  ⚠ ${parts.join(' | ')}`))
+      }
+    }
 
     const historyPath = join(projectRoot, config.score.historyFile)
     const baseScore = await getBaseScore(base, historyPath, projectRoot)

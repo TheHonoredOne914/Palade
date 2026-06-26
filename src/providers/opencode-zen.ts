@@ -41,6 +41,11 @@ export class OpenCodeZenProvider implements IProvider {
     attempt: number
   ): Promise<CompletionResponse> {
     const start = Date.now()
+    // Combine the caller's cancellation signal with this provider's own 3-min
+    // hard ceiling so a swarm-level abort cancels the in-flight request without
+    // losing the provider timeout.
+    const timeoutSignal = AbortSignal.timeout(180_000)
+    const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
 
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -57,7 +62,7 @@ export class OpenCodeZenProvider implements IProvider {
         max_tokens: maxTokens,
         temperature: req.temperature ?? 0.1,
       }),
-      signal: AbortSignal.timeout(180_000),
+      signal,
     })
 
     if (res.status === 429) {

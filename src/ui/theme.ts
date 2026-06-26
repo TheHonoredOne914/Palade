@@ -1,20 +1,20 @@
 import chalk from 'chalk'
 
 export const theme = {
-  primary:     chalk.hex('#EF4444'),
-  primaryBold: chalk.hex('#EF4444').bold,
-  accent:      chalk.hex('#F87171'),
+  primary:     chalk.hex('#FF3366'),
+  primaryBold: chalk.hex('#FF3366').bold,
+  accent:      chalk.hex('#FF9933'),
   dim:         chalk.hex('#6B7280'),
   muted:       chalk.hex('#374151'),
 
-  success:     chalk.hex('#10B981'),
-  warning:     chalk.hex('#F59E0B'),
-  error:       chalk.hex('#EF4444'),
-  info:        chalk.hex('#3B82F6'),
+  success:     chalk.hex('#00E676'),
+  warning:     chalk.hex('#FFEA00'),
+  error:       chalk.hex('#FF3366'),
+  info:        chalk.hex('#00D0FF'),
 
-  critical:    chalk.hex('#EF4444').bold,
-  high:        chalk.hex('#F97316').bold,
-  medium:      chalk.hex('#F59E0B'),
+  critical:    chalk.hex('#FF3366').bold,
+  high:        chalk.hex('#FF9933').bold,
+  medium:      chalk.hex('#FFEA00'),
   low:         chalk.hex('#6B7280'),
   infoSev:     chalk.hex('#374151'),
 
@@ -22,10 +22,10 @@ export const theme = {
   white:       chalk.white,
   whiteBold:   chalk.white.bold,
 
-  scoreGreen:  chalk.hex('#10B981').bold,
-  scoreYellow: chalk.hex('#F59E0B').bold,
-  scoreOrange: chalk.hex('#F97316').bold,
-  scoreRed:    chalk.hex('#EF4444').bold,
+  scoreGreen:  chalk.hex('#00E676').bold,
+  scoreYellow: chalk.hex('#FFEA00').bold,
+  scoreOrange: chalk.hex('#FF9933').bold,
+  scoreRed:    chalk.hex('#FF3366').bold,
 } as const
 
 export function scoreTheme(score: number) {

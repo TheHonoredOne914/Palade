@@ -63,7 +63,9 @@ export class TestIntelligenceAgent implements IAgent {
       const systemPrompt = buildSystemPrompt(SYSTEM_PROMPT, context)
       const userPrompt = buildChunkContext(chunks)
       const response = await provider.complete({ systemPrompt, userPrompt, maxTokens: 4096, signal })
-      return parseFindingsResponse(response.content ?? '', this.name)
+      const findings = parseFindingsResponse(response.content ?? '', this.name)
+      for (const f of findings) { f.provider = response.provider; f.model = response.model }
+      return findings
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       console.error(`[testIntelligence] analyze failed:`, err)

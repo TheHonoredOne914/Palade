@@ -110,6 +110,7 @@ async function runClassicCLI(): Promise<void> {
     .option('--format <formats>', 'Output formats: html,json,md', 'html,json')
     .option('--no-open', 'Do not open browser after review')
     .option('--quiet', 'Minimal terminal output (no spinners)')
+    .option('--economy', 'Economy mode: single combined call per batch (lower cost, higher latency)')
     .action(
       async (
         pathArg: string | undefined,

@@ -5,6 +5,7 @@ import type { ModeConfig } from '../modes/index.js'
 
 export type ReviewMode = 'standard' | 'security' | 'onboard' | 'debt' | 'ghost'
 
+/** Built-in agent names. Custom agents use arbitrary strings. */
 export type AgentName =
   | 'security'
   | 'architecture'
@@ -12,6 +13,7 @@ export type AgentName =
   | 'maintainability'
   | 'deadCode'
   | 'testIntelligence'
+  | (string & {})  // widen to string while keeping autocomplete for built-ins
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'
 
@@ -29,6 +31,10 @@ export interface AgentFinding {
   scorePenalty: number
   estimatedHours?: number
   hoursWasted?: number
+  /** The provider that actually produced this finding (may differ from primary on fallback). */
+  provider?: string
+  /** The model that actually produced this finding. */
+  model?: string
 }
 
 export interface DiffContext {
@@ -125,39 +131,9 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
       try {
         parsed = JSON.parse(match[0])
       } catch {
-        // Last resort: try to extract individual JSON objects
-        const objects = raw.match(/\{[\s\S]*?\}/g)
-        if (objects && objects.length > 0) {
-          const findings: AgentFinding[] = []
-          for (const objStr of objects) {
-            try {
-              const obj = JSON.parse(objStr)
-              if (typeof obj.title === 'string' && typeof obj.severity === 'string') {
-                const severity = obj.severity as Severity
-                if (severity in SEVERITY_PENALTY) {
-                  findings.push({
-                    id: crypto.randomUUID(),
-                    agentName,
-                    severity,
-                    title: obj.title,
-                    description: obj.description ?? '',
-                    filePath: obj.filePath,
-                    lineStart: obj.lineStart,
-                    lineEnd: obj.lineEnd,
-                    symbolName: obj.symbolName,
-                    tags: Array.isArray(obj.tags) ? obj.tags : [],
-                    scorePenalty: SEVERITY_PENALTY[severity],
-                  })
-                }
-              }
-            } catch {
-              // skip unparseable objects
-            }
-          }
-          if (findings.length > 0) {
-            return findings
-          }
-        }
+        // Both parse attempts failed — the model returned non-JSON.
+        // Do NOT attempt per-object extraction: partial objects from garbled
+        // text produce phantom findings that waste scoring budget.
         console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
         return []
       }

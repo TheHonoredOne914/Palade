@@ -22,7 +22,14 @@ export const PaladeConfigSchema = z.object({
     synthesis: z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']).default('nvidia'),
     agentCount: z.number().int().min(1).max(12).default(6),
     timeoutMs: z.number().int().default(600000),
-    maxReviewTokens: z.number().int().min(10_000).default(200_000)
+    maxReviewTokens: z.number().int().min(10_000).default(200_000),
+    // Economy mode sends each batch of code to ONE combined multi-domain call
+    // (all specialists in a single prompt with domain-tagged output sections)
+    // instead of N parallel per-domain calls. This cuts the ~6x resend of the
+    // same chunk content across agents. Default false: the parallel swarm is
+    // lower-latency and gives each domain its own dedicated system prompt, so
+    // users opt into economy mode when token cost matters more than latency.
+    economyMode: z.boolean().default(false)
   }).default({}),
   output: z.object({
     dir: z.string().default('.palade/reports'),

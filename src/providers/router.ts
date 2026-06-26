@@ -78,9 +78,11 @@ function padRight(str: string, len: number): string {
 let assignment: ProviderAssignment | null = null
 let allProviders: Map<string, IProvider> = new Map()
 
-class FallbackProvider implements IProvider {
+export class FallbackProvider implements IProvider {
   private chain: IProvider[]
   private index = 0
+  private _fallbackCount = 0
+  private _totalCount = 0
 
   constructor(primary: IProvider, fallbacks: IProvider[]) {
     this.chain = [primary, ...fallbacks]
@@ -89,19 +91,34 @@ class FallbackProvider implements IProvider {
   get name() { return this.chain[0].name }
   get model() { return this.chain[0].model }
 
+  /** Number of calls that fell back to a non-primary provider. */
+  get fallbackCount() { return this._fallbackCount }
+  /** Total calls attempted. */
+  get totalCount() { return this._totalCount }
+
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     // Try each provider in round-robin, fall back on any error
     const startIndex = this.index % this.chain.length
     this.index++
+    this._totalCount++
 
     let lastError: Error | undefined
+    let primaryProvider = this.chain[0]
 
     for (let i = 0; i < this.chain.length; i++) {
       const providerIdx = (startIndex + i) % this.chain.length
       const provider = this.chain[providerIdx]
 
       try {
-        return await provider.complete(req)
+        const response = await provider.complete(req)
+        // If a fallback answered, override the response identity so downstream
+        // code (finding tagging, terminal reporter) can surface the degraded
+        // source instead of silently claiming the primary answered.
+        if (provider !== primaryProvider) {
+          this._fallbackCount++
+          return { ...response, provider: provider.name, model: provider.model }
+        }
+        return response
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
         const isRetryable =
@@ -228,4 +245,25 @@ export function getProvider(role: ProviderRole): IProvider {
     throw new Error('Router not initialized. Call initRouter() first.')
   }
   return role === 'primary' ? assignment.primary : assignment.synthesis
+}
+
+export interface FallbackStats {
+  primary: { total: number; fallbacks: number }
+  synthesis: { total: number; fallbacks: number }
+}
+
+export function getFallbackStats(): FallbackStats | null {
+  if (!assignment) return null
+  const p = assignment.primary
+  const s = assignment.synthesis
+  return {
+    primary: {
+      total: p instanceof FallbackProvider ? p.totalCount : 0,
+      fallbacks: p instanceof FallbackProvider ? p.fallbackCount : 0,
+    },
+    synthesis: {
+      total: s instanceof FallbackProvider ? s.totalCount : 0,
+      fallbacks: s instanceof FallbackProvider ? s.fallbackCount : 0,
+    },
+  }
 }
