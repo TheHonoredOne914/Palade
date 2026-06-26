@@ -33,6 +33,8 @@ export async function launchTUI(): Promise<void> {
       providerStatus.groq = !!config.providers?.groq?.apiKey
       providerStatus.cerebras = !!config.providers?.cerebras?.apiKey
       providerStatus.nvidia = !!config.providers?.nvidia?.apiKey
+      providerStatus.openrouter = !!config.providers?.openrouter?.apiKey
+      providerStatus['opencode-zen'] = !!config.providers?.['opencode-zen']?.apiKey
     } catch (err: unknown) {
       configError = `Provider init failed: ${err instanceof Error ? err.message : String(err)}`
       config = undefined

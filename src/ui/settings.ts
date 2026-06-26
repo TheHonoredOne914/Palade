@@ -170,6 +170,11 @@ async function providersMenu(projectRoot: string): Promise<void> {
       : []),
   ])
 
+  // Strip empty apiKey so we don't overwrite env-var-based config
+  if (!answers.apiKey) {
+    delete answers.apiKey
+  }
+
   await writeConfigPatch(projectRoot, { providers: { [provider]: answers } })
   console.log(theme.success(`  ✓ ${provider} settings saved.`))
 }
@@ -206,7 +211,7 @@ async function swarmMenu(projectRoot: string): Promise<void> {
       type: 'number',
       name: 'timeoutMs',
       message: '  Swarm timeout in milliseconds:',
-      default: 120000,
+      default: 300000,
     },
   ])
 
@@ -353,8 +358,10 @@ async function writeConfigPatch(
   const configPath = join(projectRoot, 'palade.config.ts')
   let existing: Record<string, unknown> = {}
   let hasExistingObject = false
+  let fileExists = false
   try {
     const content = await readFile(configPath, 'utf-8')
+    fileExists = true
     // Extract the object from export default { ... }
     const match = content.match(/export\s+default\s+(\{[\s\S]*\})\s*$/)
     if (match) {
@@ -364,7 +371,9 @@ async function writeConfigPatch(
       // existing empty and rewrite the file from the patch alone rather than
       // risking silent corruption of hand-written configs.
       const jsonStr = match[1]
-        .replace(/'/g, '"')
+        .replace(/"(?:[^"\\]|\\.)*"/g, (m) => m.replace(/'/g, '\u2018')) // protect double-quoted strings
+        .replace(/'/g, '"') // now single quotes are safe to replace
+        .replace(/\u2018/g, "'") // restore single quotes inside strings
         .replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3')
         .replace(/,\s*([}\]])/g, '$1')
       try {
@@ -374,8 +383,7 @@ async function writeConfigPatch(
           hasExistingObject = true
         }
       } catch {
-        // Non-trivial config — we cannot safely round-trip it. Fall back to
-        // writing the patch alone so the user's manual config is not destroyed.
+        // Non-trivial config — we cannot safely round-trip it.
         hasExistingObject = false
       }
     }
@@ -383,17 +391,22 @@ async function writeConfigPatch(
     // No existing config
   }
 
+  // If we couldn't safely parse the prior config but the file exists, warn the user
+  // and abort. Their manual edits outside the patch cannot be safely preserved.
+  if (fileExists && !hasExistingObject) {
+    console.log()
+    console.log(
+      theme.error('  ✗  Cannot safely modify complex palade.config.ts automatically.')
+    )
+    console.log(
+      theme.dim('     Please edit the configuration file manually.')
+    )
+    return
+  }
+
   // Deep merge patch into existing
   const merged = deepMerge(existing, patch)
   await writeFile(configPath, generateConfigString(merged), 'utf-8')
-
-  // If we couldn't safely parse the prior config, warn the user: their manual
-  // edits outside the patch were not preserved.
-  if (!hasExistingObject) {
-    console.log(
-      theme.warning('  ⚠  Could not safely parse existing config — rewrote with patch only.')
-    )
-  }
 }
 
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
@@ -418,11 +431,14 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
 }
 
 function generateConfigString(patch: Record<string, unknown>): string {
+  const json = JSON.stringify(patch, null, 2)
+  // Remove quotes from keys, then escape single quotes in values
   return `// palade.config.ts — managed by 'palade settings'
 // Edit manually or run 'palade settings' to update
 
-export default ${JSON.stringify(patch, null, 2)
+export default ${json
     .replace(/"([^"]+)":/g, '$1:')
+    .replace(/: '([^']*)'/g, (_, v: string) => `: '${v.replace(/'/g, "\\'")}'`)
     .replace(/"/g, "'")}
 `
 }

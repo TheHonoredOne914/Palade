@@ -43,8 +43,6 @@ export async function runSwarm(
   const memory = new AgentMemory()
 
   const agentTimings: Partial<Record<AgentName, number>> = {}
-  let completedCount = 0
-  const totalAgents = agents.length
 
   // Run agents concurrently — rate-limit handling is done at the provider
   // layer (fetchWithRetry + FallbackProvider), not serialized here.
@@ -76,15 +74,14 @@ export async function runSwarm(
         })
         let batchFindings: AgentFinding[] = []
         try {
-          batchFindings = await Promise.race([
-            agent.analyze(batch, context, controller.signal),
-            timeoutPromise,
-          ])
+          const analyzePromise = agent.analyze(batch, context, controller.signal)
+          batchFindings = await Promise.race([analyzePromise, timeoutPromise])
+          analyzePromise.catch(() => {})
           allFindings.push(...batchFindings)
         } finally {
           if (timeoutHandle) clearTimeout(timeoutHandle)
+          options.onAgentBatchComplete?.(agent.name, batchIdx + 1, batches.length, batchFindings.length)
         }
-        options.onAgentBatchComplete?.(agent.name, batchIdx + 1, batches.length, batchFindings.length)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -97,7 +94,6 @@ export async function runSwarm(
 
     memory.record(agent.name, allFindings)
     agentTimings[agent.name] = Date.now() - agentStart
-    completedCount++
     options.onAgentComplete?.(agent.name, allFindings.length, agentTimings[agent.name]!)
   })
 

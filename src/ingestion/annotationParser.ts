@@ -69,11 +69,17 @@ export function parseAnnotations(manifests: FileManifest[]): Promise<Map<string,
 
 async function parseAnnotationsAsync(manifests: FileManifest[]): Promise<Map<string, Annotation[]>> {
   const map = new Map<string, Annotation[]>()
-  for (const manifest of manifests) {
-    const isPython = manifest.language === 'python'
-    const annotations = await parseFileAsync(manifest.absolutePath, isPython)
+  // Parse all files concurrently instead of sequentially
+  const results = await Promise.all(
+    manifests.map(async (manifest) => {
+      const isPython = manifest.language === 'python'
+      const annotations = await parseFileAsync(manifest.absolutePath, isPython)
+      return { path: manifest.path, annotations }
+    })
+  )
+  for (const { path, annotations } of results) {
     if (annotations.length > 0) {
-      map.set(manifest.path, annotations)
+      map.set(path, annotations)
     }
   }
   return map

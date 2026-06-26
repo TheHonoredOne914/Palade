@@ -1,7 +1,5 @@
-import chalk from 'chalk'
 import type { AgentName } from '../agents/base.js'
-
-export type ReviewMode = 'standard' | 'security' | 'onboard' | 'debt' | 'ghost'
+import type { ReviewMode } from '../agents/base.js'
 
 export interface ModeConfig {
   mode: ReviewMode

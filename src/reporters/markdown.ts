@@ -43,6 +43,7 @@ function truncate(text: string, maxWidth: number, truncateChar: string): string 
 
 function escapeMarkdown(text: string): string {
   return text
+    .replace(/\\/g, '\\\\')
     .replace(/\|/g, '\\|')
     .replace(/\n/g, ' ')
 }
@@ -68,7 +69,8 @@ function createMarkdownTable(
 }
 
 function renderScoreBar(score: number, width: number = 10): string {
-  const filled = Math.round((score / 100) * width)
+  const clamped = Math.max(0, Math.min(100, score))
+  const filled = Math.round((clamped / 100) * width)
   const empty = width - filled
   return '█'.repeat(filled) + '░'.repeat(empty)
 }

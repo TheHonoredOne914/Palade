@@ -3,7 +3,7 @@ import type {
   CompletionRequest,
   CompletionResponse,
 } from './base.js'
-import { fetchWithRetry } from './base.js'
+import { fetchWithRetry, createLimiter } from './base.js'
 
 const AVAILABILITY_CACHE_MS = 60_000
 
@@ -25,15 +25,18 @@ export class CerebrasProvider implements IProvider {
   readonly name = 'cerebras'
   readonly model: string
   private readonly apiKey: string
+  private readonly limiter: ReturnType<typeof createLimiter>
   private availabilityCache: { result: boolean; timestamp: number } | null = null
 
-  constructor(apiKey: string, model = 'gpt-oss-120b') {
+  constructor(apiKey: string, model = 'gpt-oss-120b', maxConcurrency = 4) {
     this.apiKey = apiKey
     this.model = model
+    this.limiter = createLimiter(maxConcurrency)
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    const start = Date.now()
+    return this.limiter(async () => {
+      const start = Date.now()
     const res = await fetchWithRetry(
       'https://api.cerebras.ai/v1/chat/completions',
       {
@@ -71,6 +74,7 @@ export class CerebrasProvider implements IProvider {
       provider: this.name,
       model: this.model,
     }
+    })
   }
 
   async isAvailable(): Promise<boolean> {
@@ -95,6 +99,8 @@ export class CerebrasProvider implements IProvider {
         }),
       })
       const result = res.ok
+      // Consume response body to prevent resource leak
+      await res.body?.cancel()
       this.availabilityCache = { result, timestamp: Date.now() }
       return result
     } catch {

@@ -26,12 +26,12 @@ export function Autocomplete({
     setSelectedIdx(0)
   }, [matches])
 
-  useInput((_, key) => {
-    if (key.tab || key.downArrow) {
+  useInput((input, key) => {
+    if (key.tab) {
       setSelectedIdx((i) => Math.min(i + 1, matches.length - 1))
     }
-    if (key.upArrow) {
-      setSelectedIdx((i) => Math.max(i - 1, 0))
+    if (key.escape) {
+      onSelect('') // close autocomplete
     }
     if (key.return && matches[selectedIdx]) {
       onSelect(

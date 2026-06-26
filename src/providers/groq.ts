@@ -100,6 +100,8 @@ export class GroqProvider implements IProvider {
         }),
       })
       const result = res.ok
+      // Consume response body to prevent resource leak
+      await res.body?.cancel()
       this.availabilityCache = { result, timestamp: Date.now() }
       return result
     } catch {

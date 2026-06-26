@@ -19,8 +19,8 @@ export function CommandInput({
   isRunning,
 }: CommandInputProps): React.JSX.Element {
   useInput((_, key) => {
-    if (key.upArrow) onHistoryNav('up')
-    if (key.downArrow) onHistoryNav('down')
+    if (key.upArrow) { onHistoryNav('up'); return }
+    if (key.downArrow) { onHistoryNav('down'); return }
   })
 
   return (

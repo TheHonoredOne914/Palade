@@ -14,7 +14,7 @@ export async function loadTargets(projectRoot: string): Promise<TargetDefinition
 
   let raw: unknown
   try {
-    const fileUrl = pathToFileURL(filePath).href + `?t=${Date.now()}`
+    const fileUrl = pathToFileURL(filePath).href
     const mod = await import(fileUrl)
     raw = mod.default ?? mod
   } catch {

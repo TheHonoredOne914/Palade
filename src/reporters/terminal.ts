@@ -46,9 +46,10 @@ function formatDelta(delta: number): string {
 }
 
 function renderScoreBar(score: number, width: number = 20): string {
-  const filled = Math.round((score / 100) * width)
+  const clamped = Math.max(0, Math.min(100, score))
+  const filled = Math.round((clamped / 100) * width)
   const empty = width - filled
-  const color = getScoreColor(score)
+  const color = getScoreColor(clamped)
   return color('█'.repeat(filled)) + chalk.gray('░'.repeat(empty))
 }
 

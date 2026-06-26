@@ -21,7 +21,14 @@ function resolveImport(fromFile: string, importPath: string, projectRoot: string
     }
     resolved = resolvedParts.join('/')
   } else {
+    // Package import (not local) — resolve against projectRoot
     resolved = normalizedImport
+  }
+
+  // Guard against path traversal
+  const resolvedAbs = resolve(projectRoot, resolved)
+  if (!resolvedAbs.startsWith(projectRoot)) {
+    return projectRoot // refuse traversal
   }
 
   return resolve(projectRoot, resolved)

@@ -150,7 +150,9 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
       const shouldChunk =
         type === 'function_declaration' ||
         type === 'class_declaration' ||
-        type === 'method_definition'
+        type === 'method_definition' ||
+        type === 'arrow_function' ||
+        type === 'function'
 
       if (shouldChunk && node.startPosition && node.endPosition) {
         const startLine = node.startPosition.row + 1
@@ -305,14 +307,12 @@ function chunkPython(content: string, filePath: string): CodeChunk[] {
   }
 }
 
-let treeSitterLoaded = false
+let treeSitterLoaded: boolean | null = null
 
 export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]> {
-  if (!treeSitterLoaded) {
+  if (treeSitterLoaded === null) {
     const hasSmallFiles = manifests.some(m => m.sizeBytes <= MAX_TREE_SITTER_BYTES)
-    if (hasSmallFiles) {
-      treeSitterLoaded = await loadTreeSitter()
-    }
+    treeSitterLoaded = hasSmallFiles ? await loadTreeSitter() : false
   }
 
   const allChunks: CodeChunk[] = []
@@ -341,13 +341,13 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
 
     allChunks.push(...chunks)
 
-    if (allChunks.length > MAX_CHUNKS_PER_FILE * manifests.length) {
+    if (allChunks.length > MAX_CHUNKS_PER_FILE) {
       break
     }
   }
 
-  if (allChunks.length > MAX_CHUNKS_PER_FILE * manifests.length) {
-    allChunks.length = MAX_CHUNKS_PER_FILE * manifests.length
+  if (allChunks.length > MAX_CHUNKS_PER_FILE) {
+    allChunks.length = MAX_CHUNKS_PER_FILE
   }
 
   return allChunks

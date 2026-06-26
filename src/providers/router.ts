@@ -34,7 +34,7 @@ function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[]
         instances.push(new GroqProvider(key, cfg.model, cfg.maxConcurrency))
         break
       case 'cerebras':
-        instances.push(new CerebrasProvider(key, cfg.model))
+        instances.push(new CerebrasProvider(key, cfg.model, cfg.maxConcurrency))
         break
       case 'nvidia':
         instances.push(new NvidiaProvider(key, cfg.model, cfg.baseUrl))
@@ -149,11 +149,10 @@ export class FallbackProvider implements IProvider {
   }
 }
 
-function getFallbackChain(role: ProviderRole): IProvider[] {
-  const primaryName = assignment?.[role]?.name
+function getFallbackChain(excludeName: string): IProvider[] {
   const fallbacks: IProvider[] = []
   for (const [name, provider] of allProviders) {
-    if (name !== primaryName) {
+    if (name !== excludeName) {
       fallbacks.push(provider)
     }
   }
@@ -216,8 +215,8 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   }
 
   // Wrap with fallback
-  const primaryWithFallback = new FallbackProvider(primary, getFallbackChain('primary'))
-  const synthesisWithFallback = new FallbackProvider(synthesis, getFallbackChain('synthesis'))
+  const primaryWithFallback = new FallbackProvider(primary, getFallbackChain(primary.name))
+  const synthesisWithFallback = new FallbackProvider(synthesis, getFallbackChain(synthesis.name))
 
   const result: ProviderAssignment = {
     primary: primaryWithFallback,

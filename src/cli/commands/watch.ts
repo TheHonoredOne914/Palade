@@ -132,7 +132,12 @@ export async function watchCommand(opts: {
     }, debounceMs)
   })
 
+  process.on('exit', () => {
+    watcher.close()
+  })
+
   process.on('SIGINT', () => {
+    if (debounceTimer) clearTimeout(debounceTimer)
     watcher.close()
     console.log(theme.dim('\n  Watcher stopped.'))
     process.exit(0)

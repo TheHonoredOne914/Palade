@@ -90,7 +90,10 @@ export async function loadConfig(): Promise<PaladeConfig> {
     }
     // Non-object exports (functions, primitives) are silently ignored.
   } catch (e) {
-    // No config file found — fall through to env vars
+    const code = (e as NodeJS.ErrnoException)?.code
+    if (code && code !== 'ERR_MODULE_NOT_FOUND' && code !== 'ERR_LOAD_ESM') {
+      console.error(`Warning: Failed to load palade.config.ts: ${(e as Error).message}`)
+    }
   }
 
   const envConfig = buildEnvConfig()

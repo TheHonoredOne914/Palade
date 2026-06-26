@@ -44,7 +44,7 @@ export function handleFatalError(err: unknown): undefined {
     console.error(chalk.yellow(`\nSwarm timed out. ${err.completedAgents}/${err.totalAgents} agents completed.`))
     console.error(chalk.dim(`  Partial results will be included in the report.`))
     console.error(chalk.dim(`  To increase timeout: set swarm.timeoutMs in palade.config.ts`))
-    return undefined
+    process.exit(1)
   }
 
   console.error(chalk.red(`\nUnexpected error: ${err instanceof Error ? err.message : String(err)}`))

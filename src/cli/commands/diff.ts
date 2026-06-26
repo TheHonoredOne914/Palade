@@ -5,7 +5,7 @@ import { chunkFiles } from '../../ingestion/chunker.js'
 import { estimateTotalTokens } from '../../orchestrator/scheduler.js'
 import { runSwarm } from '../../orchestrator/swarm.js'
 import { calculateScore } from '../../scorer/calculator.js'
-import { readHistory, appendEntry } from '../../scorer/history.js'
+import { appendEntry } from '../../scorer/history.js'
 import { reportJson } from '../../reporters/json.js'
 import { writeHtmlReport, startLocalServer } from '../../reporters/html.js'
 import { reportMarkdown } from '../../reporters/markdown.js'
@@ -153,7 +153,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       baseScore
     )
 
-    appendEntry(historyPath, {
+    const updatedHistory = appendEntry(historyPath, {
       timestamp: new Date().toISOString(),
       runId: swarmResult.runId,
       score: scoreResult.score,
@@ -197,7 +197,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       synthesis: swarmResult.synthesis,
       findings: swarmResult.findings,
       crossAgentFindings: swarmResult.crossAgentFindings,
-      history: readHistory(historyPath),
+      history: updatedHistory,
       config: {
         projectName: basename(projectRoot),
         runTimestamp: new Date().toISOString(),

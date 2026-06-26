@@ -65,8 +65,9 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   const annotationSummary = buildAnnotationSummary(manifests, chunks)
 
   // Filter out ignored files
+  const ignoredSet = new Set(annotationSummary.ignoredFiles.map(f => f.replace(/^\.?\/+/, '')))
   let activeChunks = chunks.filter(
-    (c) => !annotationSummary.ignoredFiles.includes(c.filePath)
+    (c) => !ignoredSet.has(c.filePath.replace(/^\.?\/+/, ''))
   )
 
   // Filter out ignored lines

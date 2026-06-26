@@ -58,7 +58,7 @@ export class SecurityAgent implements IAgent {
   async analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]> {
     try {
       const provider = getProvider('primary')
-      const systemPrompt = buildSystemPrompt(SYSTEM_PROMPT, context)
+      const systemPrompt = buildSystemPrompt(SYSTEM_PROMPT, context, context.modeConfig)
       const userPrompt = buildChunkContext(chunks)
       const response = await provider.complete({ systemPrompt, userPrompt, maxTokens: 4096, signal })
       const findings = parseFindingsResponse(response.content ?? '', this.name)

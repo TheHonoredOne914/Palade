@@ -103,10 +103,11 @@ export class OpenCodeZenProvider implements IProvider {
     const usage = data.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
 
     // If content is empty but tokens were used, reasoning model consumed all tokens
-    // Retry with double the tokens
+    // Retry with double the tokens (cap at 16384 to avoid runaway)
     if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
-      console.warn(chalk.yellow(`  OpenCode Zen returned empty content (${usage?.completion_tokens} tokens used) — retrying with ${maxTokens * 2} tokens`))
-      return this.doComplete(req, maxTokens * 2, attempt + 1)
+      const newMax = Math.min(maxTokens * 2, 16384)
+      console.warn(chalk.yellow(`  OpenCode Zen returned empty content (${usage?.completion_tokens} tokens used) — retrying with ${newMax} tokens`))
+      return this.doComplete(req, newMax, attempt + 1)
     }
 
     return {
@@ -143,6 +144,8 @@ export class OpenCodeZenProvider implements IProvider {
         }),
       })
       const result = res.ok
+      // Consume response body to prevent resource leak
+      await res.body?.cancel()
       this.availabilityCache = { result, timestamp: Date.now() }
       return result
     } catch {

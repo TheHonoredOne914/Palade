@@ -55,6 +55,10 @@ export function Header({
             name="nvidia"
             active={providerStatus['nvidia'] ?? false}
           />
+          <ProviderDot
+            name="openrouter"
+            active={providerStatus['openrouter'] ?? false}
+          />
         </Box>
       </Box>
 

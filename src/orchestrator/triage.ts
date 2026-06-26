@@ -51,21 +51,27 @@ export async function triageFiles(
 
     let rankedPaths: string[] = []
     try {
-      const match = response.content.match(/\[[\s\S]*\]/)
-      if (match) {
-        rankedPaths = JSON.parse(match[0])
+      let cleaned = response.content.trim()
+      
+      // Safely strip outer markdown code blocks using a greedy match
+      const greedyMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+      if (greedyMatch) {
+        cleaned = greedyMatch[1].trim()
       }
+
+      // Find the outermost JSON array boundaries
+      const arrayStart = cleaned.indexOf('[')
+      const arrayEnd = cleaned.lastIndexOf(']')
+      if (arrayStart !== -1 && arrayEnd > arrayStart) {
+        cleaned = cleaned.substring(arrayStart, arrayEnd + 1)
+      }
+
+      rankedPaths = JSON.parse(cleaned)
     } catch {
       // Triage parse failed — fall back to heuristic
     }
 
     if (rankedPaths.length > 0 && rankedPaths.every(p => typeof p === 'string')) {
-      const normalized = new Map<string, string>()
-      for (const p of rankedPaths) {
-        const clean = (p as string).trim().replace(/^\.?\/+/, '').replace(/\/+$/, '')
-        normalized.set(clean, clean)
-      }
-
       const selected: CodeChunk[] = []
       let tokensUsed = 0
 

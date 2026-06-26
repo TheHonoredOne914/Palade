@@ -87,7 +87,11 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
 
       function flag(name: string): string | undefined {
         const idx = rest.indexOf(`--${name}`)
-        return idx !== -1 ? rest[idx + 1] : undefined
+        if (idx === -1) return undefined
+        const next = rest[idx + 1]
+        // If next arg is another flag or doesn't exist, flag has no value
+        if (!next || next.startsWith('--')) return undefined
+        return next
       }
       function hasFlag(name: string): boolean {
         return rest.includes(`--${name}`)
@@ -111,9 +115,9 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               mode: flag('mode') ?? 'standard',
               annotations: hasFlag('annotations'),
               pick: hasFlag('pick'),
-              depth: flag('depth') ? parseInt(flag('depth')!) : 1,
+              depth: flag('depth') ? (parseInt(flag('depth')!, 10) || 1) : 1,
               format: flag('format'),
-              open: hasFlag('no-open') ? false : undefined,
+              open: hasFlag('no-open') ? false : hasFlag('open') ? true : undefined,
               quiet: false,
             })
             break

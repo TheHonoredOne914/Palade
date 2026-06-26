@@ -59,29 +59,27 @@ Return ONLY valid JSON matching this exact schema:
 Be direct. Be specific. Do not repeat individual findings — synthesize patterns.`
 
 function parseSynthesisResponse(raw: string): SynthesisResult | null {
-  // Strip markdown code blocks if present
   let cleaned = raw.trim()
-  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (codeBlockMatch) {
-    cleaned = codeBlockMatch[1].trim()
+
+  // Safely strip outer markdown code blocks using a non-greedy match
+  const greedyMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+  if (greedyMatch) {
+    cleaned = greedyMatch[1].trim()
+  }
+
+  // Find the outermost JSON object boundaries
+  const firstBrace = cleaned.indexOf('{')
+  const lastBrace = cleaned.lastIndexOf('}')
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1)
   }
 
   let parsed: unknown
   try {
     parsed = JSON.parse(cleaned)
   } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/)
-    if (match) {
-      try {
-        parsed = JSON.parse(match[0])
-      } catch {
-        console.warn('[synthesis] Could not parse synthesis JSON')
-        return null
-      }
-    } else {
-      console.warn('[synthesis] No JSON object found in response')
-      return null
-    }
+    console.warn('[synthesis] Could not parse synthesis JSON')
+    return null
   }
 
   if (typeof parsed !== 'object' || parsed === null) {
@@ -159,16 +157,29 @@ export async function synthesize(
       2
     )
 
-    const response = await Promise.race([
-      provider.complete({
-        systemPrompt: SYNTHESIS_PROMPT,
-        userPrompt,
-        maxTokens: 4096,
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Synthesis timed out')), 180_000)
-      )
-    ])
+    const controller = new AbortController()
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        controller.abort()
+        reject(new Error('Synthesis timed out'))
+      }, 180_000)
+      timeoutHandle!.unref?.()
+    })
+
+    const systemPrompt = context.modeConfig?.synthesisPromptSuffix
+      ? `${SYNTHESIS_PROMPT}\n\n${context.modeConfig.synthesisPromptSuffix}`
+      : SYNTHESIS_PROMPT
+
+    const providerPromise = provider.complete({
+      systemPrompt,
+      userPrompt,
+      maxTokens: 4096,
+      signal: controller.signal,
+    }).catch(() => {})
+
+    const response = await Promise.race([providerPromise, timeoutPromise])
+    if (timeoutHandle) clearTimeout(timeoutHandle)
 
     const result = parseSynthesisResponse(response.content ?? '')
     if (!result) {

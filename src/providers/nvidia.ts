@@ -71,9 +71,10 @@ export class NvidiaProvider implements IProvider {
     const content = choices?.[0]?.message?.content ?? ''
     const usage = data.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
 
-    // If content is empty but tokens were used, retry with more tokens
+    // If content is empty but tokens were used, retry with more tokens (cap at 32768)
     if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
-      return this.doComplete(req, maxTokens * 2, attempt + 1)
+      const newMax = Math.min(maxTokens * 2, 32768)
+      return this.doComplete(req, newMax, attempt + 1)
     }
 
     return {
@@ -108,6 +109,8 @@ export class NvidiaProvider implements IProvider {
         }),
       })
       const result = res.ok
+      // Consume response body to prevent resource leak
+      await res.body?.cancel()
       this.availabilityCache = { result, timestamp: Date.now() }
       return result
     } catch {

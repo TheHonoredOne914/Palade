@@ -1,5 +1,4 @@
 import type { AgentFinding, Severity } from '../agents/base.js'
-import { SEVERITY_PENALTY } from '../agents/base.js'
 
 const SEVERITY_RANK: Record<Severity, number> = {
   critical: 0,
@@ -12,13 +11,14 @@ const SEVERITY_RANK: Record<Severity, number> = {
 function characterOverlap(a: string, b: string): number {
   const aLower = a.toLowerCase()
   const bLower = b.toLowerCase()
+  const aSet = new Set(aLower)
   const bSet = new Set(bLower)
   let overlap = 0
-  for (const ch of new Set(aLower)) {
+  for (const ch of aSet) {
     if (bSet.has(ch)) overlap++
   }
-  const aUnique = new Set(aLower).size
-  return aUnique === 0 ? 0 : overlap / aUnique
+  const union = aSet.size + bSet.size - overlap
+  return union === 0 ? 0 : overlap / union
 }
 
 function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
@@ -45,6 +45,7 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
 
   return {
     ...keep,
+    scorePenalty: (keep.scorePenalty ?? 0) + (discard.scorePenalty ?? 0),
     tags: Array.from(tagSet),
     description: keep.description.length >= discard.description.length
       ? keep.description

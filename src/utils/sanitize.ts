@@ -2,10 +2,14 @@ const REDACTED_KEYS = ['apikey', 'key', 'token', 'secret', 'password', 'authoriz
 
 export function sanitizeForLog(obj: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(obj).map(([k, v]) => [
-      k,
-      REDACTED_KEYS.some((rk) => k.toLowerCase().includes(rk)) ? '[REDACTED]' : v,
-    ])
+    Object.entries(obj).map(([k, v]) => {
+      const isSecret = REDACTED_KEYS.some((rk) => k.toLowerCase().includes(rk))
+      if (isSecret) return [k, '[REDACTED]']
+      if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+        return [k, sanitizeForLog(v as Record<string, unknown>)]
+      }
+      return [k, v]
+    })
   )
 }
 

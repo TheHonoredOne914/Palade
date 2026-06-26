@@ -34,13 +34,13 @@ async function loadTreeSitter(): Promise<boolean> {
   }
 }
 
-let treeSitterLoaded = false
+let treeSitterLoaded: boolean | null = null
 
 export async function resolveSymbol(
   symbolRef: string,
   projectRoot: string
 ): Promise<CodeChunk | null> {
-  if (!treeSitterLoaded) {
+  if (treeSitterLoaded === null) {
     treeSitterLoaded = await loadTreeSitter()
   }
 
@@ -95,7 +95,7 @@ export async function resolveSymbol(
           if (isTarget) {
             for (let i = 0; i < node.childCount; i++) {
               const child = node.child(i)
-              if (child && (child.type === 'identifier' || child.type === 'property_identifier')) {
+              if (child && (child.type === 'identifier' || child.type === 'property_identifier' || child.type === 'type_identifier')) {
                 if (child.text === symbolName) {
                   const startLine = node.startPosition.row + 1
                   const endLine = node.endPosition.row + 1
@@ -147,8 +147,9 @@ export async function resolveSymbol(
         let endLine = lines.length - 1
         const indent = lines[i].search(/\S/)
         for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim().length === 0) continue // skip blank lines
           const lineIndent = lines[j].search(/\S/)
-          if (lineIndent <= indent && lines[j].trim().length > 0) {
+          if (lineIndent !== -1 && lineIndent <= indent) {
             endLine = j - 1
             break
           }

@@ -40,6 +40,12 @@ function matchesGlobs(filePath: string, globs: string[]): boolean {
       if (filePath.endsWith(suffix)) return true
       continue
     }
+    // dir/** — recursive directory match
+    if (pattern.endsWith('/**')) {
+      const prefix = pattern.slice(0, -3) // remove '/**'
+      if (filePath.startsWith(prefix + '/') || filePath === prefix) return true
+      continue
+    }
     // dir/* or dir/ — prefix match on a path segment boundary
     if (pattern.endsWith('/*') || pattern.endsWith('/')) {
       const prefix = pattern.replace(/\/?\*?$/, '/')
@@ -81,7 +87,7 @@ async function walkDir(
 
   for (const entry of entries) {
     const fullPath = join(dir, entry.name)
-    const relPath = relative(projectRoot, fullPath)
+    const relPath = relative(projectRoot, fullPath).split('\\').join('/')
 
     if (ig.ignores(relPath)) continue
 
@@ -161,10 +167,24 @@ export async function walkProject(
       .map(line => line.trim())
       .filter(line => line && !line.startsWith('#'))
     for (const rule of customRules) {
-      ig.add(rule)
+      ig.add(rule.replace(/\r/g, ''))
     }
   } catch {
     // .paladeignore not found — use defaults only
+  }
+
+  // Also load .gitignore if present
+  try {
+    const gitignoreContent = await readFile(join(projectRoot, '.gitignore'), 'utf-8')
+    const gitRules = gitignoreContent
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'))
+    for (const rule of gitRules) {
+      ig.add(rule.replace(/\r/g, ''))
+    }
+  } catch {
+    // .gitignore not found — continue
   }
 
   // Walk all files

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { Box, useApp, useInput } from 'ink'
 import { Header } from './components/Header.js'
 import { OutputPane } from './components/OutputPane.js'
@@ -51,9 +51,13 @@ export function App({
     }
   }, [appendLine])
 
+  const abortRef = useRef<AbortController | null>(null)
+
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
       if (status === 'running') {
+        abortRef.current?.abort()
+        abortRef.current = null
         appendLine({ type: 'warn', text: '  Interrupted.' })
         setStatus('idle')
       } else {

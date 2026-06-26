@@ -99,8 +99,9 @@ function truncate(s: string, n: number): string {
 }
 
 function truncatePath(p: string, n: number): string {
-  const parts = p.split('/')
-  const short = parts.slice(-2).join('/')
+  const sep = p.includes('\\') ? '\\' : '/'
+  const parts = p.split(sep)
+  const short = parts.slice(-2).join(sep)
   return truncate(short, n)
 }
 

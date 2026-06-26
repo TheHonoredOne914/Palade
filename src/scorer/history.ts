@@ -47,9 +47,7 @@ export function writeHistory(
 ): void {
   try {
     const dir = dirname(historyPath)
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true })
-    }
+    mkdirSync(dir, { recursive: true })
     const trimmed = entries.slice(-MAX_HISTORY_ENTRIES)
     writeFileSync(historyPath, JSON.stringify(trimmed, null, 2), 'utf-8')
   } catch {

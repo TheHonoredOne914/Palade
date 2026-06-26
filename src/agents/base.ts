@@ -108,13 +108,15 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
     return []
   }
 
-  // Aggressively clean the response
   let cleaned = raw.trim()
 
-  // Strip markdown code blocks (```json ... ```)
-  cleaned = cleaned.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '')
+  // Safely strip outer markdown code blocks using a non-greedy match
+  const greedyMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+  if (greedyMatch) {
+    cleaned = greedyMatch[1].trim()
+  }
 
-  // Strip any leading/trailing text that isn't JSON
+  // Find the outermost JSON array boundaries
   const arrayStart = cleaned.indexOf('[')
   const arrayEnd = cleaned.lastIndexOf(']')
   if (arrayStart !== -1 && arrayEnd > arrayStart) {
@@ -125,22 +127,8 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
   try {
     parsed = JSON.parse(cleaned)
   } catch {
-    // Try to find any JSON array in the original text
-    const match = raw.match(/\[[\s\S]*\]/)
-    if (match) {
-      try {
-        parsed = JSON.parse(match[0])
-      } catch {
-        // Both parse attempts failed — the model returned non-JSON.
-        // Do NOT attempt per-object extraction: partial objects from garbled
-        // text produce phantom findings that waste scoring budget.
-        console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
-        return []
-      }
-    } else {
-      console.warn(chalk.yellow(`⚠ ${agentName}: no JSON array found in response`))
-      return []
-    }
+    console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
+    return []
   }
 
   if (!Array.isArray(parsed)) {
@@ -161,7 +149,7 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
       if (!(severity in SEVERITY_PENALTY)) continue
       findings.push({
         id: crypto.randomUUID(),
-        agentName,
+        agentName: (typeof obj.agentName === 'string' && obj.agentName ? obj.agentName as AgentName : agentName),
         severity,
         title: obj.title as string,
         description: (obj.description as string) ?? '',
@@ -171,6 +159,8 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
         symbolName: obj.symbolName as string | undefined,
         tags: Array.isArray(obj.tags) ? (obj.tags as string[]) : [],
         scorePenalty: SEVERITY_PENALTY[severity],
+        estimatedHours: typeof obj.estimatedHours === 'number' ? obj.estimatedHours : undefined,
+        hoursWasted: typeof obj.hoursWasted === 'number' ? obj.hoursWasted : undefined,
       })
     }
   }

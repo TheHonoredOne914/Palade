@@ -1,6 +1,9 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createServer, type Server } from 'node:http'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 import type { ReporterContext, ReporterOutput, HtmlTemplateData } from './types.js'
 import type { ScoreCategory } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
@@ -41,10 +44,10 @@ function getScoreGradeClass(score: number): string {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 90) return '#3fb950'
-  if (score >= 75) return '#3fb950'
-  if (score >= 60) return '#d29922'
-  if (score >= 40) return '#db61a2'
+  const clamped = Math.max(0, Math.min(100, score))
+  if (clamped >= 75) return '#3fb950'
+  if (clamped >= 60) return '#d29922'
+  if (clamped >= 40) return '#db61a2'
   return '#f85149'
 }
 
@@ -169,7 +172,7 @@ function getTemplatePath(): string {
     if (existsSync(p)) return p
   }
   
-  return join(__dirname, '..', '..', '..', 'templates', 'report.html')
+  return join(__dirname, '..', '..', 'templates', 'report.html')
 }
 
 function loadTemplate(): string {
@@ -328,6 +331,7 @@ export function startLocalServer(
     stopLocalServer()
     console.log('Palade report server auto-closed after 10 minutes')
   }, 10 * 60 * 1000)
+  serverTimeout.unref?.()
 }
 
 /**

@@ -11,7 +11,7 @@ function splitChunk(chunk: CodeChunk): CodeChunk[] {
   // Try to find a natural break point near the midpoint:
   // blank line, closing brace, or end of a block. This avoids splitting
   // mid-function and sends more coherent context to specialist agents.
-  let splitIdx = mid
+  let splitIdx = Math.max(1, mid)
   const searchRadius = Math.floor(lines.length * 0.15) // up to 15% of lines
   const breakPatterns = [/^\s*$/, /^\s*\}/, /^\s*\)\s*{?\s*$/]
   outer:

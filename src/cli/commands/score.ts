@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { readHistory } from '../../scorer/history.js'
 import { loadConfig } from '../../config/loader.js'
 import { theme, scoreTheme } from '../../ui/theme.js'
-import { sectionBox, kvTable, sparkline, scoreGrade, formatDelta, divider } from '../../ui/layout.js'
+import { sectionBox, kvTable, sparkline, scoreGrade, formatDelta } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
 
 export async function scoreCommand(opts: {

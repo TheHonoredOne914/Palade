@@ -267,7 +267,7 @@ export async function reviewCommand(
       label: 'palade',
     })
     const badgePath = join(projectRoot, config.score.badgePath)
-    const badgeDir = join(badgePath, '..')
+    const badgeDir = dirname(badgePath)
     if (!existsSync(badgeDir)) mkdirSync(badgeDir, { recursive: true })
     const { writeFileSync } = await import('node:fs')
     writeFileSync(badgePath, badgeSvg, 'utf-8')

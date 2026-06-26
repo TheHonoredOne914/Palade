@@ -96,6 +96,7 @@ export class OpenRouterProvider implements IProvider {
             max_tokens: req.maxTokens ?? 4096,
             temperature: req.temperature ?? 0.1,
           }),
+          signal: req.signal,
         })
 
         if (!retryRes.ok) {
@@ -174,6 +175,8 @@ export class OpenRouterProvider implements IProvider {
         }),
       })
       const result = res.ok
+      // Consume response body to prevent resource leak
+      await res.body?.cancel()
       this.availabilityCache = { result, timestamp: Date.now() }
       return result
     } catch {

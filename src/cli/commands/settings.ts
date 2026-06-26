@@ -56,10 +56,10 @@ async function showCurrentConfig(projectRoot: string): Promise<void> {
 
     console.log()
     console.log(theme.bold('  Swarm:'))
-    console.log(`    Primary:    ${chalk.cyan(config.swarm?.primary ?? 'groq')}`)
-    console.log(`    Synthesis:  ${chalk.cyan(config.swarm?.synthesis ?? 'cerebras')}`)
+    console.log(`    Primary:    ${chalk.cyan(config.swarm?.primary ?? 'opencode-zen')}`)
+    console.log(`    Synthesis:  ${chalk.cyan(config.swarm?.synthesis ?? 'nvidia')}`)
     console.log(`    Agents:     ${chalk.cyan(String(config.swarm?.agentCount ?? 6))}`)
-    console.log(`    Timeout:    ${chalk.cyan(String(config.swarm?.timeoutMs ?? 120000))}ms`)
+    console.log(`    Timeout:    ${chalk.cyan(String(config.swarm?.timeoutMs ?? 600000))}ms`)
 
     if (config.output) {
       console.log()
@@ -185,8 +185,11 @@ async function applySets(projectRoot: string, sets: string[]): Promise<void> {
     const rawValue = set.slice(eqIdx + 1).trim()
     const value = parseValue(rawValue)
 
+    const old = configContent
     configContent = setNestedValue(configContent, key, value)
-    console.log(theme.success(`  ✓ ${key} = ${formatValue(value)}`))
+    if (configContent !== old) {
+      console.log(theme.success(`  ✓ ${key} = ${formatValue(value)}`))
+    }
   }
 
   await writeFile(configPath, configContent, 'utf-8')
@@ -197,8 +200,8 @@ function parseValue(raw: string): unknown {
   if (raw === 'true') return true
   if (raw === 'false') return false
   if (raw === 'null') return null
-  if (/^\d+$/.test(raw)) return parseInt(raw, 10)
-  if (/^\d+\.\d+$/.test(raw)) return parseFloat(raw)
+  if (/^-?\d+$/.test(raw)) return parseInt(raw, 10)
+  if (/^-?\d+\.\d+$/.test(raw)) return parseFloat(raw)
   if (raw.startsWith('[') && raw.endsWith(']')) {
     return raw.slice(1, -1).split(',').map(s => s.trim().replace(/^['"]|['"]$/g, ''))
   }
@@ -212,7 +215,11 @@ function formatValue(v: unknown): string {
 
 export function setNestedValue(content: string, dotPath: string, value: unknown): string {
   const parts = dotPath.split('.')
-  const valueStr = typeof value === 'string' ? `'${value}'` : String(value)
+  const valueStr = typeof value === 'string'
+    ? `'${value.replace(/'/g, "\\'")}'`
+    : Array.isArray(value)
+      ? `[${value.map(v => `'${String(v).replace(/'/g, "\\'")}'`).join(', ')}]`
+      : String(value)
   const lines = content.split('\n')
 
   // Walk the file tracking object nesting via { } so that a dotted path like
@@ -272,7 +279,7 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
       if (matchesPath) {
         // Preserve the trailing comma if the original line had one — without
         // this, "agentCount: 6," becomes "agentCount: 8" and breaks the object.
-        const hadComma = /,\s*$/.test(keyMatch[2])
+        const hadComma = /,\s*(\/\/.*)?$/.test(keyMatch[2])
         const trailingComma = hadComma ? ',' : ''
         lines[i] = `${keyMatch[1]}${keyName}: ${valueStr}${trailingComma}`
         return lines.join('\n')
