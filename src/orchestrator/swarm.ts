@@ -102,14 +102,21 @@ export async function runSwarm(
     } catch (err: unknown) {
       agentError = err instanceof Error ? err : new Error(String(err))
       console.warn(
-        chalk.yellow(`⚠ ${agent.name}: ${agentError.message} (keeping ${allFindings.length} partial findings)`)
+        chalk.yellow(
+          `⚠ ${agent.name}: ${agentError.message} (keeping ${allFindings.length} partial findings)`
+        )
       )
     }
 
     try {
       memory.record(agent.name, allFindings)
       agentTimings[agent.name] = Date.now() - agentStart
-      options.onAgentComplete?.(agent.name, allFindings.length, agentTimings[agent.name]!, agentError)
+      options.onAgentComplete?.(
+        agent.name,
+        allFindings.length,
+        agentTimings[agent.name]!,
+        agentError
+      )
     } catch (err) {
       console.warn(
         chalk.yellow(

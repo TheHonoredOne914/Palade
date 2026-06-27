@@ -15,7 +15,8 @@ export function mountOutputAdapter(append: AppendFn): void {
   _originalError = console.error
   _originalClear = console.clear
 
-  const formatArg = (a: unknown) => (typeof a === 'string' ? a : a instanceof Error ? a.message : JSON.stringify(a))
+  const formatArg = (a: unknown) =>
+    typeof a === 'string' ? a : a instanceof Error ? a.message : JSON.stringify(a)
 
   console.log = (...args: unknown[]) => {
     const text = args.map(formatArg).join(' ')

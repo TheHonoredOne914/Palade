@@ -12,12 +12,18 @@ interface AutocompleteProps {
 
 type Suggestion = { text: string; display: string; desc: string }
 
-export function Autocomplete({ input, projectRoot, onSelect }: AutocompleteProps): React.JSX.Element {
+export function Autocomplete({
+  input,
+  projectRoot,
+  onSelect,
+}: AutocompleteProps): React.JSX.Element {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [targets, setTargets] = useState<TargetDefinition[]>([])
 
   useEffect(() => {
-    loadTargets(projectRoot).then(setTargets).catch(() => {})
+    loadTargets(projectRoot)
+      .then(setTargets)
+      .catch(() => {})
   }, [projectRoot])
 
   const matches = useMemo<Suggestion[]>(() => {
@@ -26,10 +32,10 @@ export function Autocomplete({ input, projectRoot, onSelect }: AutocompleteProps
     if (cmdMatch) {
       const [, cmd, rest] = cmdMatch
       const isTargetFlag = rest.includes('--target')
-      
+
       let before = `/${cmd} `
       let query = rest.trim().toLowerCase()
-      
+
       if (isTargetFlag) {
         const parts = rest.split('--target')
         before = parts[0] + '--target '
@@ -37,13 +43,22 @@ export function Autocomplete({ input, projectRoot, onSelect }: AutocompleteProps
       }
 
       // Hide target suggestions if the user is typing something else (like --format)
-      if (!isTargetFlag && rest.length > 0 && !rest.trim().startsWith('--target') && rest.trim() !== '') {
-         // but if they are typing a target name directly after /review space?
-         // The user specifically asked for targets to appear for auto completion.
+      if (
+        !isTargetFlag &&
+        rest.length > 0 &&
+        !rest.trim().startsWith('--target') &&
+        rest.trim() !== ''
+      ) {
+        // but if they are typing a target name directly after /review space?
+        // The user specifically asked for targets to appear for auto completion.
       }
 
       return targets
-        .filter((t) => t.name.toLowerCase().includes(query) || (`--target ${t.name}`).toLowerCase().includes(query))
+        .filter(
+          (t) =>
+            t.name.toLowerCase().includes(query) ||
+            `--target ${t.name}`.toLowerCase().includes(query)
+        )
         .map((t) => ({
           text: isTargetFlag ? before + t.name : `/${cmd} --target ${t.name}`,
           display: isTargetFlag ? t.name : `--target ${t.name}`,

@@ -228,8 +228,6 @@ export function App({
         />
       )}
 
-
-
       {showSettings ? (
         <Box flexDirection="column" marginY={1}>
           <SettingsPanel
@@ -246,9 +244,19 @@ export function App({
             if (line.type === 'header') {
               return (
                 <Box key={line.id ?? i} flexDirection="column">
-                  <Header providerStatus={providerStatus} projectRoot={projectRoot} version={version} />
+                  <Header
+                    providerStatus={providerStatus}
+                    projectRoot={projectRoot}
+                    version={version}
+                  />
                   {configError && (
-                    <Box borderStyle="single" borderColor="#F59E0B" paddingX={1} marginX={1} marginBottom={1}>
+                    <Box
+                      borderStyle="single"
+                      borderColor="#F59E0B"
+                      paddingX={1}
+                      marginX={1}
+                      marginBottom={1}
+                    >
                       <Text color="#F59E0B" bold>
                         ⚠ Config:{' '}
                       </Text>

@@ -52,7 +52,7 @@ export function printBanner(opts: BannerOptions): void {
   const versionRaw = `v${opts.version}`
   const termWidth = process.stdout.columns || 80
   const asciiWidth = Math.max(...ASCII_ART.map((l) => l.length)) + 2 // +2 for left padding
-  
+
   // Align "By Carren Mathew" to the right of the ASCII art, similar to TUI
   const gap = Math.max(2, asciiWidth - versionRaw.length - creditRaw.length - 2)
   console.log()

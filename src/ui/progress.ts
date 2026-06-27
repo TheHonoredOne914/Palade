@@ -19,20 +19,26 @@ export function createLiveProgress(): LiveProgress {
       agentDone(name, findings, ms, err) {
         const time = `${(ms / 1000).toFixed(1)}s`
         if (err) {
-          console.log(`  ${theme.error('✖')} ${theme.dim(name.padEnd(22))} ${theme.error('failed'.padEnd(20))} ${theme.dim(time)}`)
+          console.log(
+            `  ${theme.error('✖')} ${theme.dim(name.padEnd(22))} ${theme.error('failed'.padEnd(20))} ${theme.dim(time)}`
+          )
           return
         }
         const countStr =
           findings > 0
             ? theme.warning(`${findings} finding${findings !== 1 ? 's' : ''}`)
             : theme.success('clean')
-        console.log(`  ${theme.success('✓')} ${theme.dim(name.padEnd(22))} ${countStr.padEnd(20)} ${theme.dim(time)}`)
+        console.log(
+          `  ${theme.success('✓')} ${theme.dim(name.padEnd(22))} ${countStr.padEnd(20)} ${theme.dim(time)}`
+        )
       },
       synthesisStart(providerName) {
         console.log(`  ${theme.dim('Synthesis'.padEnd(22))} ${theme.dim(`${providerName}...`)}`)
       },
       synthesisDone(ms) {
-        console.log(`  ${theme.primary('◆')} ${theme.dim('Synthesis'.padEnd(22))} ${theme.primary('complete')}                ${theme.dim((ms / 1000).toFixed(1) + 's')}`)
+        console.log(
+          `  ${theme.primary('◆')} ${theme.dim('Synthesis'.padEnd(22))} ${theme.primary('complete')}                ${theme.dim((ms / 1000).toFixed(1) + 's')}`
+        )
       },
       stop() {},
     }
@@ -55,7 +61,7 @@ export function createLiveProgress(): LiveProgress {
       const spinner = spinners.get(name)
       if (!spinner) return
       const time = `${(ms / 1000).toFixed(1)}s`
-      
+
       if (err) {
         spinner.stopAndPersist({
           symbol: theme.error('✖'),

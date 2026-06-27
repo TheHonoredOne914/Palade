@@ -212,8 +212,6 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   const names = Array.from(allProviders.keys())
   const availability = await Promise.all(names.map((n) => allProviders.get(n)!.isAvailable()))
 
-
-
   // Assign primary
   let primary: IProvider | undefined
   const preferredPrimary = config.swarm.primary
@@ -250,8 +248,6 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
     synthesis: synthesisWithFallback,
   }
   assignment = result
-
-
 
   return result
 }

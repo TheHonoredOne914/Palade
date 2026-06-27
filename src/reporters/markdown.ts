@@ -219,7 +219,9 @@ export function buildMarkdownReport(ctx: ReporterContext): string {
   }
   lines.push(`| Critical | High | Medium | Low | Total |`)
   lines.push(`| --- | --- | --- | --- | --- |`)
-  lines.push(`| ${debtCounts.critical} | ${debtCounts.high} | ${debtCounts.medium} | ${debtCounts.low} | ${debtCounts.total} |`)
+  lines.push(
+    `| ${debtCounts.critical} | ${debtCounts.high} | ${debtCounts.medium} | ${debtCounts.low} | ${debtCounts.total} |`
+  )
   lines.push('')
   if (debt.highestROIFix) {
     lines.push(`**Highest ROI Fix:** ${debt.highestROIFix}`)

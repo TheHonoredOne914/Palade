@@ -41,7 +41,12 @@ export interface CrossAgentFinding {
 
 export interface SwarmOptions {
   onAgentStart?: (agentName: AgentName) => void
-  onAgentComplete?: (agentName: AgentName, findingCount: number, durationMs: number, error?: Error) => void
+  onAgentComplete?: (
+    agentName: AgentName,
+    findingCount: number,
+    durationMs: number,
+    error?: Error
+  ) => void
   onAgentBatchComplete?: (
     agentName: AgentName,
     batchIndex: number,

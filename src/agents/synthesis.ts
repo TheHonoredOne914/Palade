@@ -99,7 +99,10 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
         .filter((f) => typeof f.title === 'string' && typeof f.rationale === 'string')
         .map((f) => {
           const rank = typeof f.rank === 'number' ? f.rank : parseInt(String(f.rank)) || 0
-          const hours = typeof f.estimatedHours === 'number' ? f.estimatedHours : parseFloat(String(f.estimatedHours)) || 0
+          const hours =
+            typeof f.estimatedHours === 'number'
+              ? f.estimatedHours
+              : parseFloat(String(f.estimatedHours)) || 0
           return {
             rank,
             title: f.title as string,

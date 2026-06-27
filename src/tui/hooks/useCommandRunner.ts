@@ -130,7 +130,10 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
           case 'watch': {
             opts.appendLines([
               { type: 'error', text: 'The watch daemon cannot be run inside the interactive TUI.' },
-              { type: 'output', text: 'Please open a separate terminal window and run: palade watch' }
+              {
+                type: 'output',
+                text: 'Please open a separate terminal window and run: palade watch',
+              },
             ])
             break
           }

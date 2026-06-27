@@ -396,7 +396,9 @@ export async function reviewCommand(
     console.log(`  ${theme.dim('→ HTML')}     ${chalk.cyan(htmlPath)}`)
   }
   if (jsonPath) {
-    console.log(`  ${theme.dim('→ JSON')}     ${chalk.cyan(jsonPath)} ${theme.dim('(ready for AI agents)')}`)
+    console.log(
+      `  ${theme.dim('→ JSON')}     ${chalk.cyan(jsonPath)} ${theme.dim('(ready for AI agents)')}`
+    )
   }
   if (config.score.badge) {
     console.log(

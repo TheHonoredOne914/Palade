@@ -46,12 +46,12 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
       const paladeDir = join(projectRoot, '.palade')
       mkdirSync(paladeDir, { recursive: true })
       const mdPath = join(paladeDir, 'watch-bugs.md')
-      
+
       const lines = [
         '# Watch Mode Findings',
         '',
         `*Last updated: ${new Date().toLocaleTimeString()}*`,
-        ''
+        '',
       ]
 
       if (accumulatedFindings.size === 0) {
@@ -67,7 +67,7 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
           lines.push('')
         }
       }
-      
+
       writeFileSync(mdPath, lines.join('\n'), 'utf-8')
     } catch {
       // Ignore write errors in watch mode
