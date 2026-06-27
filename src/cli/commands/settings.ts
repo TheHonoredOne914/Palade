@@ -86,7 +86,6 @@ async function showCurrentConfig(projectRoot: string): Promise<void> {
   console.log()
   console.log(theme.bold('  Usage:'))
   console.log()
-  console.log(chalk.cyan('    palade settings --set groq.apiKey=YOUR_KEY'))
   console.log(chalk.cyan('    palade settings --set swarm.primary=groq'))
   console.log(chalk.cyan('    palade settings --set swarm.agentCount=8'))
   console.log(chalk.cyan('    palade settings --set output.openBrowser=false'))
@@ -109,7 +108,6 @@ async function initConfig(projectRoot: string): Promise<void> {
 export default {
   providers: {
     groq: {
-      apiKey: process.env.GROQ_API_KEY ?? '',
       model: 'llama-3.3-70b-versatile',
       maxConcurrency: 8
     }
@@ -159,7 +157,7 @@ coverage/
   console.log()
   console.log(theme.success('  ✓ Config initialized. Set your API key:'))
   console.log()
-  console.log(chalk.cyan('    palade settings --set groq.apiKey=YOUR_KEY'))
+  console.log(chalk.cyan('    export GROQ_API_KEY=YOUR_KEY'))
   console.log()
 }
 

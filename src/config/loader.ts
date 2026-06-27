@@ -110,10 +110,25 @@ export async function loadConfig(): Promise<PaladeConfig> {
     }
   }
 
+  const availableProviders = ['opencode-zen', 'groq', 'nvidia', 'cerebras', 'openrouter'].filter(
+    p => !!(mergedProviders[p] as any)?.apiKey
+  )
+  const defaultPrimary = availableProviders[0] ?? 'opencode-zen'
+  const defaultSynthesis = availableProviders.length > 1 ? availableProviders[1] : defaultPrimary
+
+  const rawSwarm = (rawObj.swarm as Record<string, unknown>) ?? {}
+
   const merged = {
     ...DEFAULT_CONFIG,
     ...envConfig,
     ...rawObj,
+    swarm: {
+      ...(DEFAULT_CONFIG.swarm as Record<string, unknown>),
+      ...((envConfig as Record<string, unknown>).swarm as Record<string, unknown> ?? {}),
+      ...rawSwarm,
+      primary: rawSwarm.primary ?? defaultPrimary,
+      synthesis: rawSwarm.synthesis ?? defaultSynthesis
+    },
     providers: mergedProviders
   } as Record<string, unknown>
 

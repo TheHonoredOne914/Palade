@@ -5,14 +5,13 @@ import chalk from 'chalk'
 
 const CONFIG_TEMPLATE = `// palade.config.ts
 export default {
-  providers: {
-    groq: { apiKey: process.env.GROQ_API_KEY ?? '' },
-    cerebras: { apiKey: process.env.CEREBRAS_API_KEY ?? '' },
-  },
-  swarm: {
-    primary: 'groq',
-    synthesis: 'cerebras',
-  }
+  // AI providers are auto-detected from environment variables
+  // e.g., GROQ_API_KEY, OPENROUTER_API_KEY, etc.
+  
+  // swarm: {
+  //   agentCount: 6,
+  //   economyMode: false,
+  // }
 }
 `
 
