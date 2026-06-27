@@ -176,10 +176,22 @@ export async function synthesize(
       userPrompt,
       maxTokens: 4096,
       signal: controller.signal,
-    }).catch(() => {})
+    }).catch((err: unknown): null => {
+      console.warn(`[synthesis] provider.complete failed: ${err instanceof Error ? err.message : String(err)}`)
+      return null
+    })
 
     const response = await Promise.race([providerPromise, timeoutPromise])
     if (timeoutHandle) clearTimeout(timeoutHandle)
+
+    if (!response) {
+      return {
+        executiveSummary: 'Synthesis provider returned no response.',
+        priorityFixes: [],
+        crossCuttingObservations: [],
+        debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
+      }
+    }
 
     const result = parseSynthesisResponse(response.content ?? '')
     if (!result) {

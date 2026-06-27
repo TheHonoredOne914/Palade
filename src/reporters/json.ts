@@ -126,7 +126,7 @@ function mapFindings(findings: ReporterContext['findings']): JsonFinding[] {
     lineStart: f.lineStart,
     lineEnd: f.lineEnd,
     symbolName: f.symbolName,
-    tags: [...f.tags],
+    tags: [...(f.tags ?? [])],
     scorePenalty: f.scorePenalty,
     provider: f.provider,
     model: f.model

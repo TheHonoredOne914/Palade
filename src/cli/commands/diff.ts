@@ -104,33 +104,39 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
 
     const progressSpinner = ora('  Starting analysis...').start()
 
-    const swarmResult = await runSwarm(chunks, context, {
-      onAgentStart: (name: AgentName): void => {
-        progressSpinner.text = `  [${completedAgents}/${agentCount}] ${name} agent analyzing...`
-      },
-      onAgentComplete: (
-        name: AgentName,
-        findings: number,
-        durationMs: number
-      ): void => {
-        completedAgents++
-        progressSpinner.text = `  [${completedAgents}/${agentCount}] ${name} complete (${findings} findings, ${(durationMs / 1000).toFixed(1)}s)`
-      },
-      onSynthesisStart: (): void => {
-        progressSpinner.text = '  Synthesizing cross-agent findings...'
-      },
-      onSynthesisComplete: (durationMs: number): void => {
-        progressSpinner.text = `  Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`
-      },
-      timeoutMs: config.swarm.timeoutMs,
-      maxReviewTokens: config.swarm.maxReviewTokens,
-      customAgents: customAgentDefs,
-      economyMode: config.swarm.economyMode,
-    })
+    let swarmResult: any
+    try {
+      swarmResult = await runSwarm(chunks, context, {
+        onAgentStart: (name: AgentName): void => {
+          progressSpinner.text = `  [${completedAgents}/${agentCount}] ${name} agent analyzing...`
+        },
+        onAgentComplete: (
+          name: AgentName,
+          findings: number,
+          durationMs: number
+        ): void => {
+          completedAgents++
+          progressSpinner.text = `  [${completedAgents}/${agentCount}] ${name} complete (${findings} findings, ${(durationMs / 1000).toFixed(1)}s)`
+        },
+        onSynthesisStart: (): void => {
+          progressSpinner.text = '  Synthesizing cross-agent findings...'
+        },
+        onSynthesisComplete: (durationMs: number): void => {
+          progressSpinner.text = `  Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`
+        },
+        timeoutMs: config.swarm.timeoutMs,
+        maxReviewTokens: config.swarm.maxReviewTokens,
+        customAgents: customAgentDefs,
+        economyMode: config.swarm.economyMode,
+      })
 
-    progressSpinner.succeed(
-      `  Analysis complete — ${swarmResult.findings.length} findings in ${(swarmResult.durationMs / 1000).toFixed(1)}s`
-    )
+      progressSpinner.succeed(
+        `  Analysis complete — ${swarmResult.findings.length} findings in ${(swarmResult.durationMs / 1000).toFixed(1)}s`
+      )
+    } catch (err) {
+      progressSpinner.fail(`  Analysis failed: ${err instanceof Error ? err.message : String(err)}`)
+      throw err
+    }
 
     if (swarmResult.fallbackStats) {
       const fs = swarmResult.fallbackStats
@@ -188,7 +194,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
 
     const dateStr = new Date().toISOString().slice(0, 10)
-    const branchSlug = headBranch.replace(/\//g, '-')
+    const branchSlug = headBranch.replace(/[^a-zA-Z0-9-]/g, '-')
     const reportName = `diff-${dateStr}-${branchSlug}`
 
     const reporterCtx = {

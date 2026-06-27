@@ -7,7 +7,7 @@ import { launchPicker } from '../picker.js'
 import { runPipeline } from '../../orchestrator/pipeline.js'
 import { calculateScore } from '../../scorer/calculator.js'
 import { readHistory, appendEntry } from '../../scorer/history.js'
-import { renderBadge, getScoreColor } from '../../scorer/badge.js'
+import { renderBadge, getScoreColor, getBadgeData } from '../../scorer/badge.js'
 import { reportJson } from '../../reporters/json.js'
 import { writeHtmlReport, startLocalServer } from '../../reporters/html.js'
 import { reportMarkdown } from '../../reporters/markdown.js'
@@ -195,44 +195,46 @@ export async function reviewCommand(
   const progress = opts.quiet
     ? undefined
     : createLiveProgress()
-
-  const swarmResult = await runPipeline({
-    projectRoot,
-    scope,
-    context: {
-      projectLanguages: [],
-      totalFiles: 0,
-      totalChunks: 0,
-      mode,
-      modeConfig,
-    },
-    swarmOptions: {
-      onAgentStart: (name: AgentName): void => {
-        progress?.agentStart(name)
+  let swarmResult: any
+  try {
+    swarmResult = await runPipeline({
+      projectRoot,
+      scope,
+      context: {
+        projectLanguages: [],
+        totalFiles: 0,
+        totalChunks: 0,
+        mode,
+        modeConfig,
       },
-      onAgentComplete: (
-        name: AgentName,
-        findings: number,
-        durationMs: number
-      ): void => {
-        completedAgents++
-        progress?.agentDone(name, findings, durationMs)
+      swarmOptions: {
+        onAgentStart: (name: AgentName): void => {
+          progress?.agentStart(name)
+        },
+        onAgentComplete: (
+          name: AgentName,
+          findings: number,
+          durationMs: number
+        ): void => {
+          completedAgents++
+          progress?.agentDone(name, findings, durationMs)
+        },
+        onSynthesisStart: (): void => {
+          progress?.synthesisStart(config.swarm.synthesis)
+        },
+        onSynthesisComplete: (durationMs: number): void => {
+          progress?.synthesisDone(durationMs)
+        },
+        timeoutMs: config.swarm.timeoutMs,
+        maxReviewTokens: config.swarm.maxReviewTokens,
+        customAgents: customAgentDefs,
+        economyMode: opts.economy ?? config.swarm.economyMode,
       },
-      onSynthesisStart: (): void => {
-        progress?.synthesisStart(config.swarm.synthesis)
-      },
-      onSynthesisComplete: (durationMs: number): void => {
-        progress?.synthesisDone(durationMs)
-      },
-      timeoutMs: config.swarm.timeoutMs,
-      maxReviewTokens: config.swarm.maxReviewTokens,
-      customAgents: customAgentDefs,
-      economyMode: opts.economy ?? config.swarm.economyMode,
-    },
-    target: resolvedTarget,
-  })
-
-  progress?.stop()
+      target: resolvedTarget,
+    })
+  } finally {
+    progress?.stop()
+  }
 
   // 9. Calculate score
   const historyPath = join(projectRoot, config.score.historyFile)
@@ -262,11 +264,7 @@ export async function reviewCommand(
 
   // 11. Generate badge
   if (config.score.badge) {
-    const badgeSvg = renderBadge({
-      score: scoreResult.score,
-      color: getScoreColor(scoreResult.score),
-      label: 'palade',
-    })
+    const badgeSvg = renderBadge(getBadgeData(scoreResult.score))
     const badgePath = join(projectRoot, config.score.badgePath)
     const badgeDir = dirname(badgePath)
     if (!existsSync(badgeDir)) mkdirSync(badgeDir, { recursive: true })

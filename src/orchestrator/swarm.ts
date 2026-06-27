@@ -92,9 +92,13 @@ export async function runSwarm(
       // everything when a later batch times out or fails.
     }
 
-    memory.record(agent.name, allFindings)
-    agentTimings[agent.name] = Date.now() - agentStart
-    options.onAgentComplete?.(agent.name, allFindings.length, agentTimings[agent.name]!)
+    try {
+      memory.record(agent.name, allFindings)
+      agentTimings[agent.name] = Date.now() - agentStart
+      options.onAgentComplete?.(agent.name, allFindings.length, agentTimings[agent.name]!)
+    } catch (err) {
+      console.warn(chalk.yellow(`⚠ Error in agent completion callback for ${agent.name}: ${err instanceof Error ? err.message : String(err)}`))
+    }
   })
 
   await Promise.all(agentPromises)
@@ -102,10 +106,21 @@ export async function runSwarm(
   const crossAgentFindings: CrossAgentFinding[] = memory.crossReference()
   const mergedFindings: AgentFinding[] = mergeFindings(memory.getAll())
 
-  options.onSynthesisStart?.()
-  const synthStart = Date.now()
-  const synthesis = await analyzeSynthesis(mergedFindings, crossAgentFindings, context)
-  options.onSynthesisComplete?.(Date.now() - synthStart)
+  let synthesis: any = {
+    executiveSummary: 'Synthesis failed or was skipped.',
+    priorityFixes: [],
+    crossCuttingObservations: [],
+    debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
+  }
+
+  try {
+    options.onSynthesisStart?.()
+    const synthStart = Date.now()
+    synthesis = await analyzeSynthesis(mergedFindings, crossAgentFindings, context)
+    options.onSynthesisComplete?.(Date.now() - synthStart)
+  } catch (err) {
+    console.warn(chalk.red(`⚠ Synthesis failed: ${err instanceof Error ? err.message : String(err)}`))
+  }
 
   return {
     runId,

@@ -163,16 +163,20 @@ function renderFindingsSummaryHtml(findings: ReporterContext['findings']): strin
 }
 
 function getTemplatePath(): string {
+  // Check the bundled template first to prevent user-controlled template hijacking
+  const bundledPath = join(__dirname, '..', '..', 'templates', 'report.html')
+  if (existsSync(bundledPath)) return bundledPath
+
   const possiblePaths = [
     join(process.cwd(), 'templates', 'report.html'),
     join(process.cwd(), 'node_modules', 'palade', 'templates', 'report.html'),
   ]
-  
+
   for (const p of possiblePaths) {
     if (existsSync(p)) return p
   }
-  
-  return join(__dirname, '..', '..', 'templates', 'report.html')
+
+  return bundledPath
 }
 
 function loadTemplate(): string {
@@ -332,6 +336,9 @@ export function startLocalServer(
   })
 
   htmlServer.listen(port, '127.0.0.1', () => {
+    // Unref the server so the CLI process can exit without waiting for the
+    // 10-minute auto-close timeout.
+    htmlServer!.unref()
     console.log(`Palade report server running at ${url}`)
     if (options.openBrowser !== false) {
       // Best-effort: open the report in the user's default browser. Never let

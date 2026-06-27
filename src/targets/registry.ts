@@ -140,10 +140,11 @@ export function appendTargetToFile(
     ? JSON.stringify(target.entry)
     : `'${target.entry}'`
 
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
   const lines: string[] = []
   lines.push(`{`)
-  lines.push(`  name: '${target.name}',`)
-  lines.push(`  description: '${target.description}',`)
+  lines.push(`  name: '${esc(target.name)}',`)
+  lines.push(`  description: '${esc(target.description)}',`)
   lines.push(`  entry: ${entryStr},`)
   if (target.focus && target.focus.length > 0) {
     lines.push(`  focus: ${JSON.stringify(target.focus)},`)
@@ -159,6 +160,11 @@ export function appendTargetToFile(
     return
   }
 
-  const updated = content.slice(0, closingIndex) + snippet + '\n' + content.slice(closingIndex)
+  // Ensure the last entry before the closing bracket has a trailing comma
+  const beforeClose = content.slice(0, closingIndex).trimEnd()
+  const needsComma = beforeClose.length > 0 && !beforeClose.endsWith(',') && !beforeClose.endsWith('[') && !beforeClose.endsWith('{')
+
+  const commaPrefix = needsComma ? ',' : ''
+  const updated = content.slice(0, closingIndex) + commaPrefix + snippet + '\n' + content.slice(closingIndex)
   writeFileSync(filePath, updated, 'utf-8')
 }

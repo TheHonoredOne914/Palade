@@ -236,9 +236,9 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
 
   const keyName = parts[parts.length - 1]
   const escapedKey = keyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const keyPattern = new RegExp(`^(\\s*)${escapedKey}\\s*:\\s*(.*)$`)
+  const keyPattern = new RegExp(`^(\\s*)(?:['"]?${escapedKey}['"]?)\\s*:\\s*(.*)$`)
   // Matches "sectionKey: {" possibly with a trailing comment.
-  const sectionOpenPattern = /^(\s*)([A-Za-z_$][\w$-]*)\s*:\s*\{/
+  const sectionOpenPattern = /^(\s*)(?:['"]?([A-Za-z_$][\w$-]*)['"]?)\s*:\s*\{/
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -322,7 +322,7 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
       continue
     }
 
-    const openMatch = /^(\s*)([A-Za-z_$][\w$-]*)\s*:\s*\{/.exec(line)
+    const openMatch = /^(\s*)(?:['"]?([A-Za-z_$][\w$-]*)['"]?)\s*:\s*\{/.exec(line)
     if (openMatch) {
       pathStack2.push(openMatch[2])
       openIndents2.push(openMatch[1].length)

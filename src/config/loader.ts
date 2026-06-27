@@ -97,18 +97,24 @@ export async function loadConfig(): Promise<PaladeConfig> {
   }
 
   const envConfig = buildEnvConfig()
-  const rawProviders = (raw as Record<string, unknown>)?.providers as Record<string, unknown> | undefined
-  const envProviders = (envConfig as Record<string, unknown>).providers as Record<string, unknown> | undefined
+  const rawObj = (raw as Record<string, unknown>) ?? {}
+  const rawProviders = (rawObj.providers as Record<string, unknown>) ?? {}
+  const envProviders = (envConfig as Record<string, unknown>).providers as Record<string, unknown>
+
+  const mergedProviders: Record<string, unknown> = { ...envProviders }
+  for (const [key, val] of Object.entries(rawProviders)) {
+    if (typeof val === 'object' && val !== null) {
+      mergedProviders[key] = { ...(mergedProviders[key] as Record<string, unknown> ?? {}), ...val }
+    } else {
+      mergedProviders[key] = val
+    }
+  }
 
   const merged = {
     ...DEFAULT_CONFIG,
     ...envConfig,
-    ...(raw ?? {}),
-    // For providers: env vars fill in missing keys, file config overrides
-    providers: {
-      ...envProviders,
-      ...rawProviders,
-    }
+    ...rawObj,
+    providers: mergedProviders
   } as Record<string, unknown>
 
   const result = PaladeConfigSchema.safeParse(merged)

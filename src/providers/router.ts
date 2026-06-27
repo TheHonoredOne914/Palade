@@ -126,10 +126,14 @@ export class FallbackProvider implements IProvider {
           lastError.message.includes('rate limit') ||
           lastError.message.includes('daily limit') ||
           lastError.message.includes('exhausted') ||
+          lastError.message.includes('500') ||
           lastError.message.includes('502') ||
           lastError.message.includes('503') ||
+          lastError.message.includes('504') ||
           lastError.message.includes('timed out') ||
-          lastError.message.includes('timeout')
+          lastError.message.includes('timeout') ||
+          lastError.message.includes('ECONNREFUSED') ||
+          lastError.message.includes('fetch failed')
 
         if (isRetryable && i < this.chain.length - 1) {
           console.warn(

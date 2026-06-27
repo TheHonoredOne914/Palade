@@ -73,6 +73,7 @@ export async function triageFiles(
 
     if (rankedPaths.length > 0 && rankedPaths.every(p => typeof p === 'string')) {
       const selected: CodeChunk[] = []
+      const seenChunkIds = new Set<string>()
       let tokensUsed = 0
 
       for (const rankedPath of rankedPaths as string[]) {
@@ -84,8 +85,10 @@ export async function triageFiles(
           return false
         })
         for (const chunk of matching) {
+          if (seenChunkIds.has(chunk.id)) continue
           if (tokensUsed + chunk.tokenCount > budget) break
           selected.push(chunk)
+          seenChunkIds.add(chunk.id)
           tokensUsed += chunk.tokenCount
         }
       }

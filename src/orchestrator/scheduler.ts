@@ -59,6 +59,7 @@ export function estimateTotalTokens(chunks: CodeChunk[]): number {
 }
 
 export function scheduleBatches(chunks: CodeChunk[]): CodeChunk[][] {
+  if (chunks.length === 0) return []
   // Split oversized chunks recursively to ensure all pieces are under HARD_CHUNK_LIMIT
   function splitToLimit(chunk: CodeChunk, depth = 0): CodeChunk[] {
     if (depth > 10) {

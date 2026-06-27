@@ -6,9 +6,8 @@ export default [
     description: 'The core pipeline that manages code chunking, token budgets, agent scheduling, and merging results.',
     entry: ['src/orchestrator/'],
     focus: ['token budget enforcement', 'error propagation', 'race conditions'],
-  }
-
-{
+  },
+  {
     name: 'review-command',
     description: 'The CLI review command implementation that triggers the code review process',
     entry: ["src/cli/commands/review.ts"],

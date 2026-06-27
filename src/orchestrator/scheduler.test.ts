@@ -32,7 +32,7 @@ describe('scheduler', () => {
 
   describe('scheduleBatches', () => {
     it('handles empty input', () => {
-      expect(scheduleBatches([])).toEqual([[]])
+      expect(scheduleBatches([])).toEqual([])
     })
 
     it('puts chunks in a single batch if total <= 8000', () => {
