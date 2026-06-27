@@ -7,4 +7,11 @@ export default [
     entry: ['src/orchestrator/'],
     focus: ['token budget enforcement', 'error propagation', 'race conditions'],
   }
+
+{
+    name: 'review-command',
+    description: 'The CLI review command implementation that triggers the code review process',
+    entry: ["src/cli/commands/review.ts"],
+    focus: ["Argument parsing and validation","Error handling and edge cases","Asynchronous command flow and state management","Integration with diff and target subsystems"],
+  },
 ]

@@ -2,8 +2,10 @@ import { Command } from 'commander'
 import { searchTargets, getTargetFromRegistry, appendTargetToFile } from '../../targets/registry.js'
 import { loadTargets } from '../../targets/loader.js'
 import { theme } from '../../ui/theme.js'
+import { loadConfig } from '../../config/loader.js'
+import { initRouter } from '../../providers/router.js'
+import { generateTarget } from '../../targets/generator.js'
 import chalk from 'chalk'
-
 export const targetsCommand = new Command('targets')
   .description('Manage review targets (subsystems)')
 
@@ -45,6 +47,30 @@ targetsCommand
     console.log(
       theme.success(
         `Target "${target.name}" installed into palade.targets.ts`
+      )
+    )
+  })
+
+targetsCommand
+  .command('generate')
+  .description('Use AI to generate a target based on a natural language description')
+  .argument('<query>', 'Description of the subsystem (e.g. "user authentication flow")')
+  .action(async (query: string): Promise<void> => {
+    console.log(theme.dim(`  Initializing AI providers...`))
+    const config = await loadConfig()
+    await initRouter(config)
+
+    console.log(theme.dim(`  Analyzing repository structure for "${query}"...`))
+    const target = await generateTarget(query, process.cwd())
+    if (!target) {
+      console.log(theme.error('Failed to generate target.'))
+      return
+    }
+
+    appendTargetToFile(process.cwd(), target)
+    console.log(
+      theme.success(
+        `Target "${target.name}" generated and installed into palade.targets.ts\n  Run ${chalk.cyan(`palade review --target ${target.name}`)} to review it.`
       )
     )
   })
