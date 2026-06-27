@@ -207,8 +207,9 @@ export async function walkProject(
   }
 
   if (scope.targetPaths && scope.targetPaths.length > 0) {
-    const targetSet = new Set(scope.targetPaths)
-    manifests = manifests.filter(m => targetSet.has(m.path))
+    manifests = manifests.filter(m =>
+      scope.targetPaths!.some(t => m.path === t || m.path.startsWith(t + '/'))
+    )
   }
 
   // annotationsOnly filter

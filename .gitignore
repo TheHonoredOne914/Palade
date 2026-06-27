@@ -11,3 +11,7 @@ palade-badge.svg
 .DS_Store
 Thumbs.db
 *.swp
+
+# Palade
+palade.config.ts
+.palade/

@@ -170,6 +170,7 @@ export async function reviewCommand(
       definition: match,
       resolvedPaths: resolveTargetPaths(match, projectRoot),
     }
+    scope.targetPaths = resolvedTarget.resolvedPaths
   }
 
   // 7. Print run header

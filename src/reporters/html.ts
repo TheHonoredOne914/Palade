@@ -316,6 +316,21 @@ export function startLocalServer(
     res.end(html)
   })
 
+  htmlServer.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`Palade report server port ${port} is already in use. Opening file directly...`)
+      if (options.openBrowser !== false) {
+        // Fallback to opening the local file URI if the server can't start
+        const fileUri = `file://${htmlPath.replace(/\\/g, '/')}`
+        openBrowser(fileUri).catch(() => {
+          console.log(`Open manually: ${htmlPath}`)
+        })
+      }
+    } else {
+      console.error(`Failed to start report server: ${err.message}`)
+    }
+  })
+
   htmlServer.listen(port, '127.0.0.1', () => {
     console.log(`Palade report server running at ${url}`)
     if (options.openBrowser !== false) {
