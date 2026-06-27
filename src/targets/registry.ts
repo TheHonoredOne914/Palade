@@ -27,7 +27,7 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
 export async function searchTargets(query: string): Promise<RegistryTarget[]> {
   const params = new URLSearchParams({
     text: query,
-    size: '20'
+    size: '20',
   })
 
   let res: Response
@@ -59,24 +59,28 @@ export async function searchTargets(query: string): Promise<RegistryTarget[]> {
     const pkg = entry.package as Record<string, unknown> | undefined
     if (!pkg) continue
     if (typeof pkg.name !== 'string') continue
-    const hasPaladeKeyword = Array.isArray(pkg.keywords) &&
+    const hasPaladeKeyword =
+      Array.isArray(pkg.keywords) &&
       (pkg.keywords as string[]).some((k) => k === 'palade-target' || k === 'palade-targets')
-    if (!pkg.name.startsWith('palade-target-') && !pkg.name.startsWith('@palade-targets/') && !hasPaladeKeyword) continue
+    if (
+      !pkg.name.startsWith('palade-target-') &&
+      !pkg.name.startsWith('@palade-targets/') &&
+      !hasPaladeKeyword
+    )
+      continue
 
     results.push({
       name: pkg.name,
       description: typeof pkg.description === 'string' ? pkg.description : '',
       version: typeof pkg.version === 'string' ? pkg.version : '0.0.0',
-      keywords: Array.isArray(pkg.keywords) ? (pkg.keywords as string[]) : []
+      keywords: Array.isArray(pkg.keywords) ? (pkg.keywords as string[]) : [],
     })
   }
 
   return results
 }
 
-export async function getTargetFromRegistry(
-  packageName: string
-): Promise<TargetDefinition | null> {
+export async function getTargetFromRegistry(packageName: string): Promise<TargetDefinition | null> {
   let res: Response
   try {
     res = await fetchWithTimeout(
@@ -121,14 +125,11 @@ export async function getTargetFromRegistry(
     name,
     description,
     entry: typeof entry === 'string' ? entry : Array.isArray(entry) ? entry : '.',
-    focus: Array.isArray(focus) ? focus : undefined
+    focus: Array.isArray(focus) ? focus : undefined,
   }
 }
 
-export function appendTargetToFile(
-  projectRoot: string,
-  target: TargetDefinition
-): void {
+export function appendTargetToFile(projectRoot: string, target: TargetDefinition): void {
   const filePath = resolve(projectRoot, TARGETS_FILE)
 
   if (!existsSync(filePath)) {
@@ -136,9 +137,7 @@ export function appendTargetToFile(
     return
   }
 
-  const entryStr = Array.isArray(target.entry)
-    ? JSON.stringify(target.entry)
-    : `'${target.entry}'`
+  const entryStr = Array.isArray(target.entry) ? JSON.stringify(target.entry) : `'${target.entry}'`
 
   const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
   const lines: string[] = []
@@ -162,9 +161,14 @@ export function appendTargetToFile(
 
   // Ensure the last entry before the closing bracket has a trailing comma
   const beforeClose = content.slice(0, closingIndex).trimEnd()
-  const needsComma = beforeClose.length > 0 && !beforeClose.endsWith(',') && !beforeClose.endsWith('[') && !beforeClose.endsWith('{')
+  const needsComma =
+    beforeClose.length > 0 &&
+    !beforeClose.endsWith(',') &&
+    !beforeClose.endsWith('[') &&
+    !beforeClose.endsWith('{')
 
   const commaPrefix = needsComma ? ',' : ''
-  const updated = content.slice(0, closingIndex) + commaPrefix + snippet + '\n' + content.slice(closingIndex)
+  const updated =
+    content.slice(0, closingIndex) + commaPrefix + snippet + '\n' + content.slice(closingIndex)
   writeFileSync(filePath, updated, 'utf-8')
 }

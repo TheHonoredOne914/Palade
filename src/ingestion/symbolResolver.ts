@@ -46,7 +46,9 @@ export async function resolveSymbol(
 
   const doubleColonIndex = symbolRef.indexOf('::')
   if (doubleColonIndex === -1) {
-    console.warn(`Invalid symbol reference format: ${symbolRef}. Expected 'path/to/file::SymbolName'`)
+    console.warn(
+      `Invalid symbol reference format: ${symbolRef}. Expected 'path/to/file::SymbolName'`
+    )
     return null
   }
 
@@ -86,16 +88,21 @@ export async function resolveSymbol(
           const type = node.type
           const isTarget =
             (type === 'function_declaration' ||
-             type === 'class_declaration' ||
-             type === 'method_definition' ||
-             type === 'function_definition' ||
-             type === 'class_definition') &&
+              type === 'class_declaration' ||
+              type === 'method_definition' ||
+              type === 'function_definition' ||
+              type === 'class_definition') &&
             node.childCount > 0
 
           if (isTarget) {
             for (let i = 0; i < node.childCount; i++) {
               const child = node.child(i)
-              if (child && (child.type === 'identifier' || child.type === 'property_identifier' || child.type === 'type_identifier')) {
+              if (
+                child &&
+                (child.type === 'identifier' ||
+                  child.type === 'property_identifier' ||
+                  child.type === 'type_identifier')
+              ) {
                 if (child.text === symbolName) {
                   const startLine = node.startPosition.row + 1
                   const endLine = node.endPosition.row + 1
@@ -109,7 +116,7 @@ export async function resolveSymbol(
                     content: chunkContent,
                     symbolName,
                     tokenCount: Math.ceil(chunkContent.length / 4),
-                    language: getLanguage(filePath)
+                    language: getLanguage(filePath),
                   }
                 }
               }
@@ -138,7 +145,7 @@ export async function resolveSymbol(
     new RegExp(`(?:export\\s+)?class\\s+${escapeRegex(symbolName)}\\s`),
     new RegExp(`(?:export\\s+)?const\\s+${escapeRegex(symbolName)}\\s*=\\s*(?:async\\s+)?\\(`),
     new RegExp(`(?:def|async\\s+def)\\s+${escapeRegex(symbolName)}\\s*\\(`),
-    new RegExp(`(?:class)\\s+${escapeRegex(symbolName)}\\s*[:(]`)
+    new RegExp(`(?:class)\\s+${escapeRegex(symbolName)}\\s*[:(]`),
   ]
 
   for (let i = 0; i < lines.length; i++) {
@@ -164,7 +171,7 @@ export async function resolveSymbol(
           content: chunkContent,
           symbolName,
           tokenCount: Math.ceil(chunkContent.length / 4),
-          language: getLanguage(filePath)
+          language: getLanguage(filePath),
         }
       }
     }
@@ -176,7 +183,8 @@ export async function resolveSymbol(
 
 function getLanguage(filePath: string): CodeChunk['language'] {
   if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) return 'typescript'
-  if (filePath.endsWith('.js') || filePath.endsWith('.jsx') || filePath.endsWith('.mjs')) return 'javascript'
+  if (filePath.endsWith('.js') || filePath.endsWith('.jsx') || filePath.endsWith('.mjs'))
+    return 'javascript'
   if (filePath.endsWith('.py')) return 'python'
   if (filePath.endsWith('.go')) return 'go'
   if (filePath.endsWith('.rs')) return 'rust'

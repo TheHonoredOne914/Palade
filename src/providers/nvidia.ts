@@ -1,8 +1,4 @@
-import type {
-  IProvider,
-  CompletionRequest,
-  CompletionResponse,
-} from './base.js'
+import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 import { fetchWithRetry } from './base.js'
 
 const AVAILABILITY_CACHE_MS = 60_000
@@ -14,7 +10,11 @@ export class NvidiaProvider implements IProvider {
   private readonly baseUrl: string
   private availabilityCache: { result: boolean; timestamp: number } | null = null
 
-  constructor(apiKey: string, model = 'minimaxai/minimax-m3', baseUrl = 'https://integrate.api.nvidia.com/v1') {
+  constructor(
+    apiKey: string,
+    model = 'minimaxai/minimax-m3',
+    baseUrl = 'https://integrate.api.nvidia.com/v1'
+  ) {
     this.apiKey = apiKey
     this.model = model
     this.baseUrl = baseUrl
@@ -39,33 +39,30 @@ export class NvidiaProvider implements IProvider {
     // without losing the provider timeout.
     const timeoutSignal = AbortSignal.timeout(300_000)
     const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
-    const res = await fetchWithRetry(
-      `${this.baseUrl}/chat/completions`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            { role: 'system', content: req.systemPrompt },
-            { role: 'user', content: req.userPrompt },
-          ],
-          max_tokens: maxTokens,
-          temperature: req.temperature ?? 0.1,
-        }),
-        signal,
-      }
-    )
+    const res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          { role: 'system', content: req.systemPrompt },
+          { role: 'user', content: req.userPrompt },
+        ],
+        max_tokens: maxTokens,
+        temperature: req.temperature ?? 0.1,
+      }),
+      signal,
+    })
 
     if (!res.ok) {
       const body = await res.text()
       throw new Error(`NVIDIA error ${res.status}: ${body}`)
     }
 
-    const data = await res.json() as Record<string, unknown>
+    const data = (await res.json()) as Record<string, unknown>
     const durationMs = Date.now() - start
     const choices = data.choices as Array<{ message?: { content?: string } }> | undefined
     const content = choices?.[0]?.message?.content ?? ''
@@ -88,34 +85,6 @@ export class NvidiaProvider implements IProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    if (
-      this.availabilityCache &&
-      Date.now() - this.availabilityCache.timestamp < AVAILABILITY_CACHE_MS
-    ) {
-      return this.availabilityCache.result
-    }
-
-    try {
-      const res = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [{ role: 'user', content: 'hi' }],
-          max_tokens: 1,
-        }),
-      })
-      const result = res.ok
-      // Consume response body to prevent resource leak
-      await res.body?.cancel()
-      this.availabilityCache = { result, timestamp: Date.now() }
-      return result
-    } catch {
-      this.availabilityCache = { result: false, timestamp: Date.now() }
-      return false
-    }
+    return true
   }
 }

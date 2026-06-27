@@ -42,13 +42,23 @@ describe('error classes', () => {
     // named exports do not include it via the type system.
     // This test is a regression guard: re-adding the class won't break this,
     // but the tsc typecheck ensures the interface is consistent.
-    const liveExports = [PaladeConfigError, NoProvidersError, TargetNotFoundError, SwarmTimeoutError]
+    const liveExports = [
+      PaladeConfigError,
+      NoProvidersError,
+      TargetNotFoundError,
+      SwarmTimeoutError,
+    ]
     expect(liveExports).toHaveLength(4)
-    expect(liveExports.map(c => c.name)).not.toContain('ProviderRateLimitError')
+    expect(liveExports.map((c) => c.name)).not.toContain('ProviderRateLimitError')
   })
 
   it('IngestionError was removed (dead code cleanup)', () => {
-    const liveExports = [PaladeConfigError, NoProvidersError, TargetNotFoundError, SwarmTimeoutError]
-    expect(liveExports.map(c => c.name)).not.toContain('IngestionError')
+    const liveExports = [
+      PaladeConfigError,
+      NoProvidersError,
+      TargetNotFoundError,
+      SwarmTimeoutError,
+    ]
+    expect(liveExports.map((c) => c.name)).not.toContain('IngestionError')
   })
 })

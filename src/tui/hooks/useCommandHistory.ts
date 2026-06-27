@@ -18,10 +18,7 @@ export function useCommandHistory() {
       if (len === 0) return null
 
       if (dir === 'up') {
-        cursorRef.current =
-          cursorRef.current === -1
-            ? len - 1
-            : Math.max(0, cursorRef.current - 1)
+        cursorRef.current = cursorRef.current === -1 ? len - 1 : Math.max(0, cursorRef.current - 1)
       } else {
         if (cursorRef.current === -1) return null
         cursorRef.current = cursorRef.current + 1

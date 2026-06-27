@@ -41,10 +41,7 @@ export async function loadTargets(projectRoot: string): Promise<TargetDefinition
   return targets
 }
 
-export function resolveTargetPaths(
-  target: TargetDefinition,
-  projectRoot: string
-): string[] {
+export function resolveTargetPaths(target: TargetDefinition, projectRoot: string): string[] {
   const entry = Array.isArray(target.entry) ? target.entry : [target.entry]
   return entry.map((p) => {
     const abs = resolve(projectRoot, p)

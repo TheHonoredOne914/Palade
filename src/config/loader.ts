@@ -30,7 +30,10 @@ function collectKeys(prefix: string): string[] {
 }
 
 function buildEnvConfig(): Partial<PaladeConfig> {
-  const providers: Record<string, { apiKey: string; apiKeys?: string[]; model?: string }> = {}
+  const providers: Record<
+    string,
+    { apiKey: string; apiKeys?: string[]; model?: string; baseUrl?: string }
+  > = {}
 
   const groqKeys = collectKeys('GROQ')
   if (groqKeys.length > 0) {
@@ -39,17 +42,27 @@ function buildEnvConfig(): Partial<PaladeConfig> {
 
   const cerebrasKeys = collectKeys('CEREBRAS')
   if (cerebrasKeys.length > 0) {
-    providers.cerebras = { apiKey: cerebrasKeys[0], apiKeys: cerebrasKeys.length > 1 ? cerebrasKeys : undefined }
+    providers.cerebras = {
+      apiKey: cerebrasKeys[0],
+      apiKeys: cerebrasKeys.length > 1 ? cerebrasKeys : undefined,
+    }
   }
 
   const nvidiaKeys = collectKeys('NVIDIA')
   if (nvidiaKeys.length > 0) {
-    providers.nvidia = { apiKey: nvidiaKeys[0], apiKeys: nvidiaKeys.length > 1 ? nvidiaKeys : undefined, model: 'minimaxai/minimax-m3' }
+    providers.nvidia = {
+      apiKey: nvidiaKeys[0],
+      apiKeys: nvidiaKeys.length > 1 ? nvidiaKeys : undefined,
+      model: 'minimaxai/minimax-m3',
+    }
   }
 
   const openrouterKeys = collectKeys('OPENROUTER')
   if (openrouterKeys.length > 0) {
-    providers.openrouter = { apiKey: openrouterKeys[0], apiKeys: openrouterKeys.length > 1 ? openrouterKeys : undefined }
+    providers.openrouter = {
+      apiKey: openrouterKeys[0],
+      apiKeys: openrouterKeys.length > 1 ? openrouterKeys : undefined,
+    }
   }
 
   const opencodeZenKeys = collectKeys('OPENCODE_ZEN')
@@ -57,17 +70,27 @@ function buildEnvConfig(): Partial<PaladeConfig> {
     providers['opencode-zen'] = {
       apiKey: opencodeZenKeys[0],
       apiKeys: opencodeZenKeys.length > 1 ? opencodeZenKeys : undefined,
-      model: 'deepseek-v4-flash-free'
+      model: 'deepseek-v4-flash-free',
+    }
+  }
+
+  const ollamaModel = process.env.OLLAMA_MODEL
+  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL
+  if (ollamaModel || ollamaBaseUrl) {
+    providers['ollama'] = {
+      apiKey: 'local', // fake key to pass validations if needed
+      model: ollamaModel,
+      baseUrl: ollamaBaseUrl,
     }
   }
 
   return {
-    providers: providers as PaladeConfig['providers']
+    providers: providers as PaladeConfig['providers'],
   }
 }
 
 function formatZodError(error: z.ZodError): string {
-  const issues = error.issues.map(issue => {
+  const issues = error.issues.map((issue) => {
     const path = issue.path.join('.')
     return `Config error at ${path}: ${issue.message}`
   })
@@ -78,7 +101,22 @@ export async function loadConfig(): Promise<PaladeConfig> {
   let raw: Record<string, unknown> | undefined
 
   try {
-    const configPath = join(process.cwd(), 'palade.config.ts')
+    let configPath = join(process.cwd(), 'palade.config.ts')
+
+    const configArgIdx = process.argv.indexOf('--config')
+    if (configArgIdx !== -1 && process.argv.length > configArgIdx + 1) {
+      const rawPath = process.argv[configArgIdx + 1]
+      if (!rawPath.endsWith('.ts')) {
+        throw new PaladeConfigError('Config file must be a .ts file', '--config')
+      }
+
+      const absolutePath = join(process.cwd(), rawPath)
+      if (!absolutePath.startsWith(process.cwd())) {
+        throw new PaladeConfigError('Config file must be within the working directory', '--config')
+      }
+      configPath = absolutePath
+    }
+
     const fileUrl = pathToFileURL(configPath).href
     // Dynamic import with invalidation via import specifier — Node's ESM
     // loader ignores query strings for file:// URLs on most platforms, so we
@@ -104,15 +142,23 @@ export async function loadConfig(): Promise<PaladeConfig> {
   const mergedProviders: Record<string, unknown> = { ...envProviders }
   for (const [key, val] of Object.entries(rawProviders)) {
     if (typeof val === 'object' && val !== null) {
-      mergedProviders[key] = { ...(mergedProviders[key] as Record<string, unknown> ?? {}), ...val }
+      mergedProviders[key] = {
+        ...((mergedProviders[key] as Record<string, unknown>) ?? {}),
+        ...val,
+      }
     } else {
       mergedProviders[key] = val
     }
   }
 
-  const availableProviders = ['opencode-zen', 'groq', 'nvidia', 'cerebras', 'openrouter'].filter(
-    p => !!(mergedProviders[p] as any)?.apiKey
-  )
+  const availableProviders = [
+    'opencode-zen',
+    'groq',
+    'nvidia',
+    'cerebras',
+    'openrouter',
+    'ollama',
+  ].filter((p) => !!(mergedProviders[p] as any)?.apiKey)
   const defaultPrimary = availableProviders[0] ?? 'opencode-zen'
   const defaultSynthesis = availableProviders.length > 1 ? availableProviders[1] : defaultPrimary
 
@@ -124,12 +170,12 @@ export async function loadConfig(): Promise<PaladeConfig> {
     ...rawObj,
     swarm: {
       ...(DEFAULT_CONFIG.swarm as Record<string, unknown>),
-      ...((envConfig as Record<string, unknown>).swarm as Record<string, unknown> ?? {}),
+      ...(((envConfig as Record<string, unknown>).swarm as Record<string, unknown>) ?? {}),
       ...rawSwarm,
       primary: rawSwarm.primary ?? defaultPrimary,
-      synthesis: rawSwarm.synthesis ?? defaultSynthesis
+      synthesis: rawSwarm.synthesis ?? defaultSynthesis,
     },
-    providers: mergedProviders
+    providers: mergedProviders,
   } as Record<string, unknown>
 
   const result = PaladeConfigSchema.safeParse(merged)

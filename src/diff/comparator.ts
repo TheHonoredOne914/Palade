@@ -82,10 +82,7 @@ function findingOverlapsAdded(
  * those that fall within added/changed lines of the diff. This produces a
  * meaningful "introduced" set instead of marking every finding as new.
  */
-export function scopeToDiff(
-  findings: AgentFinding[],
-  changedFiles: ChangedFile[]
-): AgentFinding[] {
+export function scopeToDiff(findings: AgentFinding[], changedFiles: ChangedFile[]): AgentFinding[] {
   const addedByPath = new Map<string, Array<[number, number]>>()
   for (const cf of changedFiles) {
     if (cf.diff && cf.status !== 'deleted') {
@@ -107,9 +104,7 @@ export function compareFindings(
 ): FindingDiff {
   const changedPaths = new Set(changedFiles.map((f) => f.path))
 
-  const headInScope = headFindings.filter(
-    (f) => f.filePath && changedPaths.has(f.filePath)
-  )
+  const headInScope = headFindings.filter((f) => f.filePath && changedPaths.has(f.filePath))
 
   // If no base findings were provided, we can't determine unchanged/resolved.
   // Scope head findings to the actual diff regions for a meaningful
@@ -118,15 +113,11 @@ export function compareFindings(
   // content is available (e.g. callers that only provide file-level metadata).
   if (baseFindings.length === 0) {
     const hasDiffContent = changedFiles.some((cf) => cf.diff && cf.diff.length > 0)
-    const introduced = hasDiffContent
-      ? scopeToDiff(headInScope, changedFiles)
-      : headInScope
+    const introduced = hasDiffContent ? scopeToDiff(headInScope, changedFiles) : headInScope
     return { introduced, resolved: [], unchanged: [] }
   }
 
-  const baseInScope = baseFindings.filter(
-    (f) => f.filePath && changedPaths.has(f.filePath)
-  )
+  const baseInScope = baseFindings.filter((f) => f.filePath && changedPaths.has(f.filePath))
 
   const headFingerprints = new Set(headInScope.map(buildFingerprint))
   const baseFingerprints = new Set(baseInScope.map(buildFingerprint))
@@ -195,8 +186,7 @@ export function compareFindings(
 export function rankIntroducedFindings(introduced: AgentFinding[]): AgentFinding[] {
   const severityOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
   return [...introduced].sort((a, b) => {
-    const sevDiff =
-      (severityOrder[a.severity] ?? 5) - (severityOrder[b.severity] ?? 5)
+    const sevDiff = (severityOrder[a.severity] ?? 5) - (severityOrder[b.severity] ?? 5)
     if (sevDiff !== 0) return sevDiff
     return (b.scorePenalty ?? 0) - (a.scorePenalty ?? 0)
   })

@@ -90,9 +90,7 @@ async function mainMenu(projectRoot: string): Promise<void> {
 async function providersMenu(projectRoot: string): Promise<void> {
   console.log()
   console.log(theme.dim('  Providers — configure API access'))
-  console.log(
-    theme.dim('  Keys are read from env vars or typed here (not stored in plain text)')
-  )
+  console.log(theme.dim('  Keys are read from env vars or typed here (not stored in plain text)'))
   console.log()
 
   const { provider } = await Inq.prompt<{ provider: string }>([
@@ -119,16 +117,9 @@ async function providersMenu(projectRoot: string): Promise<void> {
   if (provider === 'back') return
 
   const providerModels: Record<string, string[]> = {
-    groq: [
-      'llama-3.3-70b-versatile',
-      'llama-3.1-70b-versatile',
-      'mixtral-8x7b-32768',
-    ],
+    groq: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'mixtral-8x7b-32768'],
     cerebras: ['llama-3.3-70b', 'llama-3.1-70b'],
-    nvidia: [
-      'meta/llama-3.3-70b-instruct',
-      'nvidia/llama-3.1-nemotron-70b-instruct',
-    ],
+    nvidia: ['meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct'],
   }
 
   const answers = await inquirer.prompt([
@@ -346,9 +337,7 @@ async function ignoreMenu(projectRoot: string): Promise<void> {
 }
 
 function envStatus(envVar: string): string {
-  return process.env[envVar]
-    ? chalk.hex('#10B981')('● set')
-    : chalk.hex('#EF4444')('○ not set')
+  return process.env[envVar] ? chalk.hex('#10B981')('● set') : chalk.hex('#EF4444')('○ not set')
 }
 
 async function writeConfigPatch(
@@ -395,12 +384,8 @@ async function writeConfigPatch(
   // and abort. Their manual edits outside the patch cannot be safely preserved.
   if (fileExists && !hasExistingObject) {
     console.log()
-    console.log(
-      theme.error('  ✗  Cannot safely modify complex palade.config.ts automatically.')
-    )
-    console.log(
-      theme.dim('     Please edit the configuration file manually.')
-    )
+    console.log(theme.error('  ✗  Cannot safely modify complex palade.config.ts automatically.'))
+    console.log(theme.dim('     Please edit the configuration file manually.'))
     return
   }
 
@@ -409,7 +394,10 @@ async function writeConfigPatch(
   await writeFile(configPath, generateConfigString(merged), 'utf-8')
 }
 
-function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
+): Record<string, unknown> {
   const result = { ...target }
   for (const key of Object.keys(source)) {
     const srcVal = source[key]

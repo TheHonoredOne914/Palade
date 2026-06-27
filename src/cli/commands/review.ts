@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import { loadConfig } from '../../config/loader.js'
-import { initRouter } from '../../providers/router.js'
+import { initRouter, AllProvidersExhaustedError } from '../../providers/router.js'
 import { loadTargets, resolveTargetPaths } from '../../targets/loader.js'
 import { loadCustomAgents } from '../../agents/custom/loader.js'
 import { launchPicker } from '../picker.js'
@@ -30,9 +30,13 @@ import type { ResolvedTarget } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import { groupBySeverity } from '../../orchestrator/merger.js'
 import { CliExitError } from '../../errors/types.js'
+import { detectLanguages } from '../../ingestion/walker.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync, statSync } from 'node:fs'
 import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'node:path'
+
+// Local execution (no API keys required):
+//   OLLAMA_MODEL=codellama:13b npx palade review --target src/
 
 interface ReviewOptions {
   target?: string
@@ -47,7 +51,10 @@ interface ReviewOptions {
   format?: string
   open?: boolean
   quiet?: boolean
+  signal?: AbortSignal
+  dryRun?: boolean
   economy?: boolean
+  exhaustive?: boolean
 }
 
 export async function reviewCommand(
@@ -64,7 +71,9 @@ export async function reviewCommand(
   }
 
   const resolvedPath = rawPath
-    ? (isAbsolute(rawPath) ? rawPath : resolve(process.cwd(), rawPath))
+    ? isAbsolute(rawPath)
+      ? rawPath
+      : resolve(process.cwd(), rawPath)
     : process.cwd()
 
   if (!existsSync(resolvedPath)) {
@@ -93,7 +102,9 @@ export async function reviewCommand(
       throw new CliExitError(1)
     }
     resolvedSymbolChunk = chunk
-    console.log(theme.success(`  ✓ Resolved symbol: ${chunk.filePath}:${chunk.startLine}-${chunk.endLine}`))
+    console.log(
+      theme.success(`  ✓ Resolved symbol: ${chunk.filePath}:${chunk.startLine}-${chunk.endLine}`)
+    )
   }
 
   // 1. Load config + init providers
@@ -124,7 +135,7 @@ export async function reviewCommand(
   const scopeFiles = singleFile
     ? [singleFile]
     : opts.file && opts.file.length > 0
-      ? opts.file.map(f => isAbsolute(f) ? relative(projectRoot, f).split(sep).join('/') : f)
+      ? opts.file.map((f) => (isAbsolute(f) ? relative(projectRoot, f).split(sep).join('/') : f))
       : undefined
   const scope: ScopeOptions = {
     projectRoot,
@@ -165,7 +176,6 @@ export async function reviewCommand(
       )
       throw new CliExitError(1)
     }
-    console.log(theme.accent(`  Running review for target: ${match.name}`))
     resolvedTarget = {
       definition: match,
       resolvedPaths: resolveTargetPaths(match, projectRoot),
@@ -173,12 +183,28 @@ export async function reviewCommand(
     scope.targetPaths = resolvedTarget.resolvedPaths
   }
 
+  // 6b. Language Detection
+  const langProfile = await detectLanguages(projectRoot, scope)
+
   // 7. Print run header
   if (!opts.quiet) {
+    if (!langProfile.isFirstClass) {
+      console.log(
+        chalk.yellow(
+          `\n  ⚠ Non-primary language detected (${langProfile.primary.join(', ')}). Palade is optimized for JS/TS. Findings may be less accurate.`
+        )
+      )
+    }
+
     const rows: [string, string][] = [
       ['Project:', `${theme.white(basename(projectRoot))}`],
       ['Mode:', theme.accent(mode)],
-      ['Scope:', theme.dim(opts.target ? `target: ${opts.target}` : opts.dir ? `dir: ${opts.dir}` : 'full codebase')],
+      [
+        'Scope:',
+        theme.dim(
+          opts.target ? `target: ${opts.target}` : opts.dir ? `dir: ${opts.dir}` : 'full codebase'
+        ),
+      ],
       ['Swarm:', `${theme.white(config.swarm.primary)} → ${config.swarm.agentCount} agents`],
       ['Synthesis:', theme.white(config.swarm.synthesis)],
     ]
@@ -192,16 +218,14 @@ export async function reviewCommand(
   // 8. Run pipeline with progress
   const agentCount = config.swarm.agentCount
   let completedAgents = 0
-  const progress = opts.quiet
-    ? undefined
-    : createLiveProgress()
+  const progress = opts.quiet ? undefined : createLiveProgress()
   let swarmResult: any
   try {
     swarmResult = await runPipeline({
       projectRoot,
       scope,
       context: {
-        projectLanguages: [],
+        projectLanguages: langProfile.primary,
         totalFiles: 0,
         totalChunks: 0,
         mode,
@@ -211,11 +235,7 @@ export async function reviewCommand(
         onAgentStart: (name: AgentName): void => {
           progress?.agentStart(name)
         },
-        onAgentComplete: (
-          name: AgentName,
-          findings: number,
-          durationMs: number
-        ): void => {
+        onAgentComplete: (name: AgentName, findings: number, durationMs: number): void => {
           completedAgents++
           progress?.agentDone(name, findings, durationMs)
         },
@@ -229,9 +249,28 @@ export async function reviewCommand(
         maxReviewTokens: config.swarm.maxReviewTokens,
         customAgents: customAgentDefs,
         economyMode: opts.economy ?? config.swarm.economyMode,
+        exhaustive: opts.exhaustive,
+        signal: opts.signal,
       },
       target: resolvedTarget,
+      dryRunConfig: opts.dryRun ? config : undefined,
     })
+  } catch (err: unknown) {
+    if (err instanceof AllProvidersExhaustedError) {
+      console.error(
+        chalk.red('\n✖ All LLM providers failed. Palade could not complete this review.\n')
+      )
+      console.error('Attempted providers:')
+      err.attempts.forEach((attempt, i) => {
+        console.error(`  ${i + 1}. ${attempt.provider.padEnd(10)} → ${attempt.finalError}`)
+      })
+      console.error('\nSuggestions:')
+      console.error('  • Check your API key environment variables')
+      console.error('  • Try again in a few minutes')
+      console.error('  • Add a local fallback: OLLAMA_MODEL=codellama:13b\n')
+      throw new CliExitError(1)
+    }
+    throw err
   } finally {
     progress?.stop()
   }
@@ -279,9 +318,7 @@ export async function reviewCommand(
   const dateStr = new Date().toISOString().slice(0, 10)
   const runId = crypto.randomBytes(3).toString('hex') // 6-char hex, avoids same-day collisions
   const reportName = `${dateStr}-${scoreResult.score}-${runId}`
-  const formats = (opts.format ?? config.output.formats.join(','))
-    .split(',')
-    .map((f) => f.trim())
+  const formats = (opts.format ?? config.output.formats.join(',')).split(',').map((f) => f.trim())
 
   const reporterCtx = {
     score: scoreResult,
@@ -296,8 +333,9 @@ export async function reviewCommand(
     },
   }
 
+  let jsonPath: string | undefined
   if (formats.includes('json')) {
-    const jsonPath = join(outputDir, `${reportName}.json`)
+    jsonPath = join(outputDir, `${reportName}.json`)
     reportJson(reporterCtx, jsonPath)
   }
 
@@ -315,10 +353,7 @@ export async function reviewCommand(
   // 13. Handle onboard mode output
   if (mode === 'onboard' && swarmResult.synthesis.executiveSummary) {
     const onboardDir = join(outputDir, `onboard-${dateStr}`)
-    const paths = await writeOnboardDocs(
-      swarmResult.synthesis.executiveSummary,
-      onboardDir
-    )
+    const paths = await writeOnboardDocs(swarmResult.synthesis.executiveSummary, onboardDir)
     if (paths.length > 0) {
       console.log(theme.success(`  ✓ Onboard docs written to ${onboardDir}/`))
     }
@@ -334,9 +369,7 @@ export async function reviewCommand(
   console.log()
   console.log(divider())
 
-  const scoreStr = scoreTheme(scoreResult.score)(
-    `${scoreResult.score}/100`
-  )
+  const scoreStr = scoreTheme(scoreResult.score)(`${scoreResult.score}/100`)
   const deltaStr = formatDelta(scoreResult.delta)
   const gradeStr = scoreGrade(scoreResult.score)
 
@@ -360,9 +393,10 @@ export async function reviewCommand(
   console.log()
 
   if (htmlPath) {
-    console.log(
-      `  ${theme.dim('→ Report')}   ${chalk.cyan(htmlPath)}`
-    )
+    console.log(`  ${theme.dim('→ HTML')}     ${chalk.cyan(htmlPath)}`)
+  }
+  if (jsonPath) {
+    console.log(`  ${theme.dim('→ JSON')}     ${chalk.cyan(jsonPath)} ${theme.dim('(ready for AI agents)')}`)
   }
   if (config.score.badge) {
     console.log(
@@ -372,17 +406,17 @@ export async function reviewCommand(
 
   console.log()
   console.log(divider())
-  console.log(
-    `  ${theme.dim('Total time:')}  ${(swarmResult.durationMs / 1000).toFixed(1)}s`
-  )
+  console.log(`  ${theme.dim('Total time:')}  ${(swarmResult.durationMs / 1000).toFixed(1)}s`)
   if (swarmResult.fallbackStats) {
     const fs = swarmResult.fallbackStats
     const pFallbacks = fs.primary.fallbacks
     const sFallbacks = fs.synthesis.fallbacks
     if (pFallbacks > 0 || sFallbacks > 0) {
       const parts: string[] = []
-      if (pFallbacks > 0) parts.push(`primary: ${pFallbacks}/${fs.primary.total} calls used fallback`)
-      if (sFallbacks > 0) parts.push(`synthesis: ${sFallbacks}/${fs.synthesis.total} calls used fallback`)
+      if (pFallbacks > 0)
+        parts.push(`primary: ${pFallbacks}/${fs.primary.total} calls used fallback`)
+      if (sFallbacks > 0)
+        parts.push(`synthesis: ${sFallbacks}/${fs.synthesis.total} calls used fallback`)
       console.log(`  ${chalk.yellow('⚠')} ${theme.dim(parts.join(' | '))}`)
     }
   }

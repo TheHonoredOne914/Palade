@@ -13,7 +13,7 @@ export type AgentName =
   | 'maintainability'
   | 'deadCode'
   | 'testIntelligence'
-  | (string & {})  // widen to string while keeping autocomplete for built-ins
+  | (string & {}) // widen to string while keeping autocomplete for built-ins
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'
 
@@ -95,10 +95,7 @@ export const SEVERITY_PENALTY: Record<Severity, number> = {
 
 export function buildChunkContext(chunks: CodeChunk[]): string {
   return chunks
-    .map(
-      (c) =>
-        `=== FILE: ${c.filePath} (lines ${c.startLine}–${c.endLine}) ===\n${c.content}`
-    )
+    .map((c) => `=== FILE: ${c.filePath} (lines ${c.startLine}–${c.endLine}) ===\n${c.content}`)
     .join('\n\n')
 }
 
@@ -149,7 +146,10 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
       if (!(severity in SEVERITY_PENALTY)) continue
       findings.push({
         id: crypto.randomUUID(),
-        agentName: (typeof obj.agentName === 'string' && obj.agentName ? obj.agentName as AgentName : agentName),
+        agentName:
+          typeof obj.agentName === 'string' && obj.agentName
+            ? (obj.agentName as AgentName)
+            : agentName,
         severity,
         title: obj.title as string,
         description: (obj.description as string) ?? '',

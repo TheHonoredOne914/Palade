@@ -2,9 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { resolveTargetPaths } from './loader.js'
 
 describe('resolveTargetPaths', () => {
-  const projectRoot = process.platform === 'win32'
-    ? 'C:\\Users\\dev\\myproject'
-    : '/home/dev/myproject'
+  const projectRoot =
+    process.platform === 'win32' ? 'C:\\Users\\dev\\myproject' : '/home/dev/myproject'
 
   it('returns forward-slash relative paths (never absolute)', () => {
     const target = { name: 'auth', entry: 'src/auth/', description: '' }
@@ -12,8 +11,8 @@ describe('resolveTargetPaths', () => {
     expect(result).toEqual(['src/auth'])
     for (const p of result) {
       expect(p).not.toContain('\\')
-      expect(p).not.toMatch(/^[A-Z]:/i)  // not a Windows absolute path
-      expect(p).not.toMatch(/^\//)       // not a Unix absolute path
+      expect(p).not.toMatch(/^[A-Z]:/i) // not a Windows absolute path
+      expect(p).not.toMatch(/^\//) // not a Unix absolute path
     }
   })
 

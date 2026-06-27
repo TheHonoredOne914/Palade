@@ -1,5 +1,10 @@
 export type Language = 'typescript' | 'javascript' | 'python' | 'go' | 'rust' | 'unknown'
 
+export interface LanguageProfile {
+  primary: Language[]
+  isFirstClass: boolean
+}
+
 export interface Annotation {
   type: 'review' | 'focus' | 'ignore'
   value?: string

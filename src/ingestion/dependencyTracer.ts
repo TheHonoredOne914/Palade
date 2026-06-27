@@ -72,10 +72,10 @@ export async function traceDependencies(
         resolvedFromRoot + '.py',
         resolvedFromRoot.replace(/\.js$/, '.ts'),
         resolvedFromRoot.replace(/\.js$/, '.tsx'),
-        resolvedFromRoot.replace(/\.mjs$/, '.ts')
+        resolvedFromRoot.replace(/\.mjs$/, '.ts'),
       ]
 
-      const foundPath = candidates.find(p => existsSync(p))
+      const foundPath = candidates.find((p) => existsSync(p))
       if (!foundPath) continue
 
       const relFromRoot = normalizePath(relative(projectRoot, foundPath))

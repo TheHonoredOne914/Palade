@@ -1,0 +1,21 @@
+# Exclude source code
+src/
+tsconfig.json
+eslint.config.js
+.prettierrc
+
+# Exclude tests and fixtures
+test-project/
+tests/
+coverage/
+
+# Exclude github actions
+.github/
+
+# Exclude local artifacts
+.palade/
+sample-report.html
+.env
+.tmp*/
+
+# (The dist/, bin/, templates/ directories are implicitly included by package.json's "files" array)

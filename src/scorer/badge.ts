@@ -5,7 +5,7 @@ const COLOR_MAP: Record<BadgeColor, string> = {
   green: '#97ca00',
   yellow: '#dfb317',
   orange: '#fe7d37',
-  red: '#e05d44'
+  red: '#e05d44',
 }
 
 export function getScoreColor(score: number): BadgeColor {
@@ -21,7 +21,7 @@ export function getBadgeData(score: number): BadgeData {
   return {
     score: `${score}/100`,
     color: getScoreColor(score),
-    label: 'palade'
+    label: 'palade',
   }
 }
 

@@ -10,7 +10,7 @@ const CATEGORY_LABELS: Record<ScoreCategory, string> = {
   performance: 'Performance',
   maintainability: 'Maintainability',
   deadCode: 'Dead Code',
-  testIntelligence: 'Test Intelligence'
+  testIntelligence: 'Test Intelligence',
 }
 
 const SEVERITY_COLORS: Record<Severity, (text: string) => string> = {
@@ -18,7 +18,7 @@ const SEVERITY_COLORS: Record<Severity, (text: string) => string> = {
   high: chalk.red,
   medium: chalk.yellow,
   low: chalk.blue,
-  info: chalk.gray
+  info: chalk.gray,
 }
 
 function getScoreColor(score: number): (text: string) => string {
@@ -59,9 +59,14 @@ function renderCategoryScore(category: string, score: number, findingCount: numb
   return `  ${chalk.bold(category.padEnd(20))} ${bar} ${color(score.toString().padStart(3))} ${chalk.gray(`(${findingCount} findings)`)}`
 }
 
-function renderFinding(finding: { severity: Severity; title: string; filePath?: string; lineStart?: number }): string {
+function renderFinding(finding: {
+  severity: Severity
+  title: string
+  filePath?: string
+  lineStart?: number
+}): string {
   const severityColor = SEVERITY_COLORS[finding.severity]
-  const location = finding.filePath 
+  const location = finding.filePath
     ? chalk.gray(` → ${finding.filePath}${finding.lineStart ? `:${finding.lineStart}` : ''}`)
     : ''
   return `    ${severityColor(finding.severity.toUpperCase().padEnd(8))} ${finding.title}${location}`
@@ -75,22 +80,24 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
   lines.push(chalk.bold.blue('║                    PALADE ANALYSIS REPORT                   ║'))
   lines.push(chalk.bold.blue('╚══════════════════════════════════════════════════════════════╝'))
   lines.push('')
-  
+
   const scoreColor = getScoreColor(ctx.score.score)
   const grade = getScoreGrade(ctx.score.score)
-  lines.push(`${chalk.bold('Overall Score:')} ${scoreColor(ctx.score.score.toString())} ${chalk.gray(`/ 100`)} ${chalk.bold(`(${grade})`)}`)
+  lines.push(
+    `${chalk.bold('Overall Score:')} ${scoreColor(ctx.score.score.toString())} ${chalk.gray(`/ 100`)} ${chalk.bold(`(${grade})`)}`
+  )
   lines.push(`${chalk.bold('Score Delta:')} ${formatDelta(ctx.score.delta)}`)
   lines.push('')
-  
+
   lines.push(chalk.bold.underline('Category Breakdown:'))
   for (const cat of ctx.score.breakdown.categories) {
     lines.push(renderCategoryScore(CATEGORY_LABELS[cat.category], cat.score, cat.findingCount))
   }
   lines.push('')
-  
-  const criticalFindings = ctx.findings.filter(f => f.severity === 'critical')
-  const highFindings = ctx.findings.filter(f => f.severity === 'high')
-  
+
+  const criticalFindings = ctx.findings.filter((f) => f.severity === 'critical')
+  const highFindings = ctx.findings.filter((f) => f.severity === 'high')
+
   if (criticalFindings.length > 0) {
     lines.push(chalk.red.bold(`⚠ ${criticalFindings.length} Critical Finding(s):`))
     for (const f of criticalFindings.slice(0, 5)) {
@@ -101,7 +108,7 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
     }
     lines.push('')
   }
-  
+
   if (highFindings.length > 0) {
     lines.push(chalk.yellow.bold(`⚠ ${highFindings.length} High Finding(s):`))
     for (const f of highFindings.slice(0, 5)) {
@@ -112,17 +119,19 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
     }
     lines.push('')
   }
-  
+
   if (ctx.synthesis.priorityFixes.length > 0) {
     lines.push(chalk.bold.underline('Priority Fixes:'))
     for (const fix of ctx.synthesis.priorityFixes.slice(0, 3)) {
       lines.push(`  ${chalk.bold(`#${fix.rank}`)} ${chalk.cyan(fix.title)}`)
       lines.push(`     ${chalk.gray(fix.rationale)}`)
-      lines.push(`     ${chalk.yellow(`~${fix.estimatedHours}h`)} → ${chalk.gray(fix.affectedFiles.join(', '))}`)
+      lines.push(
+        `     ${chalk.yellow(`~${fix.estimatedHours}h`)} → ${chalk.gray(fix.affectedFiles.join(', '))}`
+      )
     }
     lines.push('')
   }
-  
+
   // Surface when findings came from a degraded/fallback source, not the
   // configured primary provider. This is the R2 tagging contract: specialists
   // stamp each finding with the actual provider/model that answered.
@@ -143,26 +152,41 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
     }
     lines.push('')
   }
-  
+
   lines.push(chalk.bold.underline('Debt Estimate:'))
   const debt = ctx.synthesis.debtEstimate
-  lines.push(`  Critical: ${chalk.red(debt.critical.toString())} | High: ${chalk.yellow(debt.high.toString())} | Medium: ${chalk.blue(debt.medium.toString())} | Low: ${chalk.gray(debt.low.toString())}`)
-  lines.push(`  Total: ${chalk.bold(debt.total.toString())} findings`)
+  const debtCounts = { critical: 0, high: 0, medium: 0, low: 0, total: 0 }
+  for (const f of ctx.findings) {
+    if (f.severity === 'critical') debtCounts.critical++
+    if (f.severity === 'high') debtCounts.high++
+    if (f.severity === 'medium') debtCounts.medium++
+    if (f.severity === 'low') debtCounts.low++
+    debtCounts.total++
+  }
+
+  lines.push(
+    `  Critical: ${chalk.red(debtCounts.critical.toString())} | High: ${chalk.yellow(debtCounts.high.toString())} | Medium: ${chalk.blue(debtCounts.medium.toString())} | Low: ${chalk.gray(debtCounts.low.toString())}`
+  )
+  lines.push(`  Total: ${chalk.bold(debtCounts.total.toString())} findings`)
   if (debt.highestROIFix) {
     lines.push(`  Highest ROI: ${chalk.green(debt.highestROIFix)}`)
   }
   lines.push('')
-  
+
   lines.push(chalk.dim(`Run ID: ${ctx.swarm.runId}`))
-  lines.push(chalk.dim(`Duration: ${(ctx.swarm.durationMs / 1000).toFixed(1)}s | Chunks: ${ctx.swarm.totalChunks} | Tokens: ${ctx.swarm.totalTokensEstimated.toLocaleString()}`))
+  lines.push(
+    chalk.dim(
+      `Duration: ${(ctx.swarm.durationMs / 1000).toFixed(1)}s | Chunks: ${ctx.swarm.totalChunks} | Tokens: ${ctx.swarm.totalTokensEstimated.toLocaleString()}`
+    )
+  )
   lines.push('')
-  
+
   const content = lines.join('\n')
   console.log(content)
-  
+
   return {
     format: 'terminal',
-    content
+    content,
   }
 }
 
@@ -180,8 +204,12 @@ export function printDiffBanner(ctx: {
   console.log(chalk.bold.blue('╚══════════════════════════════════════════════════════════════╝'))
   console.log('')
   console.log(`  ${chalk.bold('Project:')}   ${ctx.projectName}`)
-  console.log(`  ${chalk.bold('Comparing:')} ${chalk.cyan(ctx.headBranch)} → ${chalk.gray(ctx.baseBranch)}`)
-  console.log(`  ${chalk.bold('Changed:')}   ${ctx.changedCount} files  ${chalk.green(`(+${ctx.additions})`)} ${chalk.red(`(-${ctx.deletions})`)}`)
+  console.log(
+    `  ${chalk.bold('Comparing:')} ${chalk.cyan(ctx.headBranch)} → ${chalk.gray(ctx.baseBranch)}`
+  )
+  console.log(
+    `  ${chalk.bold('Changed:')}   ${ctx.changedCount} files  ${chalk.green(`(+${ctx.additions})`)} ${chalk.red(`(-${ctx.deletions})`)}`
+  )
   console.log('')
 }
 
@@ -210,7 +238,9 @@ export function printDiffSummary(ctx: {
     `  ${chalk.bold('Diff Score:')}  ${scoreColor(score.score.toString())} ${chalk.gray('/ 100')} ${chalk.bold(`(delta: ${deltaStr} vs ${baseBranch})`)}`
   )
   console.log('')
-  console.log(`  Findings in changed files: ${chalk.bold(String(findingDiff.introduced.length))} total`)
+  console.log(
+    `  Findings in changed files: ${chalk.bold(String(findingDiff.introduced.length))} total`
+  )
 
   const critical = findingDiff.introduced.filter((f) => f.severity === 'critical')
   const high = findingDiff.introduced.filter((f) => f.severity === 'high')
@@ -231,7 +261,9 @@ export function printDiffSummary(ctx: {
     console.log('')
     console.log(chalk.red.bold(`  ⚠ ${critical.length} critical finding(s) introduced:`))
     for (const f of critical.slice(0, 3)) {
-      const loc = f.filePath ? chalk.gray(` → ${f.filePath}${f.lineStart ? `:${f.lineStart}` : ''}`) : ''
+      const loc = f.filePath
+        ? chalk.gray(` → ${f.filePath}${f.lineStart ? `:${f.lineStart}` : ''}`)
+        : ''
       console.log(`    ${chalk.red(f.title)}${loc}`)
     }
     if (critical.length > 3) {

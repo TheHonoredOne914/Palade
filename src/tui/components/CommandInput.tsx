@@ -1,5 +1,5 @@
 import React from 'react'
-import { Box, Text, useInput } from 'ink'
+import { Box, Text } from 'ink'
 import TextInput from 'ink-text-input'
 import Spinner from 'ink-spinner'
 
@@ -18,11 +18,6 @@ export function CommandInput({
   onHistoryNav,
   isRunning,
 }: CommandInputProps): React.JSX.Element {
-  useInput((_, key) => {
-    if (key.upArrow) { onHistoryNav('up'); return }
-    if (key.downArrow) { onHistoryNav('down'); return }
-  })
-
   return (
     <Box
       borderStyle="round"
@@ -32,7 +27,7 @@ export function CommandInput({
       gap={1}
     >
       <Text color={isRunning ? '#FF9933' : '#00D0FF'} bold>
-        {isRunning ? <Spinner type="aesthetic" /> : '🦉 ❯'}
+        {isRunning ? <Spinner type="aesthetic" /> : '❯'}
       </Text>
       {isRunning ? (
         <Text color="#6B7280">Swarm executing... (Ctrl+C to interrupt)</Text>

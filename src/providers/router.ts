@@ -7,7 +7,16 @@ import { NoProvidersError } from '../errors/types.js'
 import { NvidiaProvider } from './nvidia.js'
 import { OpenRouterProvider } from './openrouter.js'
 import { OpenCodeZenProvider } from './opencode-zen.js'
+import OllamaProvider from './ollama.js'
 import { ProviderPool } from './pool.js'
+import { withExponentialBackoff } from './backoff.js'
+
+export class AllProvidersExhaustedError extends Error {
+  constructor(public readonly attempts: { provider: string; finalError: string }[]) {
+    super(`All ${attempts.length} providers failed. See .attempts for details.`)
+    this.name = 'AllProvidersExhaustedError'
+  }
+}
 
 export type ProviderRole = 'primary' | 'synthesis'
 
@@ -45,19 +54,27 @@ function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[]
       case 'opencode-zen':
         instances.push(new OpenCodeZenProvider(key, cfg.model))
         break
+      case 'ollama':
+        instances.push(new OllamaProvider(cfg.model, cfg.baseUrl))
+        break
     }
   }
 
   return instances
 }
 
-function instantiateProviders(
-  providers: PaladeConfig['providers']
-): Map<string, IProvider> {
+function instantiateProviders(providers: PaladeConfig['providers']): Map<string, IProvider> {
   const map = new Map<string, IProvider>()
 
-  for (const name of ['opencode-zen', 'nvidia', 'groq', 'cerebras', 'openrouter'] as const) {
-    const cfg = providers[name]
+  for (const name of [
+    'opencode-zen',
+    'nvidia',
+    'groq',
+    'cerebras',
+    'openrouter',
+    'ollama',
+  ] as const) {
+    const cfg = providers[name as keyof PaladeConfig['providers']]
     if (cfg && 'apiKey' in cfg && cfg.apiKey) {
       const instances = createProviderInstances(name, cfg as ProviderConfig)
       if (instances.length === 1) {
@@ -88,13 +105,21 @@ export class FallbackProvider implements IProvider {
     this.chain = [primary, ...fallbacks]
   }
 
-  get name() { return this.chain[0].name }
-  get model() { return this.chain[0].model }
+  get name() {
+    return this.chain[0].name
+  }
+  get model() {
+    return this.chain[0].model
+  }
 
   /** Number of calls that fell back to a non-primary provider. */
-  get fallbackCount() { return this._fallbackCount }
+  get fallbackCount() {
+    return this._fallbackCount
+  }
   /** Total calls attempted. */
-  get totalCount() { return this._totalCount }
+  get totalCount() {
+    return this._totalCount
+  }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     // Try each provider in round-robin, fall back on any error
@@ -105,15 +130,29 @@ export class FallbackProvider implements IProvider {
     let lastError: Error | undefined
     let primaryProvider = this.chain[0]
 
+    const attempts: { provider: string; finalError: string }[] = []
+
     for (let i = 0; i < this.chain.length; i++) {
       const providerIdx = (startIndex + i) % this.chain.length
       const provider = this.chain[providerIdx]
 
       try {
-        const response = await provider.complete(req)
-        // If a fallback answered, override the response identity so downstream
-        // code (finding tagging, terminal reporter) can surface the degraded
-        // source instead of silently claiming the primary answered.
+        const response = await withExponentialBackoff(() => provider.complete(req), {
+          maxRetries: 2,
+          baseDelayMs: 1000,
+          maxDelayMs: 15000,
+          retryableErrors: [
+            '429',
+            '500',
+            '502',
+            '503',
+            'timeout',
+            'timed out',
+            'ECONNREFUSED',
+            'fetch failed',
+          ],
+        })
+
         if (provider !== primaryProvider) {
           this._fallbackCount++
           return { ...response, provider: provider.name, model: provider.model }
@@ -121,31 +160,35 @@ export class FallbackProvider implements IProvider {
         return response
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
-        const isRetryable =
-          lastError.message.includes('429') ||
-          lastError.message.includes('rate limit') ||
-          lastError.message.includes('daily limit') ||
-          lastError.message.includes('exhausted') ||
-          lastError.message.includes('500') ||
-          lastError.message.includes('502') ||
-          lastError.message.includes('503') ||
-          lastError.message.includes('504') ||
-          lastError.message.includes('timed out') ||
-          lastError.message.includes('timeout') ||
-          lastError.message.includes('ECONNREFUSED') ||
-          lastError.message.includes('fetch failed')
+        attempts.push({ provider: provider.name, finalError: lastError.message })
 
-        if (isRetryable && i < this.chain.length - 1) {
-          console.warn(
-            chalk.yellow(`  ${provider.name} failed, trying ${this.chain[(providerIdx + 1) % this.chain.length].name}`)
-          )
+        const isRetryable = [
+          '429',
+          '500',
+          '502',
+          '503',
+          'timeout',
+          'timed out',
+          'econnrefused',
+          'fetch failed',
+          'rate limit',
+          'daily limit',
+          'quota exhausted',
+        ].some((msg) => lastError!.message.toLowerCase().includes(msg))
+
+        if (isRetryable) {
+          if (i < this.chain.length - 1) {
+            console.warn(
+              chalk.yellow(`[router] provider ${provider.name} exhausted retries, trying next`)
+            )
+          }
           continue
         }
         throw lastError
       }
     }
 
-    throw lastError ?? new Error('All providers exhausted')
+    throw new AllProvidersExhaustedError(attempts)
   }
 
   async isAvailable(): Promise<boolean> {
@@ -167,29 +210,9 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   allProviders = instantiateProviders(config.providers)
 
   const names = Array.from(allProviders.keys())
-  const availability = await Promise.all(
-    names.map((n) => allProviders.get(n)!.isAvailable())
-  )
+  const availability = await Promise.all(names.map((n) => allProviders.get(n)!.isAvailable()))
 
-  if (names.length > 0) {
-    console.log(chalk.bold('\nProviders:'))
-    for (let i = 0; i < names.length; i++) {
-      const name = names[i]
-      const available = availability[i]
-      const provider = allProviders.get(name)!
-      const icon = available ? chalk.green('✓') : chalk.red('✗')
-      const poolInfo = provider instanceof ProviderPool
-        ? chalk.dim(` (${provider.size} keys)`)
-        : ''
-      const label = padRight(`  ${icon} ${provider.name}`, 25)
-      const status = available
-        ? chalk.green('available')
-        : chalk.red(`unavailable — check ${name.toUpperCase().replace(/-/g, '_')}_API_KEY`)
-      const modelInfo = available ? chalk.dim(` (${provider.model})`) : ''
-      console.log(`${label} ${status}${modelInfo}${poolInfo}`)
-    }
-    console.log()
-  }
+
 
   // Assign primary
   let primary: IProvider | undefined
@@ -228,17 +251,7 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   }
   assignment = result
 
-  const agentCount = config.swarm.agentCount
-  const primaryLabel = primary.name
-  const synthesisLabel = synthesis.name
 
-  console.log(
-    `Swarm:     ${chalk.cyan(primaryLabel)} → ${agentCount} agents ${chalk.dim(`(${primary.model})`)}`
-  )
-  console.log(
-    `Synthesis: ${chalk.magenta(synthesisLabel)} ${chalk.dim(`(${synthesis.model})`)}`
-  )
-  console.log()
 
   return result
 }

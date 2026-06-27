@@ -71,10 +71,7 @@ describe('scorer/calculator', () => {
 
   describe('calculateCategoryScore', () => {
     it('only penalizes the requested category', () => {
-      const findings = [
-        finding('security', 'critical'),
-        finding('architecture', 'critical'),
-      ]
+      const findings = [finding('security', 'critical'), finding('architecture', 'critical')]
       const sec = calculateCategoryScore(findings, 'security')
       const arch = calculateCategoryScore(findings, 'architecture')
       expect(sec.score).toBe(90) // 100 - 10
@@ -84,9 +81,7 @@ describe('scorer/calculator', () => {
     })
 
     it('floors at 10 for extreme penalties', () => {
-      const findings = Array.from({ length: 15 }, () =>
-        finding('security', 'critical')
-      )
+      const findings = Array.from({ length: 15 }, () => finding('security', 'critical'))
       expect(calculateCategoryScore(findings, 'security').score).toBe(10)
     })
 
@@ -98,9 +93,23 @@ describe('scorer/calculator', () => {
   describe('calculateCrossAgentPenalty', () => {
     it('weights critical > high > medium', () => {
       const cross: CrossAgentFinding[] = [
-        { title: '', description: '', agents: [], filePaths: [], severity: 'critical', blastRadius: 1 },
+        {
+          title: '',
+          description: '',
+          agents: [],
+          filePaths: [],
+          severity: 'critical',
+          blastRadius: 1,
+        },
         { title: '', description: '', agents: [], filePaths: [], severity: 'high', blastRadius: 1 },
-        { title: '', description: '', agents: [], filePaths: [], severity: 'medium', blastRadius: 1 },
+        {
+          title: '',
+          description: '',
+          agents: [],
+          filePaths: [],
+          severity: 'medium',
+          blastRadius: 1,
+        },
       ]
       // 15 + 8 + 4 = 27
       expect(calculateCrossAgentPenalty(cross)).toBe(27)
@@ -116,7 +125,7 @@ describe('scorer/calculator', () => {
       )
       // Blended: 60% avg-category (98.83) + 40% penalty-score (93) = 96.5 -> 97
       expect(result.score).toBe(97)
-      expect(result.delta).toBe(7)   // 97 - 90
+      expect(result.delta).toBe(7) // 97 - 90
       expect(result.previousScore).toBe(90)
       expect(result.breakdown.findingCount).toBe(2)
       expect(result.breakdown.categories).toHaveLength(6)

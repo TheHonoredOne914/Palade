@@ -35,10 +35,7 @@ export function getCustomAgentNames(): string[] {
   return Array.from(customAgents.keys())
 }
 
-export function getAgentsForMode(
-  mode: ReviewMode,
-  agentOverrides?: AgentName[]
-): IAgent[] {
+export function getAgentsForMode(mode: ReviewMode, agentOverrides?: AgentName[]): IAgent[] {
   // Merge built-in + custom for lookup
   const allAgents = new Map<string, IAgent>([...BUILTIN_AGENTS, ...customAgents])
 

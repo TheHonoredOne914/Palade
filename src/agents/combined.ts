@@ -44,18 +44,42 @@ export interface DomainSpec {
 }
 
 export const DEFAULT_DOMAINS: DomainSpec[] = [
-  { name: 'security', label: 'Security', focus: 'injection risks, auth gaps, hardcoded secrets, missing input validation' },
-  { name: 'architecture', label: 'Architecture', focus: 'circular dependencies, layer violations, tight coupling, God objects' },
-  { name: 'performance', label: 'Performance', focus: 'N+1 patterns, unbounded loops, missing caching, sync-in-async' },
-  { name: 'maintainability', label: 'Maintainability', focus: 'duplicated logic, inconsistent naming, undocumented complexity' },
-  { name: 'deadCode', label: 'Dead Code', focus: 'unused exports, zombie routes, unwired classes, stale TODOs' },
-  { name: 'testIntelligence', label: 'Test Intelligence', focus: 'untested critical paths, hollow mocks, missing edge cases' },
+  {
+    name: 'security',
+    label: 'Security',
+    focus: 'injection risks, auth gaps, hardcoded secrets, missing input validation',
+  },
+  {
+    name: 'architecture',
+    label: 'Architecture',
+    focus: 'circular dependencies, layer violations, tight coupling, God objects',
+  },
+  {
+    name: 'performance',
+    label: 'Performance',
+    focus: 'N+1 patterns, unbounded loops, missing caching, sync-in-async',
+  },
+  {
+    name: 'maintainability',
+    label: 'Maintainability',
+    focus: 'duplicated logic, inconsistent naming, undocumented complexity',
+  },
+  {
+    name: 'deadCode',
+    label: 'Dead Code',
+    focus: 'unused exports, zombie routes, unwired classes, stale TODOs',
+  },
+  {
+    name: 'testIntelligence',
+    label: 'Test Intelligence',
+    focus: 'untested critical paths, hollow mocks, missing edge cases',
+  },
 ]
 
 function buildCombinedSystemPrompt(domains: DomainSpec[]): string {
-  const sections = domains.map((d) =>
-    `### ${d.label} (agentName: "${d.name}")\nLook for: ${d.focus}.`
-  ).join('\n\n')
+  const sections = domains
+    .map((d) => `### ${d.label} (agentName: "${d.name}")\nLook for: ${d.focus}.`)
+    .join('\n\n')
 
   return `You are a combined multi-domain code review swarm. You are reviewing code as part of a larger analysis.
 
@@ -100,18 +124,30 @@ export class CombinedAnalyzer implements IAgent {
     this.domains = domains ?? DEFAULT_DOMAINS
   }
 
-  async analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]> {
+  async analyze(
+    chunks: CodeChunk[],
+    context: AgentContext,
+    signal?: AbortSignal
+  ): Promise<AgentFinding[]> {
     try {
       const provider = getProvider('primary')
-      const systemPrompt = buildSystemPrompt(buildCombinedSystemPrompt(this.domains), context, context.modeConfig)
+      const systemPrompt = buildSystemPrompt(
+        buildCombinedSystemPrompt(this.domains),
+        context,
+        context.modeConfig
+      )
       const userPrompt = buildChunkContext(chunks)
-      const response = await provider.complete({ systemPrompt, userPrompt, maxTokens: 8192, signal })
+      const response = await provider.complete({
+        systemPrompt,
+        userPrompt,
+        maxTokens: 8192,
+        signal,
+      })
       const findings = parseFindingsResponse(response.content ?? '', this.name)
       return attributeFindings(findings, this.domains, response.provider, response.model)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
-      console.error(`[combined] analyze failed:`, err)
-      return []
+      throw err
     }
   }
 }

@@ -1,9 +1,5 @@
 import chalk from 'chalk'
-import type {
-  IProvider,
-  CompletionRequest,
-  CompletionResponse,
-} from './base.js'
+import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 import { fetchWithRetry, createLimiter } from './base.js'
 
 const AVAILABILITY_CACHE_MS = 60_000
@@ -38,33 +34,30 @@ export class GroqProvider implements IProvider {
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     return this.limiter(async () => {
       const start = Date.now()
-      const res = await fetchWithRetry(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: this.model,
-            messages: [
-              { role: 'system', content: req.systemPrompt },
-              { role: 'user', content: req.userPrompt },
-            ],
-            max_tokens: req.maxTokens ?? 4096,
-            temperature: req.temperature ?? 0.1,
-          }),
-          signal: req.signal,
-        }
-      )
+      const res = await fetchWithRetry('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            { role: 'system', content: req.systemPrompt },
+            { role: 'user', content: req.userPrompt },
+          ],
+          max_tokens: req.maxTokens ?? 4096,
+          temperature: req.temperature ?? 0.1,
+        }),
+        signal: req.signal,
+      })
 
       if (!res.ok) {
         const body = await res.text()
         throw new Error(`Groq error ${res.status}: ${body}`)
       }
 
-      const data: OpenAIResponse = await res.json() as OpenAIResponse
+      const data: OpenAIResponse = (await res.json()) as OpenAIResponse
       const durationMs = Date.now() - start
 
       return {
@@ -79,34 +72,6 @@ export class GroqProvider implements IProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    if (
-      this.availabilityCache &&
-      Date.now() - this.availabilityCache.timestamp < AVAILABILITY_CACHE_MS
-    ) {
-      return this.availabilityCache.result
-    }
-
-    try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [{ role: 'user', content: 'hi' }],
-          max_tokens: 1,
-        }),
-      })
-      const result = res.ok
-      // Consume response body to prevent resource leak
-      await res.body?.cancel()
-      this.availabilityCache = { result, timestamp: Date.now() }
-      return result
-    } catch {
-      this.availabilityCache = { result: false, timestamp: Date.now() }
-      return false
-    }
+    return true
   }
 }

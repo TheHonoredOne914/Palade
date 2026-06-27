@@ -8,6 +8,11 @@ import { buildAnnotationSummary } from '../ingestion/annotationParser.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
 import { estimateTotalTokens } from './scheduler.js'
 import { runSwarm } from './swarm.js'
+import { triageFiles } from './triage.js'
+import { estimateRunCost } from '../ingestion/estimator.js'
+import { CliExitError } from '../errors/types.js'
+import { kvTable } from '../ui/layout.js'
+import type { PaladeConfig } from '../config/schema.js'
 
 export interface PipelineOptions {
   projectRoot: string
@@ -16,6 +21,7 @@ export interface PipelineOptions {
   swarmOptions?: SwarmOptions
   target?: ResolvedTarget
   allTargets?: ResolvedTarget[]
+  dryRunConfig?: PaladeConfig
 }
 
 export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
@@ -65,19 +71,15 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   const annotationSummary = buildAnnotationSummary(manifests, chunks)
 
   // Filter out ignored files
-  const ignoredSet = new Set(annotationSummary.ignoredFiles.map(f => f.replace(/^\.?\/+/, '')))
-  let activeChunks = chunks.filter(
-    (c) => !ignoredSet.has(c.filePath.replace(/^\.?\/+/, ''))
-  )
+  const ignoredSet = new Set(annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, '')))
+  let activeChunks = chunks.filter((c) => !ignoredSet.has(c.filePath.replace(/^\.?\/+/, '')))
 
   // Filter out ignored lines
   activeChunks = activeChunks.filter(
     (c) =>
       !annotationSummary.ignoredLines.some(
         (il) =>
-          il.filePath === c.filePath &&
-          il.startLine >= c.startLine &&
-          il.startLine <= c.endLine
+          il.filePath === c.filePath && il.startLine >= c.startLine && il.startLine <= c.endLine
       )
   )
 
@@ -87,19 +89,13 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       (c) =>
         annotationSummary.reviewRequests.some((r) => {
           const chunk = chunks.find(
-            (ch) =>
-              ch.filePath === r.filePath &&
-              ch.startLine <= r.line &&
-              ch.endLine >= r.line
+            (ch) => ch.filePath === r.filePath && ch.startLine <= r.line && ch.endLine >= r.line
           )
           return chunk?.id === c.id
         }) ||
         annotationSummary.focusRequests.some((f) => {
           const chunk = chunks.find(
-            (ch) =>
-              ch.filePath === f.filePath &&
-              ch.startLine <= f.line &&
-              ch.endLine >= f.line
+            (ch) => ch.filePath === f.filePath && ch.startLine <= f.line && ch.endLine >= f.line
           )
           return chunk?.id === c.id
         })
@@ -111,6 +107,37 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   if (opts.target) {
     context.targetDescription = opts.target.definition.description
     context.targetFocus = opts.target.definition.focus
+  }
+
+  if (opts.dryRunConfig) {
+    const reviewChunks =
+      manifests && !opts.swarmOptions?.exhaustive
+        ? await triageFiles(manifests, activeChunks, opts.swarmOptions?.maxReviewTokens)
+        : activeChunks
+
+    const estimate = estimateRunCost(reviewChunks, opts.dryRunConfig)
+
+    console.log(chalk.bold('\nDry Run Estimate:'))
+    console.log(
+      kvTable([
+        ['Total Chunks:', String(estimate.totalChunks)],
+        ['Total Input Tokens:', String(estimate.totalInputTokens)],
+        ['Agents per chunk:', String(estimate.agentCount)],
+        ['Estimated Output:', String(estimate.estimatedOutputTokens)],
+        ['Total Tokens (Est):', String(estimate.estimatedTotalTokens)],
+      ])
+    )
+    console.log('\nEstimated Cost (USD):')
+    console.log(
+      kvTable([
+        ['Groq:', `$${estimate.estimatedCostUsd.groq.toFixed(2)}`],
+        ['OpenRouter:', `$${estimate.estimatedCostUsd.openrouter.toFixed(2)}`],
+        ['Cerebras:', `$${estimate.estimatedCostUsd.cerebras.toFixed(2)}`],
+      ])
+    )
+    console.log()
+
+    throw new CliExitError(0)
   }
 
   return runSwarm(activeChunks, context, opts.swarmOptions, manifests)

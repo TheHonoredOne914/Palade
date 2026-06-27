@@ -3,9 +3,7 @@ import { mergeFindings, groupBySeverity } from './merger.js'
 import type { AgentFinding } from '../agents/base.js'
 
 let counter = 0
-function finding(
-  overrides: Partial<AgentFinding> & Pick<AgentFinding, 'severity'>
-): AgentFinding {
+function finding(overrides: Partial<AgentFinding> & Pick<AgentFinding, 'severity'>): AgentFinding {
   counter++
   return {
     id: `id-${counter}`,
@@ -54,11 +52,7 @@ describe('orchestrator/merger', () => {
         finding({ severity: 'critical' }),
         finding({ severity: 'medium' }),
       ])
-      expect(out.map((f) => f.severity)).toEqual([
-        'critical',
-        'medium',
-        'low',
-      ])
+      expect(out.map((f) => f.severity)).toEqual(['critical', 'medium', 'low'])
     })
 
     it('passes through an empty list', () => {

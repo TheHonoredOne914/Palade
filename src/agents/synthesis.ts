@@ -96,20 +96,18 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
 
   const priorityFixes: PriorityFix[] = Array.isArray(obj.priorityFixes)
     ? (obj.priorityFixes as Record<string, unknown>[])
-        .filter(
-          (f) =>
-            typeof f.rank === 'number' &&
-            typeof f.title === 'string' &&
-            typeof f.rationale === 'string' &&
-            typeof f.estimatedHours === 'number'
-        )
-        .map((f) => ({
-          rank: f.rank as number,
-          title: f.title as string,
-          rationale: f.rationale as string,
-          estimatedHours: f.estimatedHours as number,
-          affectedFiles: Array.isArray(f.affectedFiles) ? (f.affectedFiles as string[]) : [],
-        }))
+        .filter((f) => typeof f.title === 'string' && typeof f.rationale === 'string')
+        .map((f) => {
+          const rank = typeof f.rank === 'number' ? f.rank : parseInt(String(f.rank)) || 0
+          const hours = typeof f.estimatedHours === 'number' ? f.estimatedHours : parseFloat(String(f.estimatedHours)) || 0
+          return {
+            rank,
+            title: f.title as string,
+            rationale: f.rationale as string,
+            estimatedHours: hours,
+            affectedFiles: Array.isArray(f.affectedFiles) ? (f.affectedFiles as string[]) : [],
+          }
+        })
     : []
 
   const crossCuttingObservations: string[] = Array.isArray(obj.crossCuttingObservations)
@@ -171,15 +169,19 @@ export async function synthesize(
       ? `${SYNTHESIS_PROMPT}\n\n${context.modeConfig.synthesisPromptSuffix}`
       : SYNTHESIS_PROMPT
 
-    const providerPromise = provider.complete({
-      systemPrompt,
-      userPrompt,
-      maxTokens: 4096,
-      signal: controller.signal,
-    }).catch((err: unknown): null => {
-      console.warn(`[synthesis] provider.complete failed: ${err instanceof Error ? err.message : String(err)}`)
-      return null
-    })
+    const providerPromise = provider
+      .complete({
+        systemPrompt,
+        userPrompt,
+        maxTokens: 4096,
+        signal: controller.signal,
+      })
+      .catch((err: unknown): null => {
+        console.warn(
+          `[synthesis] provider.complete failed: ${err instanceof Error ? err.message : String(err)}`
+        )
+        return null
+      })
 
     const response = await Promise.race([providerPromise, timeoutPromise])
     if (timeoutHandle) clearTimeout(timeoutHandle)
@@ -204,12 +206,14 @@ export async function synthesize(
     }
     return result
   } catch (err) {
-    console.error('[synthesis] analyze failed:', err)
-    return {
-      executiveSummary: 'Synthesis encountered an error during analysis.',
-      priorityFixes: [],
-      crossCuttingObservations: [],
-      debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
+    if (err instanceof Error && err.name === 'AbortError') {
+      return {
+        executiveSummary: 'Synthesis was aborted.',
+        priorityFixes: [],
+        crossCuttingObservations: [],
+        debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
+      }
     }
+    throw err
   }
 }

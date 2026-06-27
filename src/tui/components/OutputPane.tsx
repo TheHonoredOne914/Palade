@@ -3,6 +3,8 @@ import { Box, Text } from 'ink'
 
 export interface OutputLine {
   type:
+    | 'header'
+    | 'config-error'
     | 'input'
     | 'output'
     | 'success'
@@ -23,7 +25,9 @@ interface OutputPaneProps {
   lines: OutputLine[]
 }
 
-export function OutputPane({ lines }: OutputPaneProps): React.JSX.Element {
+export const OutputPane = React.memo(function OutputPane({
+  lines,
+}: OutputPaneProps): React.JSX.Element {
   const displayLines = lines.slice(-200)
 
   return (
@@ -33,13 +37,9 @@ export function OutputPane({ lines }: OutputPaneProps): React.JSX.Element {
       ))}
     </Box>
   )
-}
+})
 
-function OutputLineItem({
-  line,
-}: {
-  line: OutputLine
-}): React.JSX.Element {
+export function OutputLineItem({ line }: { line: OutputLine }): React.JSX.Element {
   switch (line.type) {
     case 'input':
       return (
@@ -54,9 +54,7 @@ function OutputLineItem({
     case 'success':
       return (
         <Box>
-          <Text color="#00E676">
-            {'  ✓  '}
-          </Text>
+          <Text color="#00E676">{'  ✓  '}</Text>
           <Text color="#D1FAE5">{line.text}</Text>
         </Box>
       )
@@ -64,9 +62,7 @@ function OutputLineItem({
     case 'error':
       return (
         <Box>
-          <Text color="#FF3366">
-            {'  ✗  '}
-          </Text>
+          <Text color="#FF3366">{'  ✗  '}</Text>
           <Text color="#FEE2E2">{line.text}</Text>
         </Box>
       )
@@ -74,9 +70,7 @@ function OutputLineItem({
     case 'warn':
       return (
         <Box>
-          <Text color="#FFEA00">
-            {'  ⚠  '}
-          </Text>
+          <Text color="#FFEA00">{'  ⚠  '}</Text>
           <Text color="#FEF3C7">{line.text}</Text>
         </Box>
       )
@@ -107,13 +101,7 @@ function OutputLineItem({
   }
 }
 
-function FindingLine({
-  text,
-  severity,
-}: {
-  text: string
-  severity?: string
-}): React.JSX.Element {
+function FindingLine({ text, severity }: { text: string; severity?: string }): React.JSX.Element {
   const chipColors: Record<string, { bg: string; label: string }> = {
     critical: { bg: '#FF3366', label: 'CRIT' },
     high: { bg: '#FF9933', label: 'HIGH' },

@@ -22,7 +22,14 @@ describe('agents/custom/schema', () => {
   })
 
   it('rejects built-in agent names', () => {
-    for (const name of ['security', 'architecture', 'performance', 'maintainability', 'deadCode', 'testIntelligence']) {
+    for (const name of [
+      'security',
+      'architecture',
+      'performance',
+      'maintainability',
+      'deadCode',
+      'testIntelligence',
+    ]) {
       const result = CustomAgentDefinitionSchema.safeParse({
         name,
         domain: 'Test',

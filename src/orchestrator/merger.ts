@@ -47,9 +47,10 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
     ...keep,
     scorePenalty: (keep.scorePenalty ?? 0) + (discard.scorePenalty ?? 0),
     tags: Array.from(tagSet),
-    description: keep.description.length >= discard.description.length
-      ? keep.description
-      : discard.description,
+    description:
+      keep.description.length >= discard.description.length
+        ? keep.description
+        : discard.description,
   }
 }
 

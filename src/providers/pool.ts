@@ -26,9 +26,7 @@ export class ProviderPool implements IProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    const results = await Promise.all(
-      this.providers.map((p) => p.isAvailable())
-    )
+    const results = await Promise.all(this.providers.map((p) => p.isAvailable()))
     return results.some((r) => r)
   }
 }

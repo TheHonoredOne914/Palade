@@ -6,8 +6,9 @@ import { loadConfig } from '../../config/loader.js'
 import { initRouter } from '../../providers/router.js'
 import { generateTarget } from '../../targets/generator.js'
 import chalk from 'chalk'
-export const targetsCommand = new Command('targets')
-  .description('Manage review targets (subsystems)')
+export const targetsCommand = new Command('targets').description(
+  'Manage review targets (subsystems)'
+)
 
 targetsCommand
   .command('search')
@@ -17,15 +18,11 @@ targetsCommand
     console.log(theme.dim(`  Searching registry for "${query}"...`))
     const results = await searchTargets(query)
     if (results.length === 0) {
-      console.log(
-        theme.dim(`  No community targets found for "${query}".`)
-      )
+      console.log(theme.dim(`  No community targets found for "${query}".`))
       return
     }
     for (const t of results) {
-      console.log(
-        `  ${chalk.cyan(t.name)} ${theme.dim(`(${t.version})`)} — ${t.description}`
-      )
+      console.log(`  ${chalk.cyan(t.name)} ${theme.dim(`(${t.version})`)} — ${t.description}`)
     }
   })
 
@@ -36,21 +33,19 @@ targetsCommand
   .action(async (pkg: string): Promise<void> => {
     const target = await getTargetFromRegistry(pkg)
     if (!target) {
-      console.log(
-        theme.error(
-          `Package "${pkg}" does not export a valid paladeTarget.`
-        )
-      )
+      console.log(theme.error(`Package "${pkg}" does not export a valid paladeTarget.`))
       return
     }
     appendTargetToFile(process.cwd(), target)
-    console.log(
-      theme.success(
-        `Target "${target.name}" installed into palade.targets.ts`
-      )
-    )
+    console.log(theme.success(`Target "${target.name}" installed into palade.targets.ts`))
   })
 
+// ============================================================================
+// SECURITY NOTE:
+// The `generate` and `add` commands below are the ONLY operations in Palade
+// that write source code to disk (`palade.targets.ts`). The `review` and
+// `diff` commands are strictly read-only by design.
+// ============================================================================
 targetsCommand
   .command('generate')
   .description('Use AI to generate a target based on a natural language description')
@@ -81,16 +76,10 @@ targetsCommand
   .action(async (): Promise<void> => {
     const targets = await loadTargets(process.cwd())
     if (targets.length === 0) {
-      console.log(
-        theme.dim(
-          "  No targets defined. Run 'palade init' or edit palade.targets.ts."
-        )
-      )
+      console.log(theme.dim("  No targets defined. Run 'palade init' or edit palade.targets.ts."))
       return
     }
-    console.log(
-      theme.dim(`  Defined targets (${targets.length}):`)
-    )
+    console.log(theme.dim(`  Defined targets (${targets.length}):`))
     console.log()
     for (const t of targets) {
       console.log(

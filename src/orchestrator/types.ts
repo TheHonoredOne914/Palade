@@ -24,7 +24,10 @@ export interface SwarmResult {
   totalChunks: number
   totalTokensEstimated: number
   durationMs: number
-  fallbackStats?: { primary: { total: number; fallbacks: number }; synthesis: { total: number; fallbacks: number } }
+  fallbackStats?: {
+    primary: { total: number; fallbacks: number }
+    synthesis: { total: number; fallbacks: number }
+  }
 }
 
 export interface CrossAgentFinding {
@@ -38,8 +41,13 @@ export interface CrossAgentFinding {
 
 export interface SwarmOptions {
   onAgentStart?: (agentName: AgentName) => void
-  onAgentComplete?: (agentName: AgentName, findingCount: number, durationMs: number) => void
-  onAgentBatchComplete?: (agentName: AgentName, batchIndex: number, totalBatches: number, batchFindings: number) => void
+  onAgentComplete?: (agentName: AgentName, findingCount: number, durationMs: number, error?: Error) => void
+  onAgentBatchComplete?: (
+    agentName: AgentName,
+    batchIndex: number,
+    totalBatches: number,
+    batchFindings: number
+  ) => void
   onSynthesisStart?: () => void
   onSynthesisComplete?: (durationMs: number) => void
   timeoutMs?: number
@@ -53,4 +61,9 @@ export interface SwarmOptions {
    * prompt richness. See src/agents/combined.ts for the full tradeoff.
    */
   economyMode?: boolean
+  /**
+   * Exhaustive mode: bypass the triage filter phase and review all files in the project.
+   */
+  exhaustive?: boolean
+  signal?: AbortSignal
 }

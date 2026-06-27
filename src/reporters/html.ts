@@ -14,7 +14,7 @@ const CATEGORY_LABELS: Record<ScoreCategory, string> = {
   performance: 'Performance',
   maintainability: 'Maintainability',
   deadCode: 'Dead Code',
-  testIntelligence: 'Test Intelligence'
+  testIntelligence: 'Test Intelligence',
 }
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
@@ -22,7 +22,7 @@ const SEVERITY_CLASSES: Record<Severity, string> = {
   high: 'severity-high',
   medium: 'severity-medium',
   low: 'severity-low',
-  info: 'severity-low'
+  info: 'severity-low',
 }
 
 function getScoreGrade(score: number): string {
@@ -66,7 +66,11 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;')
 }
 
-function renderCategoryScoreHtml(category: ScoreCategory, score: number, findingCount: number): string {
+function renderCategoryScoreHtml(
+  category: ScoreCategory,
+  score: number,
+  findingCount: number
+): string {
   const color = getScoreColor(score)
   return `
         <div class="category-item">
@@ -78,7 +82,13 @@ function renderCategoryScoreHtml(category: ScoreCategory, score: number, finding
         </div>`
 }
 
-function renderPriorityFixHtml(fix: { rank: number; title: string; rationale: string; estimatedHours: number; affectedFiles: string[] }): string {
+function renderPriorityFixHtml(fix: {
+  rank: number
+  title: string
+  rationale: string
+  estimatedHours: number
+  affectedFiles: string[]
+}): string {
   return `
       <div class="priority-fix">
         <div class="priority-fix-header">
@@ -97,12 +107,19 @@ function renderObservationHtml(observation: string): string {
   return `        <li>${escapeHtml(observation)}</li>`
 }
 
-function renderCrossAgentFindingHtml(finding: { title: string; description: string; agents: string[]; filePaths: string[]; severity: string }): string {
+function renderCrossAgentFindingHtml(finding: {
+  title: string
+  description: string
+  agents: string[]
+  filePaths: string[]
+  severity: string
+}): string {
   const severityClass = SEVERITY_CLASSES[finding.severity as Severity] ?? 'severity-low'
-  const location = finding.filePaths.length > 0 
-    ? `<div class="finding-location">${finding.filePaths.map(escapeHtml).join(', ')}</div>`
-    : ''
-  
+  const location =
+    finding.filePaths.length > 0
+      ? `<div class="finding-location">${finding.filePaths.map(escapeHtml).join(', ')}</div>`
+      : ''
+
   return `
         <li class="finding-item">
           <div class="finding-header">
@@ -114,7 +131,10 @@ function renderCrossAgentFindingHtml(finding: { title: string; description: stri
         </li>`
 }
 
-function renderAgentTimingHtml(timing: { agent: string; durationMs: number }, maxDuration: number): string {
+function renderAgentTimingHtml(
+  timing: { agent: string; durationMs: number },
+  maxDuration: number
+): string {
   const width = maxDuration > 0 ? (timing.durationMs / maxDuration) * 100 : 0
   return `
       <div class="agent-timing">
@@ -128,7 +148,7 @@ function renderAgentTimingHtml(timing: { agent: string; durationMs: number }, ma
 
 function renderFindingsSummaryHtml(findings: ReporterContext['findings']): string {
   const byAgent = new Map<string, { total: number; critical: number; high: number }>()
-  
+
   for (const f of findings) {
     const existing = byAgent.get(f.agentName) ?? { total: 0, critical: 0, high: 0 }
     existing.total++
@@ -136,17 +156,19 @@ function renderFindingsSummaryHtml(findings: ReporterContext['findings']): strin
     if (f.severity === 'high') existing.high++
     byAgent.set(f.agentName, existing)
   }
-  
-  const rows = Array.from(byAgent.entries()).map(([agent, counts]) => {
-    return `
+
+  const rows = Array.from(byAgent.entries())
+    .map(([agent, counts]) => {
+      return `
         <tr>
           <td>${escapeHtml(agent)}</td>
           <td>${counts.total}</td>
           <td style="color: #f85149;">${counts.critical}</td>
           <td style="color: #d29922;">${counts.high}</td>
         </tr>`
-  }).join('')
-  
+    })
+    .join('')
+
   return `
       <table style="width: 100%; border-collapse: collapse;">
         <thead>
@@ -190,34 +212,37 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
   const score = ctx.score.score
   const grade = getScoreGrade(score)
   const gradeClass = getScoreGradeClass(score)
-  
+
   const categoryScoresHtml = ctx.score.breakdown.categories
-    .map(c => renderCategoryScoreHtml(c.category, c.score, c.findingCount))
+    .map((c) => renderCategoryScoreHtml(c.category, c.score, c.findingCount))
     .join('\n')
-  
+
   const priorityFixesHtml = ctx.synthesis.priorityFixes
-    .map(f => renderPriorityFixHtml(f))
+    .map((f) => renderPriorityFixHtml(f))
     .join('\n')
-  
+
   const observationsHtml = ctx.synthesis.crossCuttingObservations
-    .map(o => renderObservationHtml(o))
+    .map((o) => renderObservationHtml(o))
     .join('\n')
-  
+
   const crossAgentFindingsHtml = ctx.crossAgentFindings
-    .map(f => renderCrossAgentFindingHtml(f))
+    .map((f) => renderCrossAgentFindingHtml(f))
     .join('\n')
-  
+
   const maxDuration = Math.max(...Object.values(ctx.swarm.agentTimings), 1)
   const agentTimingsHtml = Object.entries(ctx.swarm.agentTimings)
     .map(([agent, duration]) => renderAgentTimingHtml({ agent, durationMs: duration }, maxDuration))
     .join('\n')
-  
+
   const findingsSummaryHtml = renderFindingsSummaryHtml(ctx.findings)
-  
-  const sparklineData = ctx.history.length > 0 
-    ? ctx.history.map(h => typeof h.score === 'number' && Number.isFinite(h.score) ? h.score : 0)
-    : [score]
-  
+
+  const sparklineData =
+    ctx.history.length > 0
+      ? ctx.history.map((h) =>
+          typeof h.score === 'number' && Number.isFinite(h.score) ? h.score : 0
+        )
+      : [score]
+
   return {
     title: projectName,
     timestamp,
@@ -239,14 +264,17 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
     agentTimingsHtml,
     durationMs: ctx.swarm.durationMs,
     totalChunks: ctx.swarm.totalChunks,
-    totalTokens: ctx.swarm.totalTokensEstimated
+    totalTokens: ctx.swarm.totalTokensEstimated,
   }
 }
 
-function replacePlaceholders(template: string, data: HtmlTemplateData, ctx: ReporterContext): string {
+function replacePlaceholders(
+  template: string,
+  data: HtmlTemplateData,
+  ctx: ReporterContext
+): string {
   let result = template
 
-  result = result.replace(/\{\{OWL_MASCOT\}\}/g, '<div style="font-size: 3rem;">🦉</div>')
   result = result.replace(/\{\{TITLE\}\}/g, escapeHtml(data.title))
   result = result.replace(/\{\{TIMESTAMP\}\}/g, escapeHtml(data.timestamp))
   result = result.replace(/\{\{PROJECT_NAME\}\}/g, escapeHtml(data.projectName))
@@ -256,18 +284,32 @@ function replacePlaceholders(template: string, data: HtmlTemplateData, ctx: Repo
   result = result.replace(/\{\{SCORE_GRADE_CLASS\}\}/g, getScoreGradeClass(data.score))
   result = result.replace(/\{\{DELTA\}\}/g, String(data.delta))
   result = result.replace(/\{\{DELTA_TEXT\}\}/g, data.deltaText)
-  result = result.replace(/\{\{DELTA_CLASS\}\}/g, data.delta > 0 ? 'positive' : data.delta < 0 ? 'negative' : 'neutral')
+  result = result.replace(
+    /\{\{DELTA_CLASS\}\}/g,
+    data.delta > 0 ? 'positive' : data.delta < 0 ? 'negative' : 'neutral'
+  )
   result = result.replace(/\{\{EXECUTIVE_SUMMARY\}\}/g, data.executiveSummary)
   result = result.replace(/\{\{CATEGORY_SCORES\}\}/g, data.categoryScoresHtml)
   result = result.replace(/\{\{PRIORITY_FIXES\}\}/g, data.priorityFixesHtml)
   result = result.replace(/\{\{OBSERVATIONS\}\}/g, data.observationsHtml)
-  result = result.replace(/\{\{DEBT_CRITICAL\}\}/g, String(ctx.synthesis.debtEstimate.critical))
-  result = result.replace(/\{\{DEBT_HIGH\}\}/g, String(ctx.synthesis.debtEstimate.high))
-  result = result.replace(/\{\{DEBT_MEDIUM\}\}/g, String(ctx.synthesis.debtEstimate.medium))
-  result = result.replace(/\{\{DEBT_LOW\}\}/g, String(ctx.synthesis.debtEstimate.low))
-  result = result.replace(/\{\{DEBT_HIGHEST_ROI\}\}/g, ctx.synthesis.debtEstimate.highestROIFix 
-    ? `<div style="margin-top: 1rem; padding: 1rem; background: #0f1117; border-radius: 6px;"><strong style="color: #3fb950;">Highest ROI:</strong> ${escapeHtml(ctx.synthesis.debtEstimate.highestROIFix)}</div>`
-    : '')
+  const debtCounts = { critical: 0, high: 0, medium: 0, low: 0 }
+  for (const f of ctx.findings) {
+    if (f.severity === 'critical') debtCounts.critical++
+    if (f.severity === 'high') debtCounts.high++
+    if (f.severity === 'medium') debtCounts.medium++
+    if (f.severity === 'low') debtCounts.low++
+  }
+
+  result = result.replace(/\{\{DEBT_CRITICAL\}\}/g, String(debtCounts.critical))
+  result = result.replace(/\{\{DEBT_HIGH\}\}/g, String(debtCounts.high))
+  result = result.replace(/\{\{DEBT_MEDIUM\}\}/g, String(debtCounts.medium))
+  result = result.replace(/\{\{DEBT_LOW\}\}/g, String(debtCounts.low))
+  result = result.replace(
+    /\{\{DEBT_HIGHEST_ROI\}\}/g,
+    ctx.synthesis.debtEstimate.highestROIFix
+      ? `<div style="margin-top: 1rem; padding: 1rem; background: #0f1117; border-radius: 6px;"><strong style="color: #3fb950;">Highest ROI:</strong> ${escapeHtml(ctx.synthesis.debtEstimate.highestROIFix)}</div>`
+      : ''
+  )
   result = result.replace(/\{\{CROSS_AGENT_FINDINGS\}\}/g, data.crossAgentFindingsHtml)
   result = result.replace(/\{\{AGENT_TIMINGS\}\}/g, data.agentTimingsHtml)
   result = result.replace(/\{\{FINDINGS_SUMMARY\}\}/g, data.findingsSummaryHtml)
@@ -277,7 +319,7 @@ function replacePlaceholders(template: string, data: HtmlTemplateData, ctx: Repo
   result = result.replace(/\{\{DURATION\}\}/g, `${(ctx.swarm.durationMs / 1000).toFixed(1)}s`)
   result = result.replace(/\{\{TOTAL_CHUNKS\}\}/g, String(ctx.swarm.totalChunks))
   result = result.replace(/\{\{TOTAL_TOKENS\}\}/g, ctx.swarm.totalTokensEstimated.toLocaleString())
-  
+
   return result
 }
 
@@ -288,18 +330,18 @@ export function writeHtmlReport(ctx: ReporterContext, outputPath: string): Repor
   const template = loadTemplate()
   const data = buildTemplateData(ctx)
   const html = replacePlaceholders(template, data, ctx)
-  
+
   const dir = dirname(outputPath)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
-  
+
   writeFileSync(outputPath, html, 'utf-8')
-  
+
   return {
     format: 'html',
     path: outputPath,
-    content: html
+    content: html,
   }
 }
 
@@ -349,10 +391,13 @@ export function startLocalServer(
     }
   })
 
-  serverTimeout = setTimeout(() => {
-    stopLocalServer()
-    console.log('Palade report server auto-closed after 10 minutes')
-  }, 10 * 60 * 1000)
+  serverTimeout = setTimeout(
+    () => {
+      stopLocalServer()
+      console.log('Palade report server auto-closed after 10 minutes')
+    },
+    10 * 60 * 1000
+  )
   serverTimeout.unref?.()
 }
 
@@ -372,7 +417,7 @@ export function stopLocalServer(): void {
     clearTimeout(serverTimeout)
     serverTimeout = null
   }
-  
+
   if (htmlServer) {
     htmlServer.close()
     htmlServer = null

@@ -13,5 +13,7 @@ Thumbs.db
 *.swp
 
 # Palade
-palade.config.ts
 .palade/
+
+# Temp
+.tmp*

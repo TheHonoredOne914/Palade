@@ -28,9 +28,9 @@ export function readHistory(historyPath: string): ScoreHistoryEntry[] {
             total: obj.score as number,
             categories: [],
             findingCount: 0,
-            crossAgentCount: 0
+            crossAgentCount: 0,
           },
-          delta: typeof obj.delta === 'number' ? obj.delta : 0
+          delta: typeof obj.delta === 'number' ? obj.delta : 0,
         })
       }
     }
@@ -41,10 +41,7 @@ export function readHistory(historyPath: string): ScoreHistoryEntry[] {
   }
 }
 
-export function writeHistory(
-  historyPath: string,
-  entries: ScoreHistoryEntry[]
-): void {
+export function writeHistory(historyPath: string, entries: ScoreHistoryEntry[]): void {
   try {
     const dir = dirname(historyPath)
     mkdirSync(dir, { recursive: true })
@@ -55,19 +52,14 @@ export function writeHistory(
   }
 }
 
-export function appendEntry(
-  historyPath: string,
-  entry: ScoreHistoryEntry
-): ScoreHistoryEntry[] {
+export function appendEntry(historyPath: string, entry: ScoreHistoryEntry): ScoreHistoryEntry[] {
   const existing = readHistory(historyPath)
   existing.push(entry)
   writeHistory(historyPath, existing)
   return existing
 }
 
-export function getLatestEntry(
-  historyPath: string
-): ScoreHistoryEntry | null {
+export function getLatestEntry(historyPath: string): ScoreHistoryEntry | null {
   const entries = readHistory(historyPath)
   if (entries.length === 0) return null
   return entries[entries.length - 1]

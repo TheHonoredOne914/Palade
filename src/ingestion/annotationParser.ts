@@ -67,7 +67,9 @@ export function parseAnnotations(manifests: FileManifest[]): Promise<Map<string,
   return parseAnnotationsAsync(manifests)
 }
 
-async function parseAnnotationsAsync(manifests: FileManifest[]): Promise<Map<string, Annotation[]>> {
+async function parseAnnotationsAsync(
+  manifests: FileManifest[]
+): Promise<Map<string, Annotation[]>> {
   const map = new Map<string, Annotation[]>()
   // Parse all files concurrently instead of sequentially
   const results = await Promise.all(

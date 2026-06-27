@@ -7,9 +7,7 @@ import { diffCommand } from '../../cli/commands/diff.js'
 import { watchCommand } from '../../cli/commands/watch.js'
 import { scoreCommand } from '../../cli/commands/score.js'
 import { initCommand } from '../../cli/commands/init.js'
-import {
-  targetsCommand,
-} from '../../cli/commands/targets.js'
+import { targetsCommand } from '../../cli/commands/targets.js'
 
 interface CommandRunnerOptions {
   config?: PaladeConfig
@@ -19,18 +17,15 @@ interface CommandRunnerOptions {
   clearOutput: () => void
   setStatus: (s: 'idle' | 'running') => void
   onExit: () => void
+  onSettingsOpen?: () => void
+  getAbortSignal?: () => AbortSignal | undefined
 }
 
-function printHelp(
-  commandName: string | undefined,
-  appendLines: (l: OutputLine[]) => void
-): void {
+function printHelp(commandName: string | undefined, appendLines: (l: OutputLine[]) => void): void {
   if (commandName) {
     const cmd = COMMAND_REGISTRY.find((c) => c.name === commandName)
     if (!cmd) {
-      appendLines([
-        { type: 'error', text: `No help for unknown command: /${commandName}` },
-      ])
+      appendLines([{ type: 'error', text: `No help for unknown command: /${commandName}` }])
       return
     }
     appendLines([
@@ -115,10 +110,11 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               mode: flag('mode') ?? 'standard',
               annotations: hasFlag('annotations'),
               pick: hasFlag('pick'),
-              depth: flag('depth') ? (parseInt(flag('depth')!, 10) || 1) : 1,
+              depth: flag('depth') ? parseInt(flag('depth')!, 10) || 1 : 1,
               format: flag('format'),
               open: hasFlag('no-open') ? false : hasFlag('open') ? true : undefined,
               quiet: false,
+              signal: opts.getAbortSignal?.(),
             })
             break
           }
@@ -132,13 +128,10 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
           }
 
           case 'watch': {
-            opts.appendLine({
-              type: 'output',
-              text: 'Starting watcher... Press Ctrl+C to stop.',
-            })
-            await watchCommand({
-              sensitivity: flag('sensitivity') ?? 'medium',
-            })
+            opts.appendLines([
+              { type: 'error', text: 'The watch daemon cannot be run inside the interactive TUI.' },
+              { type: 'output', text: 'Please open a separate terminal window and run: palade watch' }
+            ])
             break
           }
 
@@ -148,14 +141,14 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
           }
 
           case 'settings': {
-            opts.appendLine({
-              type: 'warn',
-              text: '  Settings uses interactive prompts that conflict with TUI.',
-            })
-            opts.appendLine({
-              type: 'dim',
-              text: '  Run in a separate terminal:  palade settings',
-            })
+            if (opts.onSettingsOpen) {
+              opts.onSettingsOpen()
+            } else {
+              opts.appendLine({
+                type: 'warn',
+                text: '  Type /settings in the TUI to open settings.',
+              })
+            }
             break
           }
 

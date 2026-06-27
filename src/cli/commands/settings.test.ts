@@ -48,7 +48,7 @@ describe('cli/commands/settings setNestedValue', () => {
     const out = setNestedValue(SAMPLE, 'output.port', 4242)
     // the line before the inserted one should now end with a comma
     const lines = out.split('\n')
-    const portIdx = lines.findIndex(l => l.includes('port: 4242'))
+    const portIdx = lines.findIndex((l) => l.includes('port: 4242'))
     expect(portIdx).toBeGreaterThan(0)
     const prev = lines[portIdx - 1].trimEnd()
     expect(prev.endsWith(',')).toBe(true)

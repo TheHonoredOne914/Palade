@@ -44,13 +44,14 @@ export const COMMAND_REGISTRY: CommandDef[] = [
   },
   {
     name: 'targets',
-    args: '<list|search|add>',
+    args: '<list|search|add|generate>',
     description: 'Manage review targets',
-    usage: '/targets list | /targets search <query> | /targets add <pack>',
+    usage: '/targets list | /targets search <query> | /targets add <pack> | /targets generate <query>',
     examples: [
       '/targets list',
       '/targets search nextjs',
       '/targets add palade-target-express',
+      '/targets generate "auth flow"',
     ],
   },
   {

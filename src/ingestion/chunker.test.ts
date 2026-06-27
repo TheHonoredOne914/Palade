@@ -15,7 +15,7 @@ async function createTmpFile(name: string, content: string, dir: string): Promis
     sizeBytes: Buffer.byteLength(content),
     linesOfCode: content.split('\n').length,
     annotations: [],
-    lastModified: new Date()
+    lastModified: new Date(),
   }
 }
 
@@ -31,11 +31,14 @@ describe('ingestion/chunker', () => {
       const manifest = await createTmpFile('service.ts', code, dir)
       const chunks = await chunkFiles([manifest])
 
-      const classChunks = chunks.filter(c => c.symbolName === 'UserService')
+      const classChunks = chunks.filter((c) => c.symbolName === 'UserService')
       expect(classChunks).toHaveLength(1)
 
-      const allMethods = chunks.filter(c =>
-        c.symbolName === 'getUser' || c.symbolName === 'createUser' || c.symbolName === 'deleteUser'
+      const allMethods = chunks.filter(
+        (c) =>
+          c.symbolName === 'getUser' ||
+          c.symbolName === 'createUser' ||
+          c.symbolName === 'deleteUser'
       )
       expect(allMethods).toHaveLength(0)
     } finally {
@@ -69,11 +72,11 @@ function b() { return 2 }`
       const manifest = await createTmpFile('parser.ts', code, dir)
       const chunks = await chunkFiles([manifest])
 
-      const classChunk = chunks.find(c => c.symbolName === 'Parser')
+      const classChunk = chunks.find((c) => c.symbolName === 'Parser')
       expect(classChunk).toBeDefined()
 
-      const methodChunks = chunks.filter(c =>
-        c.symbolName === 'parse' || c.symbolName === 'validate'
+      const methodChunks = chunks.filter(
+        (c) => c.symbolName === 'parse' || c.symbolName === 'validate'
       )
       expect(methodChunks).toHaveLength(0)
 
@@ -100,11 +103,14 @@ function b() { return 2 }`
       const manifest = await createTmpFile('service.py', code, dir)
       const chunks = await chunkFiles([manifest])
 
-      const classChunks = chunks.filter(c => c.symbolName === 'UserService')
+      const classChunks = chunks.filter((c) => c.symbolName === 'UserService')
       expect(classChunks).toHaveLength(1)
 
-      const methodChunks = chunks.filter(c =>
-        c.symbolName === 'get_user' || c.symbolName === 'create_user' || c.symbolName === 'delete_user'
+      const methodChunks = chunks.filter(
+        (c) =>
+          c.symbolName === 'get_user' ||
+          c.symbolName === 'create_user' ||
+          c.symbolName === 'delete_user'
       )
       expect(methodChunks).toHaveLength(0)
     } finally {

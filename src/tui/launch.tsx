@@ -8,11 +8,12 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const pkg = JSON.parse(
-  readFileSync(join(__dirname, '../../package.json'), 'utf-8')
-) as { version: string }
+const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf-8')) as {
+  version: string
+}
 
 export async function launchTUI(): Promise<void> {
+  process.env.PALADE_TUI = '1'
   let config
   const providerStatus: Record<string, boolean> = {}
   let configError: string | undefined
@@ -41,6 +42,8 @@ export async function launchTUI(): Promise<void> {
     }
   }
 
+  // Let Ink render natively in the terminal so standard scrolling works.
+
   const { waitUntilExit } = render(
     <App
       config={config}
@@ -51,6 +54,7 @@ export async function launchTUI(): Promise<void> {
     />,
     {
       exitOnCtrlC: false,
+      patchConsole: false,
     }
   )
 

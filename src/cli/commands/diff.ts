@@ -55,11 +55,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
 
     const additions = changedFiles.reduce((s, f) => s + f.additions, 0)
     const deletions = changedFiles.reduce((s, f) => s + f.deletions, 0)
-    console.log(
-      theme.dim(
-        `  ${changedFiles.length} changed files (+${additions} / -${deletions})`
-      )
-    )
+    console.log(theme.dim(`  ${changedFiles.length} changed files (+${additions} / -${deletions})`))
 
     const nonDeleted = changedFiles.filter((f) => f.status !== 'deleted')
     const scope: ScopeOptions = {
@@ -92,7 +88,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     }
 
     const context: AgentContext = {
-      projectLanguages: await detectLanguages(projectRoot, scope),
+      projectLanguages: (await detectLanguages(projectRoot, scope)).primary,
       totalFiles: manifests.length,
       totalChunks: chunks.length,
       mode: 'standard',
@@ -110,11 +106,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
         onAgentStart: (name: AgentName): void => {
           progressSpinner.text = `  [${completedAgents}/${agentCount}] ${name} agent analyzing...`
         },
-        onAgentComplete: (
-          name: AgentName,
-          findings: number,
-          durationMs: number
-        ): void => {
+        onAgentComplete: (name: AgentName, findings: number, durationMs: number): void => {
           completedAgents++
           progressSpinner.text = `  [${completedAgents}/${agentCount}] ${name} complete (${findings} findings, ${(durationMs / 1000).toFixed(1)}s)`
         },
@@ -144,8 +136,10 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       const sFallbacks = fs.synthesis.fallbacks
       if (pFallbacks > 0 || sFallbacks > 0) {
         const parts: string[] = []
-        if (pFallbacks > 0) parts.push(`primary: ${pFallbacks}/${fs.primary.total} calls used fallback`)
-        if (sFallbacks > 0) parts.push(`synthesis: ${sFallbacks}/${fs.synthesis.total} calls used fallback`)
+        if (pFallbacks > 0)
+          parts.push(`primary: ${pFallbacks}/${fs.primary.total} calls used fallback`)
+        if (sFallbacks > 0)
+          parts.push(`synthesis: ${sFallbacks}/${fs.synthesis.total} calls used fallback`)
         console.log(chalk.yellow(`  ⚠ ${parts.join(' | ')}`))
       }
     }
@@ -167,18 +161,12 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       delta: scoreResult.delta,
     })
 
-    const findingDiff = compareFindings(
-      swarmResult.findings,
-      [],
-      changedFiles
-    )
+    const findingDiff = compareFindings(swarmResult.findings, [], changedFiles)
 
     const rankedIntroduced = rankIntroducedFindings(findingDiff.introduced)
     findingDiff.introduced = rankedIntroduced
 
-    const hasCriticalIntroduced = rankedIntroduced.some(
-      (f) => f.severity === 'critical'
-    )
+    const hasCriticalIntroduced = rankedIntroduced.some((f) => f.severity === 'critical')
 
     printDiffSummary({
       score: scoreResult,
@@ -234,18 +222,14 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     }
 
     if (opts.ci && hasCriticalIntroduced) {
-      console.error(
-        theme.error('\n  ✗ Critical findings introduced. Blocking.')
-      )
+      console.error(theme.error('\n  ✗ Critical findings introduced. Blocking.'))
       throw new CliExitError(1)
     }
   } catch (err) {
     // CliExitError is an intentional exit signal — pass it through untouched.
     // Its message (if any) has already been printed at the throw site.
     if (err instanceof CliExitError) throw err
-    console.error(
-      theme.error(`\nDiff review failed: ${(err as Error).message}`)
-    )
+    console.error(theme.error(`\nDiff review failed: ${(err as Error).message}`))
     if ((err as Error).stack && process.env.DEBUG) {
       console.error(chalk.gray((err as Error).stack))
     }

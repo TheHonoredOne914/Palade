@@ -6,9 +6,7 @@ import { theme, scoreTheme } from '../../ui/theme.js'
 import { sectionBox, kvTable, sparkline, scoreGrade, formatDelta } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
 
-export async function scoreCommand(opts: {
-  history?: boolean
-}): Promise<void> {
+export async function scoreCommand(opts: { history?: boolean }): Promise<void> {
   try {
     const config = await loadConfig()
     const historyPath = join(process.cwd(), config.score.historyFile)
@@ -35,10 +33,7 @@ export async function scoreCommand(opts: {
                 `${latest.score}/100  ${formatDelta(latest.delta)}  Grade: ${scoreGrade(latest.score)}`
               ),
             ],
-            [
-              'Last review:',
-              theme.dim(new Date(latest.timestamp).toLocaleDateString()),
-            ],
+            ['Last review:', theme.dim(new Date(latest.timestamp).toLocaleDateString())],
             ['Run ID:', theme.dim(latest.runId)],
           ]),
           '',
@@ -48,16 +43,10 @@ export async function scoreCommand(opts: {
     )
 
     // History table
-    const displayEntries = opts.history
-      ? entries
-      : entries.slice(-10)
+    const displayEntries = opts.history ? entries : entries.slice(-10)
 
     const table = new Table({
-      head: [
-        theme.primaryBold('Date'),
-        theme.primaryBold('Score'),
-        theme.primaryBold('Delta'),
-      ],
+      head: [theme.primaryBold('Date'), theme.primaryBold('Score'), theme.primaryBold('Delta')],
       colWidths: [18, 12, 10],
       style: { head: [], border: ['grey'] },
     })
@@ -77,9 +66,7 @@ export async function scoreCommand(opts: {
     console.log(table.toString())
     console.log()
   } catch (err) {
-    console.error(
-      theme.error(`Score lookup failed: ${(err as Error).message}`)
-    )
+    console.error(theme.error(`Score lookup failed: ${(err as Error).message}`))
     throw new CliExitError(1)
   }
 }

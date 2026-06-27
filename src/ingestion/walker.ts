@@ -1,7 +1,7 @@
 import { readdir, stat, readFile, realpath } from 'node:fs/promises'
 import { join, relative, extname, sep } from 'node:path'
 import ignore, { Ignore } from 'ignore'
-import type { FileManifest, Language, ScopeOptions } from './types.js'
+import type { FileManifest, Language, ScopeOptions, LanguageProfile } from './types.js'
 import { parseFile } from './annotationParser.js'
 
 const DEFAULT_IGNORES = [
@@ -13,7 +13,7 @@ const DEFAULT_IGNORES = [
   '*.min.js',
   '*.min.css',
   'coverage',
-  '.palade'
+  '.palade',
 ]
 
 const EXT_MAP: Record<string, Language> = {
@@ -24,7 +24,7 @@ const EXT_MAP: Record<string, Language> = {
   '.mjs': 'javascript',
   '.py': 'python',
   '.go': 'go',
-  '.rs': 'rust'
+  '.rs': 'rust',
 }
 
 function detectLanguage(filePath: string): Language {
@@ -129,7 +129,7 @@ async function walkDir(
       sizeBytes: fileStat.size,
       linesOfCode,
       annotations,
-      lastModified: fileStat.mtime
+      lastModified: fileStat.mtime,
     })
   }
 
@@ -139,12 +139,19 @@ async function walkDir(
 export async function detectLanguages(
   projectRoot: string,
   scope: ScopeOptions
-): Promise<Language[]> {
+): Promise<LanguageProfile> {
   const manifests = await walkProject(projectRoot, scope)
-  const langs = [...new Set(
-    manifests.map(m => m.language).filter((l): l is Language => l !== 'unknown')
-  )]
-  return langs.length > 0 ? langs : ['typescript']
+  const langs = [
+    ...new Set(manifests.map((m) => m.language).filter((l): l is Language => l !== 'unknown')),
+  ]
+
+  const primary = (langs.length > 0 ? langs : ['typescript']) as Language[]
+  const isFirstClass = primary.includes('typescript') || primary.includes('javascript')
+
+  return {
+    primary,
+    isFirstClass,
+  }
 }
 
 export async function walkProject(
@@ -164,8 +171,8 @@ export async function walkProject(
     const ignoreContent = await readFile(join(projectRoot, '.paladeignore'), 'utf-8')
     const customRules = ignoreContent
       .split('\n')
-      .map(line => line.trim())
-      .filter(line => line && !line.startsWith('#'))
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
     for (const rule of customRules) {
       ig.add(rule.replace(/\r/g, ''))
     }
@@ -178,8 +185,8 @@ export async function walkProject(
     const gitignoreContent = await readFile(join(projectRoot, '.gitignore'), 'utf-8')
     const gitRules = gitignoreContent
       .split('\n')
-      .map(line => line.trim())
-      .filter(line => line && !line.startsWith('#'))
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
     for (const rule of gitRules) {
       ig.add(rule.replace(/\r/g, ''))
     }
@@ -192,31 +199,29 @@ export async function walkProject(
 
   // Apply scope filtering
   if (scope.dirs && scope.dirs.length > 0) {
-    manifests = manifests.filter(m =>
-      scope.dirs!.some(d => m.path === d || m.path.startsWith(d + '/'))
+    manifests = manifests.filter((m) =>
+      scope.dirs!.some((d) => m.path === d || m.path.startsWith(d + '/'))
     )
   }
 
   if (scope.files && scope.files.length > 0) {
     const fileSet = new Set(scope.files)
-    manifests = manifests.filter(m => fileSet.has(m.path))
+    manifests = manifests.filter((m) => fileSet.has(m.path))
   }
 
   if (scope.globs && scope.globs.length > 0) {
-    manifests = manifests.filter(m => matchesGlobs(m.path, scope.globs!))
+    manifests = manifests.filter((m) => matchesGlobs(m.path, scope.globs!))
   }
 
   if (scope.targetPaths && scope.targetPaths.length > 0) {
-    manifests = manifests.filter(m =>
-      scope.targetPaths!.some(t => m.path === t || m.path.startsWith(t + '/'))
+    manifests = manifests.filter((m) =>
+      scope.targetPaths!.some((t) => m.path === t || m.path.startsWith(t + '/'))
     )
   }
 
   // annotationsOnly filter
   if (scope.annotationsOnly) {
-    manifests = manifests.filter(m =>
-      m.annotations.some(a => a.type !== 'ignore')
-    )
+    manifests = manifests.filter((m) => m.annotations.some((a) => a.type !== 'ignore'))
   }
 
   // Sort by path

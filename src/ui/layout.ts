@@ -24,18 +24,18 @@ export function infoBox(lines: string[]): string {
 }
 
 export function kvTable(rows: [string, string][]): string {
-  return rows
-    .map(([k, v]) => `  ${theme.dim(k.padEnd(18))} ${v}`)
-    .join('\n')
+  return rows.map(([k, v]) => `  ${theme.dim(k.padEnd(18))} ${v}`).join('\n')
 }
 
-export function findingsTable(findings: {
-  severity: string
-  agentName: string
-  filePath?: string
-  lineStart?: number
-  title: string
-}[]): string {
+export function findingsTable(
+  findings: {
+    severity: string
+    agentName: string
+    filePath?: string
+    lineStart?: number
+    title: string
+  }[]
+): string {
   const table = new Table({
     head: [
       theme.primaryBold('Severity'),
@@ -46,17 +46,26 @@ export function findingsTable(findings: {
     colWidths: [12, 20, 30, 40],
     style: { head: [], border: ['grey'], compact: true },
     chars: {
-      top: '─', 'top-mid': '┬', 'top-left': '┌', 'top-right': '┐',
-      bottom: '─', 'bottom-mid': '┴', 'bottom-left': '└', 'bottom-right': '┘',
-      left: '│', 'left-mid': '├', mid: '─', 'mid-mid': '┼',
-      right: '│', 'right-mid': '┤', middle: '│',
+      top: '─',
+      'top-mid': '┬',
+      'top-left': '┌',
+      'top-right': '┐',
+      bottom: '─',
+      'bottom-mid': '┴',
+      'bottom-left': '└',
+      'bottom-right': '┘',
+      left: '│',
+      'left-mid': '├',
+      mid: '─',
+      'mid-mid': '┼',
+      right: '│',
+      'right-mid': '┤',
+      middle: '│',
     },
   })
 
   for (const f of findings.slice(0, 30)) {
-    const loc = f.filePath
-      ? `${truncatePath(f.filePath, 20)}:${f.lineStart ?? '?'}`
-      : '—'
+    const loc = f.filePath ? `${truncatePath(f.filePath, 20)}:${f.lineStart ?? '?'}` : '—'
 
     table.push([
       severityChip(f.severity),
@@ -81,16 +90,14 @@ export function sparkline(values: number[], width = 20): string {
   const min = Math.min(...values)
   const max = Math.max(...values)
   const range = max - min || 1
-  const chars = values
-    .slice(-width)
-    .map((v) => {
-      const idx = Math.round(((v - min) / range) * (BLOCKS.length - 1))
-      const block = BLOCKS[idx]
-      if (v >= 80) return chalk.hex('#10B981')(block)
-      if (v >= 60) return chalk.hex('#F59E0B')(block)
-      if (v >= 40) return chalk.hex('#F97316')(block)
-      return chalk.hex('#EF4444')(block)
-    })
+  const chars = values.slice(-width).map((v) => {
+    const idx = Math.round(((v - min) / range) * (BLOCKS.length - 1))
+    const block = BLOCKS[idx]
+    if (v >= 80) return chalk.hex('#10B981')(block)
+    if (v >= 60) return chalk.hex('#F59E0B')(block)
+    if (v >= 40) return chalk.hex('#F97316')(block)
+    return chalk.hex('#EF4444')(block)
+  })
   return chars.join('')
 }
 
@@ -108,10 +115,10 @@ function truncatePath(p: string, n: number): string {
 function severityChip(sev: string): string {
   const chips: Record<string, string> = {
     critical: chalk.bgRed.white.bold(' CRIT '),
-    high:     chalk.bgHex('#F97316').white.bold(' HIGH '),
-    medium:   chalk.bgHex('#F59E0B').black(' MED  '),
-    low:      chalk.bgWhite.black(' LOW  '),
-    info:     chalk.bgBlue.white(' INFO '),
+    high: chalk.bgHex('#F97316').white.bold(' HIGH '),
+    medium: chalk.bgHex('#F59E0B').black(' MED  '),
+    low: chalk.bgWhite.black(' LOW  '),
+    info: chalk.bgBlue.white(' INFO '),
   }
   return chips[sev] ?? chalk.bgWhite.black(` ${sev.toUpperCase().slice(0, 4).padEnd(4)} `)
 }

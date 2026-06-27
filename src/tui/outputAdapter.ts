@@ -15,24 +15,20 @@ export function mountOutputAdapter(append: AppendFn): void {
   _originalError = console.error
   _originalClear = console.clear
 
+  const formatArg = (a: unknown) => (typeof a === 'string' ? a : a instanceof Error ? a.message : JSON.stringify(a))
+
   console.log = (...args: unknown[]) => {
-    const text = args
-      .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
-      .join(' ')
+    const text = args.map(formatArg).join(' ')
     _append?.({ type: 'output', text })
   }
 
   console.warn = (...args: unknown[]) => {
-    const text = args
-      .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
-      .join(' ')
+    const text = args.map(formatArg).join(' ')
     _append?.({ type: 'warn', text })
   }
 
   console.error = (...args: unknown[]) => {
-    const text = args
-      .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
-      .join(' ')
+    const text = args.map(formatArg).join(' ')
     _append?.({ type: 'error', text })
   }
 

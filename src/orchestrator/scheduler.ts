@@ -1,7 +1,7 @@
 import type { CodeChunk } from '../ingestion/types.js'
 
-const SOFT_TOKEN_LIMIT = 8_000
-const HARD_CHUNK_LIMIT = 3_000
+const SOFT_TOKEN_LIMIT = 16_000
+const HARD_CHUNK_LIMIT = 6_000
 
 function splitChunk(chunk: CodeChunk): CodeChunk[] {
   const lines = chunk.content.split('\n')
@@ -14,12 +14,11 @@ function splitChunk(chunk: CodeChunk): CodeChunk[] {
   let splitIdx = Math.max(1, mid)
   const searchRadius = Math.floor(lines.length * 0.15) // up to 15% of lines
   const breakPatterns = [/^\s*$/, /^\s*\}/, /^\s*\)\s*{?\s*$/]
-  outer:
-  for (let offset = 0; offset <= searchRadius; offset++) {
+  outer: for (let offset = 0; offset <= searchRadius; offset++) {
     for (const dir of [1, -1]) {
       const candidate = mid + dir * offset
       if (candidate > 0 && candidate < lines.length) {
-        if (breakPatterns.some(p => p.test(lines[candidate]))) {
+        if (breakPatterns.some((p) => p.test(lines[candidate]))) {
           splitIdx = candidate
           break outer
         }
@@ -70,7 +69,7 @@ export function scheduleBatches(chunks: CodeChunk[]): CodeChunk[][] {
       return [chunk]
     }
     const halves = splitChunk(chunk)
-    return halves.flatMap(h => splitToLimit(h, depth + 1))
+    return halves.flatMap((h) => splitToLimit(h, depth + 1))
   }
 
   const processedChunks: CodeChunk[] = []

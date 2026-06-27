@@ -1,310 +1,78 @@
 # Palade
 
-**AI-powered codebase intelligence — reviewed by a swarm, not a single bot.**
+**An AI-powered codebase intelligence engine that reviews code with a swarm of specialized agents, not just a single bot.**
 
-CodeRabbit reviews what changed. Palade reviews what *is*.
+## Installation
 
-Palade is an open-source CLI tool that deploys a parallel swarm of specialist AI agents across your entire codebase (or any part of it) and produces a structured health report — findings, a 0–100 health score, and prioritized fixes. It runs entirely on your machine, with your own API keys. No telemetry, no proxy, no lock-in.
-
----
-
-## Why Palade?
-
-Most AI review tools live in the diff. They catch what a PR changed but are architecturally blind to what's already broken:
-
-- Auth logic duplicated across six files with subtle differences
-- Three incompatible error-handling philosophies introduced by three different developers
-- A `RecommendationEngine` that's fully built, fully wired into nothing, quietly rotting
-- An `/api/v2/export` route with a handler, middleware, and a DB query — never called from the frontend
-
-No PR review catches this. Palade is built specifically to find it.
-
----
-
-## Quick Start
+You can install Palade globally using npm to run it from anywhere on your machine:
 
 ```bash
-npx palade init      # scaffold config + targets + ignore files
-npx palade review    # run the swarm on your codebase
+npm install -g palade
 ```
 
-A report opens automatically in your browser, plus a `palade-badge.svg` you can drop in your README:
+## What is Palade?
 
-```md
-![Palade Score](./palade-badge.svg)
-```
+Palade is a sophisticated CLI and TUI (Terminal User Interface) tool that runs a swarm of AI agents over your codebase. Instead of sending your entire codebase to a single LLM, Palade uses a specialized architecture:
+1. **Triage:** It figures out which files are most important.
+2. **Specialist Agents:** It runs multiple specialized agents (Security, Architecture, Performance, Maintainability, Dead Code, and Test Intelligence) concurrently over the codebase.
+3. **Synthesis:** A synthesis agent reviews the cross-cutting findings and produces a prioritized, actionable report.
 
----
+Palade is optimized for **TypeScript and JavaScript** projects but also works with other languages. It runs entirely on your local machine and communicates directly with your LLM provider of choice (Groq, Cerebras, OpenRouter, Nvidia, or locally via Ollama).
 
-## How It Works
+## Commands
 
-1. **Ingest** — walks your project, respects `.paladeignore`, and chunks files at semantic boundaries (functions, classes — not arbitrary line counts)
-2. **Swarm** — six specialist agents run in parallel, each reviewing the codebase through one lens
-3. **Synthesize** — a synthesis agent merges all findings, removes duplicates, and writes an executive summary with prioritized fixes
-4. **Score** — a 0–100 Palade Health Index across six dimensions, tracked over time
-5. **Report** — a self-contained HTML report (works offline, no CDN), plus JSON and Markdown output
+### Interactive TUI
 
-```
-Palade Score: 68/100  ↓2 from last week
-
-Architecture        74   ████████░░
-Security            58   █████░░░░░
-Maintainability     61   ██████░░░░
-Test Intelligence   71   ███████░░░
-Dead Weight         64   ██████░░░░
-Consistency         69   ██████░░░░
-```
-
----
-
-## The Swarm
-
-| Agent | Looks For |
-|---|---|
-| **Security** | Injection risks, auth gaps, hardcoded secrets, missing input validation |
-| **Architecture** | Circular dependencies, layer violations, tight coupling, God objects |
-| **Performance** | N+1 patterns, unbounded loops, missing caching, sync-in-async |
-| **Maintainability** | Duplicated logic, inconsistent naming, undocumented complexity |
-| **Dead Code** | Unused exports, zombie routes, unwired classes, stale TODOs |
-| **Test Intelligence** | Untested critical paths, hollow mocks, missing edge cases |
-
-A synthesis agent then cross-references all six sets of findings — catching issues that only show up when domains overlap (e.g. an auth bug that's also a performance bug that's also untested).
-
----
-
-## Custom Targets
-
-Define named subsystems in `palade.targets.ts` and the swarm reviews them with full context:
-
-```ts
-// palade.targets.ts
-export default [
-  {
-    name: "research-pipeline",
-    description: "AI research orchestration — chunking, retrieval, synthesis chain",
-    entry: ["src/research/", "src/agents/"],
-    focus: ["data flow", "hallucination risks", "context window leaks"],
-  },
-  {
-    name: "auth-system",
-    entry: ["src/auth/", "src/middleware/auth.ts"],
-    focus: ["security", "token handling", "session logic"],
-  }
-]
-```
-
+Simply run `palade` in your terminal to launch the interactive TUI. 
 ```bash
-npx palade review --target research-pipeline
-npx palade review --all-targets
+palade
 ```
+From here you can run commands like `/review`, `/score`, `/diff`, and configure your LLM providers using `/settings`.
 
-The agents receive your description and focus areas as part of their system prompt. A review of your RAG pipeline knows to look for context window leaks. A review of your auth system knows to look for token handling bugs. It's institutional knowledge, encoded once, reused forever.
+### CLI Commands
 
----
+You can also run commands directly from your terminal without opening the interactive UI:
 
-## Custom Agents
-
-Define your own specialist agents in `palade.agents.ts` and they run alongside the built-in swarm, through the same provider and synthesis pipeline:
-
-```ts
-// palade.agents.ts
-export default [
-  {
-    // Must be unique — names colliding with built-ins (security, architecture,
-    // performance, maintainability, deadCode, testIntelligence) are rejected.
-    name: "api-design",
-    domain: "API Design",
-    systemPrompt: `You are an API design reviewer. Check for:
-  - Consistent naming conventions across endpoints
-  - Correct HTTP method usage (GET reads, POST creates, PUT/PATCH updates, DELETE removes)
-  - Request/response schema consistency
-  - Pagination, error envelopes, and versioning patterns
-  Return ONLY a valid JSON array of findings.`,
-  },
-  {
-    name: "i18n",
-    domain: "Internationalization",
-    systemPrompt: `Review for hard-coded user-facing strings, missing locale lookups, and pluralization bugs. Return ONLY a valid JSON array of findings.`,
-    // Optional: override how much each severity costs in the score, instead of
-    // the built-in SEVERITY_PENALTY (critical:10, high:5, medium:2, low:0.5).
-    severityPenalty: { critical: 8, high: 4 },
-  },
-]
-```
-
-A custom agent's `systemPrompt` gets the same context injection the built-ins get — diff context, target focus areas, `@palade` review/focus annotations, and mode suffixes — so a custom "API Design" agent reviewing a `--target` knows the subsystem just like the built-in Security agent does.
-
-Validation is fail-fast: a malformed entry (missing or empty `systemPrompt`, a name that collides with a built-in, an unparseable file) fails at config load with a clear error pointing at `palade.agents.ts` — it never silently drops your agent and burns a whole review run without it. `palade init` scaffolds a starter `palade.agents.ts` alongside the targets and ignore files.
-
----
-
-## Scoped Reviews
-
-## Scoped Reviews
-
-Review as much or as little as you want — same tool, same output quality:
-
+#### `palade review`
+Run a full swarm review over your project.
 ```bash
-npx palade review                          # whole codebase
-npx palade review src/auth/                # a folder
-npx palade review src/billing/webhook.ts   # a file
-npx palade review "src/**/*.service.ts"    # a glob
-npx palade review src/utils.ts::parseJWT   # a single function
-npx palade review --pick                   # interactive picker
+palade review
 ```
+- Use `--target <name>` to review specific targets.
+- Use `--file <path>` to review specific files.
+- The output includes an interactive HTML report and a Markdown summary.
 
-Flag things inline as you write code:
-
-```ts
-// @palade review: this retry logic feels wrong, check edge cases
-async function retryWithBackoff(fn, attempts = 3) { ... }
-
-// @palade ignore
-function legacyMigrationHelper() { ... }
-```
-
----
-
-## Review Modes
-
-| Mode | Command | Output |
-|---|---|---|
-| Standard | `palade review` | Full balanced audit |
-| Security | `--mode security` | Attack surface map, entry points, auth gaps |
-| Onboard | `--mode onboard` | `ARCHITECTURE.md`, `DATA_FLOWS.md`, `DANGER_ZONES.md`, `GOTCHAS.md` |
-| Debt | `--mode debt` | Technical debt in developer-hours, by severity tier |
-| Ghost | `--mode ghost` | Dead code, zombie features, unwired implementations |
-
+#### `palade watch`
+Run the review daemon in the background. It watches your files for changes, debounces them, and automatically runs a review.
 ```bash
-npx palade review --mode onboard
+palade watch
 ```
+*Note: This command runs continuously and should be run in a separate terminal window.*
 
-generates the docs a new contributor needs on day one — automatically, from the actual code.
-
----
-
-## CI Integration
-
+#### `palade score`
+Check your codebase health score and view your score history.
 ```bash
-npx palade diff --base main
+palade score
 ```
 
-Reviews only what your branch changed, shows the score delta, and exits non-zero on critical findings — drop it straight into GitHub Actions.
-
----
-
-## Setup — Bring Your Own Keys
-
-Palade is BYOK. Set whichever provider keys you have:
-
+#### `palade diff`
+Review only the files that have changed since your main branch or last commit.
 ```bash
-export GROQ_API_KEY="..."
-export CEREBRAS_API_KEY="..."
-export OPENROUTER_API_KEY="..."
-export NVIDIA_API_KEY="..."
+palade diff --base main
 ```
 
-Or add them to `palade.config.ts` (auto-generated by `palade init`, auto-added to `.gitignore`).
-
-```ts
-// palade.config.ts
-export default {
-  providers: {
-    groq: { apiKey: process.env.GROQ_API_KEY },
-    cerebras: { apiKey: process.env.CEREBRAS_API_KEY },
-  },
-  swarm: {
-    primary: "groq",       // parallel swarm agents
-    synthesis: "cerebras", // final synthesis pass
-  }
-}
-```
-
-Palade checks provider availability at startup and falls back automatically if a provider is rate-limited or unreachable. Multiple keys per provider are supported and round-robined.
-
-> **No keys ever leave your machine.** Every call goes directly from your computer to the provider's API. Palade has no server, no proxy, and no telemetry.
-
----
-
-## CLI Reference
-
-```
-palade init                       Scaffold config, targets, and ignore files
-palade review [path]              Run the swarm
-  --target <name>                  Review a named target
-  --all-targets                    Review every target
-  --dir / --file / --glob           Scope to a path
-  --mode <mode>                     standard | security | onboard | debt | ghost
-  --annotations                     Only review @palade-flagged code
-  --pick                            Interactive scope picker
-  --depth <n>                       Symbol dependency trace depth
-
-palade diff --base <branch>       Branch pre-flight review (CI-friendly)
-palade watch                      Background architectural drift detection
-palade score                      Show current score and history
-palade targets search <query>     Search community target packs
-palade targets add <pack>         Install a community target pack
-```
-
----
-
-## .paladeignore
-
-Same syntax as `.gitignore`. Generated automatically with sensible defaults:
-
-```
-node_modules/
-dist/
-build/
-*.lock
-*.min.js
-coverage/
-.palade/
-```
-
----
-
-## Community Target Packs
-
-Publish and install shareable target definitions for common stacks:
-
+#### `palade targets`
+Manage specific sub-areas of your project (targets) to review independently.
 ```bash
-npx palade targets search rag
-npx palade targets add rag-pipeline-audit
+palade targets list
+palade targets add <name>
+palade targets search <query>
 ```
 
-Target packs are published as `@palade-targets/<name>` npm packages. If you've built a great review spec for your stack — Stripe integrations, Next.js apps, RAG pipelines — publish it.
+## Getting Started
 
----
-
-## Roadmap
-
-- [x] Full codebase swarm review
-- [x] Palade Score + badge
-- [x] Custom targets
-- [x] Scoped reviews (folder/file/glob/symbol)
-- [x] Review modes (security, onboard, debt, ghost)
-- [x] `palade diff` for CI
-- [ ] `palade watch` drift detection
-- [ ] Cross-target agent memory
-- [ ] Community target registry
-- [ ] GitHub Action
-
----
-
-## Principles
-
-- **Open source, MIT licensed.** Trust requires transparency, especially for a tool that reads your entire codebase.
-- **BYOK, always.** No hosted keys, no usage billing through Palade.
-- **Zero lock-in.** All output is portable: HTML, JSON, Markdown.
-- **Speed is a feature.** A review that takes 20 minutes never gets run twice. A review that takes 2 minutes becomes a habit.
-
----
-
-## Contributing
-
-Issues and PRs welcome. If you've encoded a great review spec for your stack, consider publishing it as a community target pack.
-
-## License
-
-MIT
+Initialize your project to create a `palade.config.ts` configuration file:
+```bash
+palade init
+```
+This lets you set your API keys, LLM providers, and customize the swarm's behavior!

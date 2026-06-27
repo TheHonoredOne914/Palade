@@ -4,9 +4,7 @@ import type { AgentFinding } from '../agents/base.js'
 import type { ChangedFile } from './types.js'
 
 let counter = 0
-function finding(
-  overrides: Partial<AgentFinding> & Pick<AgentFinding, 'severity'>
-): AgentFinding {
+function finding(overrides: Partial<AgentFinding> & Pick<AgentFinding, 'severity'>): AgentFinding {
   counter++
   return {
     id: `id-${counter}`,

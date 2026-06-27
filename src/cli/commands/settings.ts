@@ -64,16 +64,24 @@ async function showCurrentConfig(projectRoot: string): Promise<void> {
     if (config.output) {
       console.log()
       console.log(theme.bold('  Output:'))
-      console.log(`    Formats:    ${chalk.cyan(config.output.formats?.join(', ') ?? 'html, json')}`)
+      console.log(
+        `    Formats:    ${chalk.cyan(config.output.formats?.join(', ') ?? 'html, json')}`
+      )
       console.log(`    Directory:  ${chalk.cyan(config.output.dir ?? '.palade/reports')}`)
-      console.log(`    Browser:    ${chalk.cyan(config.output.openBrowser !== false ? 'auto-open' : 'disabled')}`)
+      console.log(
+        `    Browser:    ${chalk.cyan(config.output.openBrowser !== false ? 'auto-open' : 'disabled')}`
+      )
     }
 
     if (config.score) {
       console.log()
       console.log(theme.bold('  Score:'))
-      console.log(`    History:    ${chalk.cyan(config.score.historyFile ?? '.palade/history.json')}`)
-      console.log(`    Badge:      ${chalk.cyan(config.score.badge !== false ? 'enabled' : 'disabled')}`)
+      console.log(
+        `    History:    ${chalk.cyan(config.score.historyFile ?? '.palade/history.json')}`
+      )
+      console.log(
+        `    Badge:      ${chalk.cyan(config.score.badge !== false ? 'enabled' : 'disabled')}`
+      )
     }
   } catch {
     console.log()
@@ -201,7 +209,10 @@ function parseValue(raw: string): unknown {
   if (/^-?\d+$/.test(raw)) return parseInt(raw, 10)
   if (/^-?\d+\.\d+$/.test(raw)) return parseFloat(raw)
   if (raw.startsWith('[') && raw.endsWith(']')) {
-    return raw.slice(1, -1).split(',').map(s => s.trim().replace(/^['"]|['"]$/g, ''))
+    return raw
+      .slice(1, -1)
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
   }
   return raw.replace(/^['"]|['"]$/g, '')
 }
@@ -213,11 +224,12 @@ function formatValue(v: unknown): string {
 
 export function setNestedValue(content: string, dotPath: string, value: unknown): string {
   const parts = dotPath.split('.')
-  const valueStr = typeof value === 'string'
-    ? `'${value.replace(/'/g, "\\'")}'`
-    : Array.isArray(value)
-      ? `[${value.map(v => `'${String(v).replace(/'/g, "\\'")}'`).join(', ')}]`
-      : String(value)
+  const valueStr =
+    typeof value === 'string'
+      ? `'${value.replace(/'/g, "\\'")}'`
+      : Array.isArray(value)
+        ? `[${value.map((v) => `'${String(v).replace(/'/g, "\\'")}'`).join(', ')}]`
+        : String(value)
   const lines = content.split('\n')
 
   // Walk the file tracking object nesting via { } so that a dotted path like
@@ -272,8 +284,7 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
     if (keyMatch) {
       const targetPath = parts.slice(0, -1)
       const matchesPath =
-        pathStack.length === targetPath.length &&
-        targetPath.every((p, idx) => pathStack[idx] === p)
+        pathStack.length === targetPath.length && targetPath.every((p, idx) => pathStack[idx] === p)
       if (matchesPath) {
         // Preserve the trailing comma if the original line had one — without
         // this, "agentCount: 6," becomes "agentCount: 8" and breaks the object.

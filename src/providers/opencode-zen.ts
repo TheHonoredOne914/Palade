@@ -1,8 +1,4 @@
-import type {
-  IProvider,
-  CompletionRequest,
-  CompletionResponse,
-} from './base.js'
+import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 import chalk from 'chalk'
 
 const AVAILABILITY_CACHE_MS = 60_000
@@ -67,7 +63,8 @@ export class OpenCodeZenProvider implements IProvider {
 
     if (res.status === 429) {
       const body = await res.json().catch(() => ({}))
-      const errorMsg = (body as Record<string, unknown>)?.error as Record<string, unknown> | undefined
+      const errorMsg = (body as Record<string, unknown>)?.error as
+        Record<string, unknown> | undefined
       const msg = typeof errorMsg?.message === 'string' ? errorMsg.message : ''
 
       if (msg.includes('daily') || msg.includes('per-day')) {
@@ -80,14 +77,18 @@ export class OpenCodeZenProvider implements IProvider {
         throw new Error(`OpenCode Zen rate limited — 429 retries exhausted`)
       }
 
-      console.warn(chalk.yellow(`  OpenCode Zen rate limited. Waiting 60s... (${attempt + 1}/${OpenCodeZenProvider.MAX_429_RETRIES})`))
-      await new Promise(r => setTimeout(r, 60_000))
+      console.warn(
+        chalk.yellow(
+          `  OpenCode Zen rate limited. Waiting 60s... (${attempt + 1}/${OpenCodeZenProvider.MAX_429_RETRIES})`
+        )
+      )
+      await new Promise((r) => setTimeout(r, 60_000))
       return this.doComplete(req, maxTokens, attempt + 1)
     }
 
     if (res.status >= 500 && attempt < 2) {
       console.warn(chalk.yellow(`  OpenCode Zen ${res.status} — retrying in 5s...`))
-      await new Promise(r => setTimeout(r, 5_000))
+      await new Promise((r) => setTimeout(r, 5_000))
       return this.doComplete(req, maxTokens, attempt + 1)
     }
 
@@ -96,9 +97,10 @@ export class OpenCodeZenProvider implements IProvider {
       throw new Error(`OpenCode Zen error ${res.status}: ${body.slice(0, 200)}`)
     }
 
-    const data = await res.json() as Record<string, unknown>
+    const data = (await res.json()) as Record<string, unknown>
     const durationMs = Date.now() - start
-    const choices = data.choices as Array<{ message?: { content?: string; reasoning_content?: string } }> | undefined
+    const choices = data.choices as
+      Array<{ message?: { content?: string; reasoning_content?: string } }> | undefined
     const content = choices?.[0]?.message?.content ?? ''
     const usage = data.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
 
@@ -106,7 +108,7 @@ export class OpenCodeZenProvider implements IProvider {
     // Retry with double the tokens (cap at 16384 to avoid runaway)
     if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
       const newMax = Math.min(maxTokens * 2, 16384)
-      console.warn(chalk.yellow(`  OpenCode Zen returned empty content (${usage?.completion_tokens} tokens used) — retrying with ${newMax} tokens`))
+
       return this.doComplete(req, newMax, attempt + 1)
     }
 
@@ -122,35 +124,6 @@ export class OpenCodeZenProvider implements IProvider {
 
   async isAvailable(): Promise<boolean> {
     if (this.dailyLimitExhausted) return false
-
-    if (
-      this.availabilityCache &&
-      Date.now() - this.availabilityCache.timestamp < AVAILABILITY_CACHE_MS
-    ) {
-      return this.availabilityCache.result
-    }
-
-    try {
-      const res = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [{ role: 'user', content: 'Say OK' }],
-          max_tokens: 5,
-        }),
-      })
-      const result = res.ok
-      // Consume response body to prevent resource leak
-      await res.body?.cancel()
-      this.availabilityCache = { result, timestamp: Date.now() }
-      return result
-    } catch {
-      this.availabilityCache = { result: false, timestamp: Date.now() }
-      return false
-    }
+    return true
   }
 }

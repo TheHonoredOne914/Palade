@@ -84,8 +84,8 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
           type: 'confirm',
           name: 'proceed',
           message: `${existingFiles.length} config file(s) already exist. Create missing files and update .gitignore?`,
-          default: true
-        }
+          default: true,
+        },
       ])
       if (!proceed) {
         console.log(chalk.gray('Init cancelled.'))
@@ -153,7 +153,7 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
   }
 
   // f) Print success
-  console.log('\n' + results.map(r => `  ✓ ${r}`).join('\n'))
+  console.log('\n' + results.map((r) => `  ✓ ${r}`).join('\n'))
   console.log(`
 Next steps:
   1. Add your API keys to palade.config.ts or set env vars

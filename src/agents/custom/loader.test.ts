@@ -10,7 +10,11 @@ let tmpRoot: string
 function makeTmp(): string {
   // vitest runs under tsx via the root project; write a real .ts file and
   // import it through the project's tsx loader by pointing at an on-disk dir.
-  const dir = join(process.cwd(), '.tmp-agents-loader-test', `t-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  const dir = join(
+    process.cwd(),
+    '.tmp-agents-loader-test',
+    `t-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  )
   mkdirSync(dir, { recursive: true })
   return dir
 }

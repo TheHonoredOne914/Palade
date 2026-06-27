@@ -6,7 +6,7 @@ describe('agents/registry', () => {
     it('returns all 6 agents for standard mode', () => {
       const agents = getAgentsForMode('standard')
       expect(agents).toHaveLength(6)
-      const names = agents.map(a => a.name).sort()
+      const names = agents.map((a) => a.name).sort()
       expect(names).toEqual([
         'architecture',
         'deadCode',
@@ -27,7 +27,7 @@ describe('agents/registry', () => {
       // onboard mode config sets [architecture, maintainability]
       const agents = getAgentsForMode('onboard', ['architecture', 'maintainability'])
       expect(agents).toHaveLength(2)
-      const names = agents.map(a => a.name).sort()
+      const names = agents.map((a) => a.name).sort()
       expect(names).toEqual(['architecture', 'maintainability'])
     })
 

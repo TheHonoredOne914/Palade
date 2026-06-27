@@ -57,19 +57,30 @@ export class DeadCodeAgent implements IAgent {
   name: AgentName = 'deadCode'
   domain = 'dead code'
 
-  async analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]> {
+  async analyze(
+    chunks: CodeChunk[],
+    context: AgentContext,
+    signal?: AbortSignal
+  ): Promise<AgentFinding[]> {
     try {
       const provider = getProvider('primary')
       const systemPrompt = buildSystemPrompt(SYSTEM_PROMPT, context, context.modeConfig)
       const userPrompt = buildChunkContext(chunks)
-      const response = await provider.complete({ systemPrompt, userPrompt, maxTokens: 4096, signal })
+      const response = await provider.complete({
+        systemPrompt,
+        userPrompt,
+        maxTokens: 4096,
+        signal,
+      })
       const findings = parseFindingsResponse(response.content ?? '', this.name)
-      for (const f of findings) { f.provider = response.provider; f.model = response.model }
+      for (const f of findings) {
+        f.provider = response.provider
+        f.model = response.model
+      }
       return findings
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
-      console.error(`[deadCode] analyze failed:`, err)
-      return []
+      throw err
     }
   }
 }

@@ -52,10 +52,12 @@ export async function loadCustomAgents(projectRoot: string): Promise<CustomAgent
       // the run, not be silently dropped. Burning tokens on the swarm only to
       // discover the intended agent never ran is exactly the failure mode the
       // fail-fast contract exists to prevent.
-      const issues = result.error.issues.map((iss) => {
-        const path = iss.path.join('.')
-        return path ? `${path}: ${iss.message}` : iss.message
-      }).join('; ')
+      const issues = result.error.issues
+        .map((iss) => {
+          const path = iss.path.join('.')
+          return path ? `${path}: ${iss.message}` : iss.message
+        })
+        .join('; ')
       throw new PaladeConfigError(
         `${AGENTS_FILE} entry at index ${i} is invalid: ${issues}`,
         'agents',
@@ -66,4 +68,3 @@ export async function loadCustomAgents(projectRoot: string): Promise<CustomAgent
 
   return agents
 }
-

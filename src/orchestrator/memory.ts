@@ -30,7 +30,10 @@ export class AgentMemory {
 
   crossReference(): CrossAgentFinding[] {
     const fileAgentMap = new Map<string, Map<AgentName, AgentFinding[]>>()
-    const symbolAgentMap = new Map<string, { agents: Set<AgentName>; findings: AgentFinding[]; files: Set<string> }>()
+    const symbolAgentMap = new Map<
+      string,
+      { agents: Set<AgentName>; findings: AgentFinding[]; files: Set<string> }
+    >()
 
     for (const [agentName, findings] of this.store) {
       for (const finding of findings) {

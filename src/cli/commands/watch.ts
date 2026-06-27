@@ -9,6 +9,8 @@ import { MaintainabilityAgent } from '../../agents/specialist/maintainability.js
 import { ArchitectureAgent } from '../../agents/specialist/architecture.js'
 import { theme } from '../../ui/theme.js'
 import { CliExitError } from '../../errors/types.js'
+import { writeFileSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 
 const DEBOUNCE_MS: Record<string, number> = {
   low: 5000,
@@ -16,9 +18,7 @@ const DEBOUNCE_MS: Record<string, number> = {
   high: 500,
 }
 
-export async function watchCommand(opts: {
-  sensitivity?: string
-}): Promise<void> {
+export async function watchCommand(opts: { sensitivity?: string }): Promise<void> {
   const projectRoot = process.cwd()
   const sensitivity = opts.sensitivity ?? 'medium'
   const debounceMs = DEBOUNCE_MS[sensitivity] ?? 2000
@@ -27,9 +27,7 @@ export async function watchCommand(opts: {
     const config = await loadConfig()
     await initRouter(config)
   } catch (err) {
-    console.error(
-      chalk.red(`Failed to initialise: ${(err as Error).message}`)
-    )
+    console.error(chalk.red(`Failed to initialise: ${(err as Error).message}`))
     throw new CliExitError(1)
   }
 
@@ -41,6 +39,43 @@ export async function watchCommand(opts: {
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   let isProcessing = false
+  const accumulatedFindings = new Map<string, AgentFinding[]>()
+
+  const updateWatchReport = () => {
+    try {
+      const paladeDir = join(projectRoot, '.palade')
+      mkdirSync(paladeDir, { recursive: true })
+      const mdPath = join(paladeDir, 'watch-bugs.md')
+      
+      const lines = [
+        '# Watch Mode Findings',
+        '',
+        `*Last updated: ${new Date().toLocaleTimeString()}*`,
+        ''
+      ]
+
+      if (accumulatedFindings.size === 0) {
+        lines.push('No issues detected in actively watched files.')
+      } else {
+        for (const [file, findings] of accumulatedFindings.entries()) {
+          lines.push(`## \`${file}\``, '')
+          for (const f of findings) {
+            const loc = f.lineStart ? ` (Line ${f.lineStart})` : ''
+            lines.push(`- **[${f.severity.toUpperCase()}]** ${f.title}${loc}`)
+            lines.push(`  - *${f.agentName}*: ${f.description}`)
+          }
+          lines.push('')
+        }
+      }
+      
+      writeFileSync(mdPath, lines.join('\n'), 'utf-8')
+    } catch {
+      // Ignore write errors in watch mode
+    }
+  }
+
+  // Initial empty report
+  updateWatchReport()
 
   const analyzeFile = async (filePath: string): Promise<void> => {
     if (isProcessing) return
@@ -81,11 +116,8 @@ export async function watchCommand(opts: {
       }
 
       if (allFindings.length > 0) {
-        console.log(
-          theme.warning(
-            `\n  ⚠ Drift detected in ${filePath}`
-          )
-        )
+        accumulatedFindings.set(filePath, allFindings)
+        console.log(theme.warning(`\n  ⚠ Drift detected in ${filePath}`))
         for (const f of allFindings.slice(0, 3)) {
           const loc = f.lineStart ? `:${f.lineStart}` : ''
           console.log(
@@ -93,12 +125,18 @@ export async function watchCommand(opts: {
           )
         }
         if (allFindings.length > 3) {
-          console.log(
-            theme.dim(`    ... and ${allFindings.length - 3} more`)
-          )
+          console.log(theme.dim(`    ... and ${allFindings.length - 3} more`))
         }
         console.log()
+      } else {
+        // If file is clean, remove it from the map if it was there
+        if (accumulatedFindings.has(filePath)) {
+          accumulatedFindings.delete(filePath)
+          console.log(theme.success(`\n  ✓ Issues fixed in ${filePath}\n`))
+        }
       }
+
+      updateWatchReport()
     } catch {
       // watch mode never crashes
     } finally {

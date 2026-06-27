@@ -38,7 +38,7 @@ function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
       content: subContent,
       symbolName: chunk.symbolName,
       tokenCount: estimateTokens(subContent),
-      language: chunk.language
+      language: chunk.language,
     })
 
     if (endIdx >= lines.length) break
@@ -53,15 +53,17 @@ function chunkBySlidingWindow(content: string, filePath: string, language: strin
   if (lines.length === 0) return []
 
   if (lines.length <= CHUNK_LINES) {
-    return [{
-      id: makeChunkId(filePath, 1, lines.length),
-      filePath,
-      startLine: 1,
-      endLine: lines.length,
-      content,
-      tokenCount: estimateTokens(content),
-      language: language as CodeChunk['language']
-    }]
+    return [
+      {
+        id: makeChunkId(filePath, 1, lines.length),
+        filePath,
+        startLine: 1,
+        endLine: lines.length,
+        content,
+        tokenCount: estimateTokens(content),
+        language: language as CodeChunk['language'],
+      },
+    ]
   }
 
   const chunks: CodeChunk[] = []
@@ -80,7 +82,7 @@ function chunkBySlidingWindow(content: string, filePath: string, language: strin
       endLine,
       content: chunkContent,
       tokenCount: estimateTokens(chunkContent),
-      language: language as CodeChunk['language']
+      language: language as CodeChunk['language'],
     })
 
     if (endIdx >= lines.length) break
@@ -164,7 +166,12 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
         if (node.childCount > 0) {
           for (let i = 0; i < node.childCount; i++) {
             const child = node.child(i)
-            if (child && (child.type === 'identifier' || child.type === 'property_identifier' || child.type === 'type_identifier')) {
+            if (
+              child &&
+              (child.type === 'identifier' ||
+                child.type === 'property_identifier' ||
+                child.type === 'type_identifier')
+            ) {
               symbolName = child.text
               break
             }
@@ -179,7 +186,7 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
           content: chunkContent,
           symbolName,
           tokenCount: estimateTokens(chunkContent),
-          language: language as CodeChunk['language']
+          language: language as CodeChunk['language'],
         }
 
         chunks.push(...splitLargeChunk(chunk))
@@ -223,7 +230,7 @@ function chunkTsJs(content: string, filePath: string, language: string): CodeChu
         endLine: gEnd,
         content: gapContent,
         tokenCount: estimateTokens(gapContent),
-        language: language as CodeChunk['language']
+        language: language as CodeChunk['language'],
       }
       chunks.push(...splitLargeChunk(gapChunk))
     }
@@ -255,9 +262,7 @@ function chunkPython(content: string, filePath: string): CodeChunk[] {
       if (!node) return
 
       const type = node.type
-      const shouldChunk =
-        type === 'function_definition' ||
-        type === 'class_definition'
+      const shouldChunk = type === 'function_definition' || type === 'class_definition'
 
       if (shouldChunk && node.startPosition && node.endPosition) {
         const startLine = node.startPosition.row + 1
@@ -283,7 +288,7 @@ function chunkPython(content: string, filePath: string): CodeChunk[] {
           content: chunkContent,
           symbolName,
           tokenCount: estimateTokens(chunkContent),
-          language: 'python'
+          language: 'python',
         }
 
         chunks.push(...splitLargeChunk(chunk))
@@ -311,7 +316,7 @@ let treeSitterLoaded: boolean | null = null
 
 export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]> {
   if (treeSitterLoaded === null) {
-    const hasSmallFiles = manifests.some(m => m.sizeBytes <= MAX_TREE_SITTER_BYTES)
+    const hasSmallFiles = manifests.some((m) => m.sizeBytes <= MAX_TREE_SITTER_BYTES)
     treeSitterLoaded = hasSmallFiles ? await loadTreeSitter() : false
   }
 

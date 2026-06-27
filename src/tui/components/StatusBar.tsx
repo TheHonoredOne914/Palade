@@ -7,10 +7,7 @@ interface StatusBarProps {
   projectRoot: string
 }
 
-export function StatusBar({
-  status,
-  projectRoot,
-}: StatusBarProps): React.JSX.Element {
+export function StatusBar({ status, projectRoot }: StatusBarProps): React.JSX.Element {
   const termWidth = process.stdout.columns || 80
   const isRunning = status === 'running'
 
@@ -23,7 +20,9 @@ export function StatusBar({
     >
       <Box gap={1}>
         {isRunning ? (
-          <Text color="#FF9933"><Spinner type="dots" /></Text>
+          <Text color="#FF9933">
+            <Spinner type="dots" />
+          </Text>
         ) : (
           <Text color="#00E676">◆</Text>
         )}

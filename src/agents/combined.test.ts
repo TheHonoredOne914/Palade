@@ -39,9 +39,7 @@ describe('agents/combined — buildCombinedSystemPrompt (via class)', () => {
   })
 
   it('accepts a custom domain subset', () => {
-    const subset: DomainSpec[] = [
-      { name: 'security', label: 'Security', focus: 'secrets' },
-    ]
+    const subset: DomainSpec[] = [{ name: 'security', label: 'Security', focus: 'secrets' }]
     const analyzer = new CombinedAnalyzer(subset)
     // Internal domains field is reflected through attributeFindings behavior
     // (only the security name is valid) below.
@@ -55,10 +53,7 @@ describe('agents/combined — buildCombinedSystemPrompt (via class)', () => {
 
 describe('agents/combined — attributeFindings', () => {
   it('keeps findings whose agentName is in the domain set', () => {
-    const findings = [
-      makeFinding('security', 'critical'),
-      makeFinding('architecture', 'high'),
-    ]
+    const findings = [makeFinding('security', 'critical'), makeFinding('architecture', 'high')]
     const out = attributeFindings(findings, DEFAULT_DOMAINS, 'groq', 'llama')
     expect(out).toHaveLength(2)
     expect(out.map((f) => f.provider)).toEqual(['groq', 'groq'])
@@ -68,10 +63,7 @@ describe('agents/combined — attributeFindings', () => {
   it('drops findings with an agentName not in the domain set (misattribution guard)', () => {
     // If the model omits agentName or invents one, the finding must not be
     // filed under a wrong domain — that would distort the category breakdown.
-    const findings = [
-      makeFinding('security', 'high'),
-      makeFinding('totally-fake', 'high'),
-    ]
+    const findings = [makeFinding('security', 'high'), makeFinding('totally-fake', 'high')]
     const out = attributeFindings(findings, DEFAULT_DOMAINS)
     expect(out).toHaveLength(1)
     expect(out[0].agentName).toBe('security')
@@ -87,10 +79,7 @@ describe('agents/combined — attributeFindings', () => {
   })
 
   it('returns [] when no findings match a domain', () => {
-    const out = attributeFindings(
-      [makeFinding('nope', 'high')],
-      DEFAULT_DOMAINS
-    )
+    const out = attributeFindings([makeFinding('nope', 'high')], DEFAULT_DOMAINS)
     expect(out).toEqual([])
   })
 })

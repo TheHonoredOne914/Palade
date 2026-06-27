@@ -29,15 +29,21 @@ export async function triageFiles(
   const totalTokens = estimateTokens(allChunks)
 
   if (totalTokens <= budget) {
-    console.log(chalk.cyan(`  [triage] Project fits within token budget (${totalTokens.toLocaleString()}/${budget.toLocaleString()} tokens) — reviewing all files`))
+    console.log(
+      chalk.cyan(
+        `  [triage] Project fits within token budget (${totalTokens.toLocaleString()}/${budget.toLocaleString()} tokens) — reviewing all files`
+      )
+    )
     return allChunks
   }
 
-  console.log(chalk.cyan(`  [triage] Selecting high-value files from ${manifests.length} total (${totalTokens.toLocaleString()} tokens exceeds ${budget.toLocaleString()} token budget)...`))
+  console.log(
+    chalk.cyan(
+      `  [triage] Selecting high-value files from ${manifests.length} total (${totalTokens.toLocaleString()} tokens exceeds ${budget.toLocaleString()} token budget)...`
+    )
+  )
 
-  const compactManifest = manifests
-    .map(m => `${m.path} (${m.linesOfCode} lines)`)
-    .join('\n')
+  const compactManifest = manifests.map((m) => `${m.path} (${m.linesOfCode} lines)`).join('\n')
 
   try {
     const provider = getProvider('primary')
@@ -46,13 +52,13 @@ export async function triageFiles(
       systemPrompt: TRIAGE_SYSTEM_PROMPT,
       userPrompt: `Project files:\n${compactManifest}\n\nRank all files by importance. Return the full ranked list as a JSON array.`,
       maxTokens: 2048,
-      temperature: 0.1
+      temperature: 0.1,
     })
 
     let rankedPaths: string[] = []
     try {
       let cleaned = response.content.trim()
-      
+
       // Safely strip outer markdown code blocks using a greedy match
       const greedyMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
       if (greedyMatch) {
@@ -71,15 +77,18 @@ export async function triageFiles(
       // Triage parse failed — fall back to heuristic
     }
 
-    if (rankedPaths.length > 0 && rankedPaths.every(p => typeof p === 'string')) {
+    if (rankedPaths.length > 0 && rankedPaths.every((p) => typeof p === 'string')) {
       const selected: CodeChunk[] = []
       const seenChunkIds = new Set<string>()
       let tokensUsed = 0
 
       for (const rankedPath of rankedPaths as string[]) {
         if (tokensUsed >= budget) break
-        const clean = rankedPath.trim().replace(/^\.?\/+/, '').replace(/\/+$/, '')
-        const matching = allChunks.filter(c => {
+        const clean = rankedPath
+          .trim()
+          .replace(/^\.?\/+/, '')
+          .replace(/\/+$/, '')
+        const matching = allChunks.filter((c) => {
           const cp = c.filePath.replace(/^\.?\/+/, '')
           if (cp === clean || cp.endsWith('/' + clean)) return true
           return false
@@ -94,7 +103,11 @@ export async function triageFiles(
       }
 
       if (selected.length > 0) {
-        console.log(chalk.cyan(`  [triage] Selected ${selected.length} chunks (${tokensUsed.toLocaleString()} tokens) from ${selected.length > 0 ? new Set(selected.map(c => c.filePath)).size : 0} files`))
+        console.log(
+          chalk.cyan(
+            `  [triage] Selected ${selected.length} chunks (${tokensUsed.toLocaleString()} tokens) from ${selected.length > 0 ? new Set(selected.map((c) => c.filePath)).size : 0} files`
+          )
+        )
         return selected
       }
     }
@@ -105,8 +118,12 @@ export async function triageFiles(
   return heuristicSelect(manifests, allChunks, budget)
 }
 
-function heuristicSelect(manifests: FileManifest[], allChunks: CodeChunk[], budget: number): CodeChunk[] {
-  const scored = manifests.map(m => {
+function heuristicSelect(
+  manifests: FileManifest[],
+  allChunks: CodeChunk[],
+  budget: number
+): CodeChunk[] {
+  const scored = manifests.map((m) => {
     let score = 0
     const p = m.path.toLowerCase()
 
@@ -127,16 +144,14 @@ function heuristicSelect(manifests: FileManifest[], allChunks: CodeChunk[], budg
     return { path: m.path, score }
   })
 
-  const sortedPaths = scored
-    .sort((a, b) => b.score - a.score)
-    .map(s => s.path)
+  const sortedPaths = scored.sort((a, b) => b.score - a.score).map((s) => s.path)
 
   const selected: CodeChunk[] = []
   let tokensUsed = 0
 
   for (const path of sortedPaths) {
     if (tokensUsed >= budget) break
-    const matching = allChunks.filter(c => c.filePath === path)
+    const matching = allChunks.filter((c) => c.filePath === path)
     for (const chunk of matching) {
       if (tokensUsed + chunk.tokenCount > budget) break
       selected.push(chunk)
@@ -144,6 +159,10 @@ function heuristicSelect(manifests: FileManifest[], allChunks: CodeChunk[], budg
     }
   }
 
-  console.log(chalk.cyan(`  [triage] Heuristic selected ${selected.length} chunks (${tokensUsed.toLocaleString()} tokens) from ${new Set(selected.map(c => c.filePath)).size} files`))
+  console.log(
+    chalk.cyan(
+      `  [triage] Heuristic selected ${selected.length} chunks (${tokensUsed.toLocaleString()} tokens) from ${new Set(selected.map((c) => c.filePath)).size} files`
+    )
+  )
   return selected
 }

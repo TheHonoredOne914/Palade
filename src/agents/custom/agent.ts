@@ -31,12 +31,21 @@ export class CustomAgent implements IAgent {
     return this.penaltyOverrides[severity] ?? SEVERITY_PENALTY[severity]
   }
 
-  async analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]> {
+  async analyze(
+    chunks: CodeChunk[],
+    context: AgentContext,
+    signal?: AbortSignal
+  ): Promise<AgentFinding[]> {
     try {
       const provider = getProvider('primary')
       const systemPrompt = buildSystemPrompt(this.systemPrompt, context)
       const userPrompt = buildChunkContext(chunks)
-      const response = await provider.complete({ systemPrompt, userPrompt, maxTokens: 4096, signal })
+      const response = await provider.complete({
+        systemPrompt,
+        userPrompt,
+        maxTokens: 4096,
+        signal,
+      })
       const findings = parseFindingsResponse(response.content ?? '', this.name)
       // Apply custom score penalties
       for (const f of findings) {
@@ -47,8 +56,7 @@ export class CustomAgent implements IAgent {
       return findings
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
-      console.error(`[${this.name}] analyze failed:`, err)
-      return []
+      throw err
     }
   }
 }

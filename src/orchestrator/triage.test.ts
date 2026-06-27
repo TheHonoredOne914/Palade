@@ -6,7 +6,10 @@ import { describe, it, expect } from 'vitest'
 // selecting "auth.ts" would also pull in "oauth.ts" and "auth-utils.ts").
 
 function normalize(p: string): string {
-  return p.trim().replace(/^\.?\/+/, '').replace(/\/+$/, '')
+  return p
+    .trim()
+    .replace(/^\.?\/+/, '')
+    .replace(/\/+$/, '')
 }
 
 function matchesChunk(chunkPath: string, selections: string[]): boolean {
@@ -45,8 +48,6 @@ describe('orchestrator/triage path matching', () => {
   })
 
   it('matches any of multiple selections', () => {
-    expect(
-      matchesChunk('src/auth.ts', ['src/billing.ts', 'src/auth.ts', 'src/db.ts'])
-    ).toBe(true)
+    expect(matchesChunk('src/auth.ts', ['src/billing.ts', 'src/auth.ts', 'src/db.ts'])).toBe(true)
   })
 })

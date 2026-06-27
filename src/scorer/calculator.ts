@@ -1,11 +1,6 @@
 import type { AgentFinding, Severity } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
-import type {
-  ScoreCategory,
-  CategoryScore,
-  ScoreBreakdown,
-  ScoreResult
-} from './types.js'
+import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from './types.js'
 
 const CATEGORY_AGENT_MAP: Record<ScoreCategory, string> = {
   security: 'security',
@@ -13,7 +8,7 @@ const CATEGORY_AGENT_MAP: Record<ScoreCategory, string> = {
   performance: 'performance',
   maintainability: 'maintainability',
   deadCode: 'deadCode',
-  testIntelligence: 'testIntelligence'
+  testIntelligence: 'testIntelligence',
 }
 
 const SEVERITY_WEIGHTS: Record<Severity, number> = {
@@ -21,7 +16,7 @@ const SEVERITY_WEIGHTS: Record<Severity, number> = {
   high: 5,
   medium: 2,
   low: 0.5,
-  info: 0
+  info: 0,
 }
 
 /**
@@ -79,7 +74,7 @@ export function calculateCategoryScore(
     score,
     findingCount: total,
     criticalCount: critical,
-    highCount: high
+    highCount: high,
   }
 }
 
@@ -91,9 +86,7 @@ export function calculateTotalPenalty(findings: AgentFinding[]): number {
   return penalty
 }
 
-export function calculateCrossAgentPenalty(
-  crossFindings: CrossAgentFinding[]
-): number {
+export function calculateCrossAgentPenalty(crossFindings: CrossAgentFinding[]): number {
   let penalty = 0
   for (const cf of crossFindings) {
     if (cf.severity === 'critical') penalty += 15
@@ -114,18 +107,17 @@ export function calculateScore(
     'performance',
     'maintainability',
     'deadCode',
-    'testIntelligence'
+    'testIntelligence',
   ]
 
-  const categoryScores = categories.map((cat) =>
-    calculateCategoryScore(findings, cat)
-  )
+  const categoryScores = categories.map((cat) => calculateCategoryScore(findings, cat))
 
   const findingPenalty = calculateTotalPenalty(findings)
   const crossAgentPenalty = calculateCrossAgentPenalty(crossAgentFindings)
   const totalPenalty = findingPenalty + crossAgentPenalty
   // Average category scores for a balanced overall score
-  const avgCategoryScore = categoryScores.reduce((sum, c) => sum + c.score, 0) / categoryScores.length
+  const avgCategoryScore =
+    categoryScores.reduce((sum, c) => sum + c.score, 0) / categoryScores.length
   // Blend: 60% average category score, 40% penalty-based score
   const penaltyScore = Math.max(5, Math.round(100 - Math.min(totalPenalty, 95)))
   const total = Math.round(avgCategoryScore * 0.6 + penaltyScore * 0.4)
@@ -134,7 +126,7 @@ export function calculateScore(
     total,
     categories: categoryScores,
     findingCount: findings.length,
-    crossAgentCount: crossAgentFindings.length
+    crossAgentCount: crossAgentFindings.length,
   }
 
   const delta = previousScore !== null ? total - previousScore : 0
@@ -143,6 +135,6 @@ export function calculateScore(
     score: total,
     breakdown,
     previousScore,
-    delta
+    delta,
   }
 }

@@ -22,28 +22,23 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
 
 export async function getCurrentBranch(cwd: string): Promise<string> {
   try {
-    return execFileSync(
-      'git',
-      ['rev-parse', '--abbrev-ref', 'HEAD'],
-      { cwd, encoding: 'utf-8' }
-    ).trim()
+    return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd,
+      encoding: 'utf-8',
+    }).trim()
   } catch {
     return 'HEAD'
   }
 }
 
-export async function getChangedFiles(
-  baseBranch: string,
-  cwd: string
-): Promise<ChangedFile[]> {
+export async function getChangedFiles(baseBranch: string, cwd: string): Promise<ChangedFile[]> {
   let output: string
   try {
     // Array form — bypasses the shell, so baseBranch cannot inject commands.
-    output = execFileSync(
-      'git',
-      ['diff', '--name-status', `${baseBranch}...HEAD`],
-      { cwd, encoding: 'utf-8' }
-    )
+    output = execFileSync('git', ['diff', '--name-status', `${baseBranch}...HEAD`], {
+      cwd,
+      encoding: 'utf-8',
+    })
   } catch {
     return []
   }
@@ -68,11 +63,10 @@ export async function getChangedFiles(
 
     if (status !== 'deleted') {
       try {
-        diff = execFileSync(
-          'git',
-          ['diff', `${baseBranch}...HEAD`, '--', filePath],
-          { cwd, encoding: 'utf-8' }
-        )
+        diff = execFileSync('git', ['diff', `${baseBranch}...HEAD`, '--', filePath], {
+          cwd,
+          encoding: 'utf-8',
+        })
 
         // Parse additions/deletions from diff
         const diffLines = diff.split('\n')
@@ -107,11 +101,11 @@ export async function getBaseScore(
   // committed — in which case we get the real base score.
   const relPath = relative(cwd, historyFile).split(sep).join('/')
   try {
-    const content = execFileSync(
-      'git',
-      ['show', `${baseBranch}:${relPath}`],
-      { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
-    )
+    const content = execFileSync('git', ['show', `${baseBranch}:${relPath}`], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
     const entries = JSON.parse(content) as Array<{ score: number; timestamp: string }>
     if (entries.length === 0) return null
     return entries[entries.length - 1].score

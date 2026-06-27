@@ -1,18 +1,14 @@
+#!/usr/bin/env node
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const pkg = JSON.parse(
-  readFileSync(join(__dirname, '../../package.json'), 'utf-8')
-)
+const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf-8'))
 
 process.on('uncaughtException', (err) => {
   const msg = err instanceof Error ? err.message : String(err)
-  if (
-    msg.includes('Raw mode') ||
-    msg.includes('isRawModeSupported')
-  ) {
+  if (msg.includes('Raw mode') || msg.includes('isRawModeSupported')) {
     process.exit(0)
   }
   console.error(err)
@@ -20,37 +16,22 @@ process.on('uncaughtException', (err) => {
 })
 
 const rawArgs = process.argv.slice(2)
-const hasCommand = rawArgs.some(
-  (a) => !a.startsWith('-') && a.length > 0
-) || rawArgs.includes('--help') || rawArgs.includes('-h') || rawArgs.includes('--version') || rawArgs.includes('-V')
+const hasCommand =
+  rawArgs.some((a) => !a.startsWith('-') && a.length > 0) ||
+  rawArgs.includes('--help') ||
+  rawArgs.includes('-h') ||
+  rawArgs.includes('--version') ||
+  rawArgs.includes('-V')
 
 if (hasCommand) {
   runClassicCLI()
 } else {
-  launchTUIWithFallback()
+  launchTUI()
 }
 
-async function launchTUIWithFallback(): Promise<void> {
-  if (!process.stdin.isTTY) {
-    runClassicCLI()
-    return
-  }
-
-  try {
-    const { launchTUI } = await import('../tui/launch.js')
-    await launchTUI()
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    if (
-      msg.includes('Raw mode') ||
-      msg.includes('stdin') ||
-      msg.includes('isRawModeSupported')
-    ) {
-      runClassicCLI()
-    } else {
-      throw err
-    }
-  }
+async function launchTUI(): Promise<void> {
+  const { launchTUI: startTUI } = await import('../tui/launch.js')
+  await startTUI()
 }
 
 async function runClassicCLI(): Promise<void> {
@@ -76,16 +57,14 @@ async function runClassicCLI(): Promise<void> {
   })
 
   const isQuiet = process.argv.includes('--quiet')
-  if (!isQuiet) {
+  const isTuiCommand = process.argv.includes('tui')
+  if (!isQuiet && !isTuiCommand) {
     printBanner({ version: pkg.version })
   }
 
   const program = new Command()
 
-  program
-    .name('palade')
-    .description('AI-powered codebase intelligence engine')
-    .version(pkg.version)
+  program.name('palade').description('AI-powered codebase intelligence engine').version(pkg.version)
 
   function collect(val: string, prev: string[]): string[] {
     return prev.concat([val])
@@ -99,33 +78,29 @@ async function runClassicCLI(): Promise<void> {
     .option('--dir <path>', 'Scope review to a directory')
     .option('--file <path>', 'Scope to specific file(s)', collect, [])
     .option('--glob <pattern>', 'Scope to glob pattern')
-    .option(
-      '--mode <mode>',
-      'Review mode: standard|security|onboard|debt|ghost',
-      'standard'
-    )
+    .option('--mode <mode>', 'Review mode: standard|security|onboard|debt|ghost', 'standard')
     .option('--annotations', 'Only review @palade-annotated items')
     .option('--pick', 'Interactive file picker')
     .option('--depth <n>', 'Symbol dependency trace depth', parseInt, 1)
     .option('--format <formats>', 'Output formats: html,json,md', 'html,json')
     .option('--no-open', 'Do not open browser after review')
     .option('--quiet', 'Minimal terminal output (no spinners)')
-    .option('--economy', 'Economy mode: single combined call per batch (lower cost, higher latency)')
-    .action(
-      async (
-        pathArg: string | undefined,
-        opts: Record<string, unknown>
-      ): Promise<void> => {
-        try {
-          await reviewCommand(
-            pathArg,
-            opts as Parameters<typeof reviewCommand>[1]
-          )
-        } catch (err) {
-          handleFatalError(err)
-        }
-      }
+    .option('--dry-run', 'Estimate token usage and cost without running the swarm')
+    .option(
+      '--economy',
+      'Economy mode: single combined call per batch (lower cost, higher latency)'
     )
+    .option(
+      '-e, --exhaustive',
+      'Exhaustive mode: skip triage and analyze the entire project (maximum issues)'
+    )
+    .action(async (pathArg: string | undefined, opts: Record<string, unknown>): Promise<void> => {
+      try {
+        await reviewCommand(pathArg, opts as Parameters<typeof reviewCommand>[1])
+      } catch (err) {
+        handleFatalError(err)
+      }
+    })
 
   program
     .command('diff')
@@ -143,66 +118,79 @@ async function runClassicCLI(): Promise<void> {
   program
     .command('watch')
     .description('Start drift detection watcher')
-    .option(
-      '--sensitivity <level>',
-      'Drift sensitivity: low|medium|high',
-      'medium'
-    )
-    .action(
-      async (opts: { sensitivity?: string }): Promise<void> => {
-        try {
-          await watchCommand(opts)
-        } catch (err) {
-          handleFatalError(err)
-        }
+    .option('--sensitivity <level>', 'Drift sensitivity: low|medium|high', 'medium')
+    .action(async (opts: { sensitivity?: string }): Promise<void> => {
+      try {
+        await watchCommand(opts)
+      } catch (err) {
+        handleFatalError(err)
       }
-    )
+    })
 
   program
     .command('score')
     .description('Show current score and history')
     .option('--history', 'Show full score history')
-    .action(
-      async (opts: { history?: boolean }): Promise<void> => {
-        try {
-          await scoreCommand(opts)
-        } catch (err) {
-          handleFatalError(err)
-        }
+    .action(async (opts: { history?: boolean }): Promise<void> => {
+      try {
+        await scoreCommand(opts)
+      } catch (err) {
+        handleFatalError(err)
       }
-    )
+    })
 
   program.addCommand(targetsCommand)
 
   program
     .command('settings')
     .description('View and update Palade config')
-    .option('--set <key=value>', 'Set a config value (repeatable)', (val: string, prev: string[]) => prev.concat([val]), [])
+    .option(
+      '--set <key=value>',
+      'Set a config value (repeatable)',
+      (val: string, prev: string[]) => prev.concat([val]),
+      []
+    )
     .option('--init', 'Create default palade.config.ts and .paladeignore')
     .option('--list', 'Show current config (default)')
-    .action(
-      async (opts: { set?: string[]; init?: boolean; list?: boolean }): Promise<void> => {
-        try {
-          await settingsCommand(opts)
-        } catch (err) {
-          handleFatalError(err)
-        }
+    .action(async (opts: { set?: string[]; init?: boolean; list?: boolean }): Promise<void> => {
+      try {
+        await settingsCommand(opts)
+      } catch (err) {
+        handleFatalError(err)
       }
-    )
+    })
 
   program
     .command('init')
     .description('Scaffold Palade config in current directory')
     .option('-y, --yes', 'Skip confirmation prompts')
-    .action(
-      async (opts: { yes?: boolean }): Promise<void> => {
-        try {
-          await initCommand(opts)
-        } catch (err) {
-          handleFatalError(err)
-        }
+    .action(async (opts: { yes?: boolean }): Promise<void> => {
+      try {
+        await initCommand(opts)
+      } catch (err) {
+        handleFatalError(err)
       }
-    )
+    })
+
+  program
+    .command('tui')
+    .description('Launch experimental Terminal UI')
+    .option('--unstable-tui', 'Acknowledge this feature is unstable')
+    .action(async (opts: { unstableTui?: boolean }): Promise<void> => {
+      if (!opts.unstableTui) {
+        console.error(
+          chalk.red('The TUI is highly experimental. You must pass --unstable-tui to run it.')
+        )
+        process.exit(1)
+      }
+      try {
+        const { launchTUI } = await import('../tui/launch.js')
+        await launchTUI()
+      } catch (err: unknown) {
+        console.error(chalk.yellow('\n⚠ TUI failed to load. Falling back to classic CLI.'))
+        console.error(chalk.dim('Reason: ' + (err instanceof Error ? err.message : String(err))))
+      }
+    })
 
   program.parse()
 }

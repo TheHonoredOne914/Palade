@@ -2,14 +2,24 @@
   "name": "palade",
   "version": "0.1.1",
   "description": "AI-powered codebase intelligence — reviewed by a swarm, not a single bot.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/placeholder/palade.git"
+  },
+  "bugs": {
+    "url": "https://github.com/placeholder/palade/issues"
+  },
+  "homepage": "https://github.com/placeholder/palade#readme",
+  "author": "Palade Engineering",
   "type": "module",
   "bin": {
-    "palade": "./bin/palade.cjs"
+    "palade": "./dist/cli/index.js"
   },
   "files": [
-    "bin/",
     "dist/",
-    "templates/"
+    "templates/",
+    "README.md",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=18"
@@ -29,7 +39,12 @@
     "dev": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "test": "vitest run",
-    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "prepublishOnly": "npm run clean && npm run build && npm run format:check && npm test"
   },
   "dependencies": {
     "boxen": "^7.1.1",
@@ -45,7 +60,7 @@
     "inquirer": "^12.1.0",
     "open": "^10.1.0",
     "ora": "^8.1.1",
-    "p-limit": "^6.1.0",
+    "p-limit": "^6.2.0",
     "react": "^18.2.0",
     "tree-sitter": "^0.21.1",
     "tree-sitter-javascript": "^0.21.4",
@@ -57,8 +72,12 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/react": "^18.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
+    "eslint": "^10.6.0",
     "figlet": "^1.11.0",
     "pngjs": "^7.0.0",
+    "prettier": "^3.9.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.9"

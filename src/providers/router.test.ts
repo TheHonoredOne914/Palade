@@ -1,11 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { FallbackProvider } from './router.js'
+import { FallbackProvider, AllProvidersExhaustedError } from './router.js'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
+
+vi.mock('./backoff.js', () => ({
+  withExponentialBackoff: vi.fn(async (fn, options) => {
+    const { maxRetries, retryableErrors } = options
+    let attempt = 0
+    while (true) {
+      try {
+        return await fn()
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err))
+        const isRetryable = retryableErrors.some((msg: string) => error.message.includes(msg))
+        if (!isRetryable || attempt >= maxRetries) {
+          throw error
+        }
+        attempt++
+      }
+    }
+  }),
+}))
 
 function mockProvider(
   name: string,
   model: string,
-  behavior: 'success' | 'fail-retryable' | 'fail-fatal' = 'success',
+  behavior: 'success' | 'fail-retryable' | 'fail-fatal' = 'success'
 ): IProvider {
   return {
     name,
@@ -13,7 +32,14 @@ function mockProvider(
     complete: vi.fn(async (): Promise<CompletionResponse> => {
       if (behavior === 'fail-retryable') throw new Error('503 service unavailable')
       if (behavior === 'fail-fatal') throw new Error('invalid api key')
-      return { content: `response from ${name}`, inputTokens: 10, outputTokens: 5, durationMs: 100, provider: name, model }
+      return {
+        content: `response from ${name}`,
+        inputTokens: 10,
+        outputTokens: 5,
+        durationMs: 100,
+        provider: name,
+        model,
+      }
     }),
     isAvailable: vi.fn(async () => behavior === 'success'),
   }
@@ -63,7 +89,7 @@ describe('FallbackProvider', () => {
     expect(fp.totalCount).toBe(1)
   })
 
-  // --- Test 3: Primary fails with non-retryable error — throws immediately ---
+  // --- Test 3: Primary fails with non-retryable error ---
   it('throws immediately on non-retryable error without trying fallback', async () => {
     primary = mockProvider('primary', 'model-a', 'fail-fatal')
     const fp = new FallbackProvider(primary, [fallback1])
@@ -78,7 +104,7 @@ describe('FallbackProvider', () => {
     fallback1 = mockProvider('fallback1', 'model-b', 'fail-retryable')
     const fp = new FallbackProvider(primary, [fallback1])
 
-    await expect(fp.complete(dummyReq)).rejects.toThrow('503 service unavailable')
+    await expect(fp.complete(dummyReq)).rejects.toThrow(AllProvidersExhaustedError)
     expect(primary.complete).toHaveBeenCalled()
     expect(fallback1.complete).toHaveBeenCalled()
   })
@@ -148,7 +174,9 @@ describe('FallbackProvider', () => {
         const failingPrimary: IProvider = {
           name: 'primary',
           model: 'model-a',
-          complete: vi.fn(async () => { throw new Error(msg) }),
+          complete: vi.fn(async () => {
+            throw new Error(msg)
+          }),
           isAvailable: vi.fn(async () => true),
         }
         const fp = new FallbackProvider(failingPrimary, [fallback1])
@@ -163,7 +191,9 @@ describe('FallbackProvider', () => {
     const failingPrimary: IProvider = {
       name: 'primary',
       model: 'model-a',
-      complete: vi.fn(async () => { throw '503 whoops' }),
+      complete: vi.fn(async () => {
+        throw '503 whoops'
+      }),
       isAvailable: vi.fn(async () => true),
     }
     const fp = new FallbackProvider(failingPrimary, [fallback1])
@@ -207,8 +237,8 @@ describe('FallbackProvider', () => {
     await fp.complete(dummyReq)
 
     expect(warnSpy).toHaveBeenCalledOnce()
-    expect(warnSpy.mock.calls[0][0]).toContain('primary failed')
-    expect(warnSpy.mock.calls[0][0]).toContain('fallback1')
+    expect(warnSpy.mock.calls[0][0]).toContain('exhausted retries')
+    expect(warnSpy.mock.calls[0][0]).toContain('primary')
     warnSpy.mockRestore()
   })
 })

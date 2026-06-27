@@ -8,9 +8,7 @@ declare module 'inquirer' {
     validate?: (input: unknown) => boolean | string | Promise<boolean | string>
   }
 
-  function prompt<T extends Record<string, unknown>>(
-    questions: Question[]
-  ): Promise<T>
+  function prompt<T extends Record<string, unknown>>(questions: Question[]): Promise<T>
 
   export { prompt }
   export default { prompt }

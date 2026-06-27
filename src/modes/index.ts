@@ -33,9 +33,7 @@ export function getModeConfig(mode: ReviewMode): ModeConfig {
 export function validateMode(raw: string): ReviewMode {
   const valid: ReviewMode[] = ['standard', 'security', 'onboard', 'debt', 'ghost']
   if (!valid.includes(raw as ReviewMode)) {
-    throw new Error(
-      `Invalid mode '${raw}'. Valid modes: ${valid.join(', ')}`
-    )
+    throw new Error(`Invalid mode '${raw}'. Valid modes: ${valid.join(', ')}`)
   }
   return raw as ReviewMode
 }
