@@ -75,6 +75,7 @@ export function Header({ providerStatus, projectRoot, version }: HeaderProps): R
           <ProviderDot name="cerebras" active={providerStatus['cerebras'] ?? false} />
           <ProviderDot name="nvidia" active={providerStatus['nvidia'] ?? false} />
           <ProviderDot name="openrouter" active={providerStatus['openrouter'] ?? false} />
+          <ProviderDot name="opencode-zen" active={providerStatus['opencode-zen'] ?? false} />
         </Box>
       </Box>
 

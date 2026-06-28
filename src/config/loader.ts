@@ -142,10 +142,14 @@ export async function loadConfig(): Promise<PaladeConfig> {
   const mergedProviders: Record<string, unknown> = { ...envProviders }
   for (const [key, val] of Object.entries(rawProviders)) {
     if (typeof val === 'object' && val !== null) {
-      mergedProviders[key] = {
-        ...((mergedProviders[key] as Record<string, unknown>) ?? {}),
-        ...val,
+      const existing = (mergedProviders[key] as Record<string, unknown>) ?? {}
+      const mergedVal = { ...existing }
+      for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+        if (v !== '' || !existing[k]) {
+          mergedVal[k] = v
+        }
       }
+      mergedProviders[key] = mergedVal
     } else {
       mergedProviders[key] = val
     }
