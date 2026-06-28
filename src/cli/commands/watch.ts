@@ -81,6 +81,8 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
     if (isProcessing) return
     isProcessing = true
 
+    console.log(theme.dim(`\n  Scanning ${filePath}...`))
+
     try {
       const scope = { projectRoot, files: [filePath] }
       const manifests = await walkProject(projectRoot, scope)
@@ -117,7 +119,7 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
 
       if (allFindings.length > 0) {
         accumulatedFindings.set(filePath, allFindings)
-        console.log(theme.warning(`\n  ⚠ Drift detected in ${filePath}`))
+        console.log(theme.warning(`  ⚠ Drift detected in ${filePath}`))
         for (const f of allFindings.slice(0, 3)) {
           const loc = f.lineStart ? `:${f.lineStart}` : ''
           console.log(
@@ -129,11 +131,8 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
         }
         console.log()
       } else {
-        // If file is clean, remove it from the map if it was there
-        if (accumulatedFindings.has(filePath)) {
-          accumulatedFindings.delete(filePath)
-          console.log(theme.success(`\n  ✓ Issues fixed in ${filePath}\n`))
-        }
+        accumulatedFindings.delete(filePath)
+        console.log(theme.success(`  ✓ Clean: ${filePath}\n`))
       }
 
       updateWatchReport()

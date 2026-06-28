@@ -17,8 +17,13 @@ process.on('uncaughtException', (err) => {
 
 const originalEmit = process.emit
 process.emit = function (name: any, data: any, ...args: any[]) {
-  if (name === 'warning' && typeof data === 'object' && data.name === 'Warning') {
-    if (data.message && data.message.includes('MODULE_TYPELESS_PACKAGE_JSON')) return false
+  if (name === 'warning' && typeof data === 'object') {
+    if (
+      data.code === 'MODULE_TYPELESS_PACKAGE_JSON' ||
+      (data.message && data.message.includes('MODULE_TYPELESS_PACKAGE_JSON'))
+    ) {
+      return false
+    }
   }
   return originalEmit.apply(process, [name, data, ...args] as any)
 } as any
