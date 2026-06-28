@@ -50,7 +50,7 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
 
   if (isContinuous) {
     try {
-      const manifests = await walkProject(projectRoot, {})
+      const manifests = await walkProject(projectRoot, { projectRoot })
       sweepQueue = manifests.map((m) => m.path)
       // Shuffle the queue so sweeps don't always start deterministically
       for (let i = sweepQueue.length - 1; i > 0; i--) {
