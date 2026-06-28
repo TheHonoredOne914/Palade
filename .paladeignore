@@ -1,9 +1,0 @@
-node_modules/
-dist/
-build/
-.git/
-*.lock
-*.min.js
-*.min.css
-coverage/
-.palade/
