@@ -5,9 +5,10 @@ export async function withExponentialBackoff<T>(
     baseDelayMs: number
     maxDelayMs: number
     retryableErrors: string[]
+    fatalErrors?: string[]
   }
 ): Promise<T> {
-  const { maxRetries, baseDelayMs, maxDelayMs, retryableErrors } = options
+  const { maxRetries, baseDelayMs, maxDelayMs, retryableErrors, fatalErrors = [] } = options
   let attempt = 0
 
   while (true) {
@@ -15,9 +16,10 @@ export async function withExponentialBackoff<T>(
       return await fn()
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
-      const isRetryable = retryableErrors.some((msg) => error.message.includes(msg))
+      const isFatal = fatalErrors.some((msg) => error.message.toLowerCase().includes(msg.toLowerCase()))
+      const isRetryable = retryableErrors.some((msg) => error.message.toLowerCase().includes(msg.toLowerCase()))
 
-      if (!isRetryable || attempt >= maxRetries) {
+      if (isFatal || !isRetryable || attempt >= maxRetries) {
         throw error
       }
 

@@ -100,6 +100,7 @@ export class FallbackProvider implements IProvider {
   private index = 0
   private _fallbackCount = 0
   private _totalCount = 0
+  private deadProviders = new Set<string>()
 
   constructor(primary: IProvider, fallbacks: IProvider[]) {
     this.chain = [primary, ...fallbacks]
@@ -136,6 +137,10 @@ export class FallbackProvider implements IProvider {
       const providerIdx = (startIndex + i) % this.chain.length
       const provider = this.chain[providerIdx]
 
+      if (this.deadProviders.has(provider.name)) {
+        continue
+      }
+
       try {
         const response = await withExponentialBackoff(() => provider.complete(req), {
           maxRetries: 2,
@@ -150,6 +155,14 @@ export class FallbackProvider implements IProvider {
             'timed out',
             'ECONNREFUSED',
             'fetch failed',
+          ],
+          fatalErrors: [
+            'per day',
+            'per-day',
+            'daily',
+            'quota',
+            'insufficient_quota',
+            'monthly limit',
           ],
         })
 
@@ -176,7 +189,23 @@ export class FallbackProvider implements IProvider {
           'quota exhausted',
         ].some((msg) => lastError!.message.toLowerCase().includes(msg))
 
-        if (isRetryable) {
+        const isFatal = [
+          'per day',
+          'per-day',
+          'daily',
+          'quota',
+          'insufficient_quota',
+          'monthly limit',
+        ].some((msg) => lastError!.message.toLowerCase().includes(msg))
+
+        if (isFatal) {
+          this.deadProviders.add(provider.name)
+          console.warn(
+            chalk.red(`[router] provider ${provider.name} marked as DEAD (hard quota limit)`)
+          )
+        }
+
+        if (isRetryable || isFatal) {
           if (i < this.chain.length - 1) {
             console.warn(
               chalk.yellow(`[router] provider ${provider.name} exhausted retries, trying next`)
