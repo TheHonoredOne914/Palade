@@ -1,5 +1,7 @@
 # Palade
 
+![Palade TUI](assets/tui.png)
+
 **An AI-powered codebase intelligence engine that reviews code with a swarm of specialized agents, not just a single bot.**
 
 ## Installation
