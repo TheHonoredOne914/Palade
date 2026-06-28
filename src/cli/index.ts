@@ -15,6 +15,14 @@ process.on('uncaughtException', (err) => {
   process.exit(1)
 })
 
+const originalEmit = process.emit
+process.emit = function (name: any, data: any, ...args: any[]) {
+  if (name === 'warning' && typeof data === 'object' && data.name === 'Warning') {
+    if (data.message && data.message.includes('MODULE_TYPELESS_PACKAGE_JSON')) return false
+  }
+  return originalEmit.apply(process, [name, data, ...args] as any)
+} as any
+
 const rawArgs = process.argv.slice(2)
 const hasCommand =
   rawArgs.some((a) => !a.startsWith('-') && a.length > 0) ||
