@@ -113,18 +113,27 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
     cleaned = greedyMatch[1].trim()
   }
 
-  // Find the outermost JSON array boundaries
-  const arrayStart = cleaned.indexOf('[')
-  const arrayEnd = cleaned.lastIndexOf(']')
-  if (arrayStart !== -1 && arrayEnd > arrayStart) {
-    cleaned = cleaned.substring(arrayStart, arrayEnd + 1)
+  // Extract array more robustly to avoid catching conversational '['
+  const arrayMatch = cleaned.match(/\[\s*(?:\{[\s\S]*\})?\s*\]/)
+  if (arrayMatch) {
+    cleaned = arrayMatch[0]
+  } else {
+    const arrayStart = cleaned.indexOf('[')
+    const arrayEnd = cleaned.lastIndexOf(']')
+    if (arrayStart !== -1 && arrayEnd > arrayStart) {
+      cleaned = cleaned.substring(arrayStart, arrayEnd + 1)
+    }
   }
+
+  // Fix common LLM JSON errors (trailing commas)
+  cleaned = cleaned.replace(/,\s*([\]}])/g, '$1')
 
   let parsed: unknown
   try {
     parsed = JSON.parse(cleaned)
-  } catch {
+  } catch (err) {
     console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
+    // Dump a snippet of what failed to a debug file or console if needed
     return []
   }
 
