@@ -47,6 +47,7 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
   let sweepQueue: string[] = []
   let urgentQueue: string[] = []
   let loopTimer: ReturnType<typeof setTimeout> | null = null
+  let currentSweepController: AbortController | null = null
 
   if (isContinuous) {
     try {
@@ -100,7 +101,7 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
   // Initial empty report
   updateWatchReport()
 
-  const analyzeFile = async (filePath: string): Promise<void> => {
+  const analyzeFile = async (filePath: string, signal?: AbortSignal): Promise<void> => {
     // isProcessing is now managed by processNext
     console.log(theme.dim(`\n  Scanning ${filePath}...`))
 
@@ -131,9 +132,12 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
 
       for (const agent of agents) {
         try {
-          const findings = await agent.analyze(chunks, context)
+          const findings = await agent.analyze(chunks, context, signal)
           allFindings.push(...findings)
-        } catch {
+        } catch (err: unknown) {
+          if (err instanceof Error && err.name === 'AbortError') {
+             throw err // pass aborts up
+          }
           // silent — watch mode is best-effort
         }
       }
@@ -157,7 +161,11 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
       }
 
       updateWatchReport()
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log(theme.dim(`  ⚠ Aborted scan of ${filePath} for higher priority task.`))
+        throw err
+      }
       // watch mode never crashes
     }
   }
@@ -165,6 +173,7 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
   const processNext = async () => {
     if (isProcessing) return
     isProcessing = true
+    currentSweepController = null
 
     try {
       let nextFile: string | undefined
@@ -180,13 +189,23 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
       } else if (isContinuous && sweepQueue.length > 0) {
         nextFile = sweepQueue.shift()
         if (nextFile) sweepQueue.push(nextFile) // rotating queue
+        currentSweepController = new AbortController()
       }
 
       if (nextFile) {
-        await analyzeFile(nextFile)
+        try {
+          await analyzeFile(nextFile, currentSweepController?.signal)
+        } catch (err: unknown) {
+          if (err instanceof Error && err.name === 'AbortError' && !isUrgent) {
+            // If background sweep was aborted, it means an urgent task came in.
+            // Push the aborted file back to the front of the sweep queue so we try again later.
+            sweepQueue.unshift(nextFile)
+          }
+        }
       }
     } finally {
       isProcessing = false
+      currentSweepController = null
       if (urgentQueue.length > 0 || isContinuous) {
         loopTimer = setTimeout(
           () => {
@@ -229,6 +248,10 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
       
       if (!urgentQueue.includes(normalizedPath)) {
         urgentQueue.push(normalizedPath)
+      }
+      
+      if (currentSweepController) {
+        currentSweepController.abort()
       }
       
       void processNext()
