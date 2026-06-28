@@ -132,7 +132,8 @@ async function runClassicCLI(): Promise<void> {
     .command('watch')
     .description('Start drift detection watcher')
     .option('--sensitivity <level>', 'Drift sensitivity: low|medium|high', 'medium')
-    .action(async (opts: { sensitivity?: string }): Promise<void> => {
+    .option('-c, --continuous', 'Continuously sweep the codebase in the background when idle')
+    .action(async (opts: { sensitivity?: string; continuous?: boolean }): Promise<void> => {
       try {
         await watchCommand(opts)
       } catch (err) {

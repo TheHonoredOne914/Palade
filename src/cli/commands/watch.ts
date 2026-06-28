@@ -18,10 +18,11 @@ const DEBOUNCE_MS: Record<string, number> = {
   high: 500,
 }
 
-export async function watchCommand(opts: { sensitivity?: string }): Promise<void> {
+export async function watchCommand(opts: { sensitivity?: string; continuous?: boolean }): Promise<void> {
   const projectRoot = process.cwd()
   const sensitivity = opts.sensitivity ?? 'medium'
   const debounceMs = DEBOUNCE_MS[sensitivity] ?? 2000
+  const isContinuous = opts.continuous === true
 
   try {
     const config = await loadConfig()
@@ -35,11 +36,33 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
     theme.accent(`  palade watch started. Watching for changes... (${sensitivity} sensitivity)`)
   )
   console.log(theme.dim('  Press Ctrl+C to stop.'))
+  if (isContinuous) {
+    console.log(theme.dim('  Continuous background sweep is ENABLED.'))
+  }
   console.log()
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   let isProcessing = false
   const accumulatedFindings = new Map<string, AgentFinding[]>()
+  let sweepQueue: string[] = []
+  let urgentQueue: string[] = []
+  let loopTimer: ReturnType<typeof setTimeout> | null = null
+
+  if (isContinuous) {
+    try {
+      const manifests = await walkProject(projectRoot, {})
+      sweepQueue = manifests.map((m) => m.path)
+      // Shuffle the queue so sweeps don't always start deterministically
+      for (let i = sweepQueue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        const temp = sweepQueue[i]
+        sweepQueue[i] = sweepQueue[j]
+        sweepQueue[j] = temp
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   const updateWatchReport = () => {
     try {
@@ -78,9 +101,7 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
   updateWatchReport()
 
   const analyzeFile = async (filePath: string): Promise<void> => {
-    if (isProcessing) return
-    isProcessing = true
-
+    // isProcessing is now managed by processNext
     console.log(theme.dim(`\n  Scanning ${filePath}...`))
 
     try {
@@ -138,9 +159,48 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
       updateWatchReport()
     } catch {
       // watch mode never crashes
+    }
+  }
+
+  const processNext = async () => {
+    if (isProcessing) return
+    isProcessing = true
+
+    try {
+      let nextFile: string | undefined
+      const isUrgent = urgentQueue.length > 0
+
+      if (isUrgent) {
+        nextFile = urgentQueue.shift()
+        // Deduplicate from sweep queue and push to back
+        if (isContinuous && nextFile) {
+          sweepQueue = sweepQueue.filter((f) => f !== nextFile)
+          sweepQueue.push(nextFile)
+        }
+      } else if (isContinuous && sweepQueue.length > 0) {
+        nextFile = sweepQueue.shift()
+        if (nextFile) sweepQueue.push(nextFile) // rotating queue
+      }
+
+      if (nextFile) {
+        await analyzeFile(nextFile)
+      }
     } finally {
       isProcessing = false
+      if (urgentQueue.length > 0 || isContinuous) {
+        loopTimer = setTimeout(
+          () => {
+            void processNext()
+          },
+          urgentQueue.length > 0 ? 100 : 3000
+        )
+      }
     }
+  }
+
+  // Kick off the background sweep if continuous is enabled
+  if (isContinuous) {
+    void processNext()
   }
 
   const ignored = [
@@ -165,7 +225,13 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
     debounceTimer = setTimeout(() => {
       // chokidar emits OS-native separators (backslash on Windows). walkProject
       // produces forward-slash paths, so normalise before passing as scope.
-      void analyzeFile(path.split('\\').join('/'))
+      const normalizedPath = path.split('\\').join('/')
+      
+      if (!urgentQueue.includes(normalizedPath)) {
+        urgentQueue.push(normalizedPath)
+      }
+      
+      void processNext()
     }, debounceMs)
   })
 
@@ -175,6 +241,7 @@ export async function watchCommand(opts: { sensitivity?: string }): Promise<void
 
   process.on('SIGINT', () => {
     if (debounceTimer) clearTimeout(debounceTimer)
+    if (loopTimer) clearTimeout(loopTimer)
     watcher.close()
     console.log(theme.dim('\n  Watcher stopped.'))
     process.exit(0)
