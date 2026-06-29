@@ -26,8 +26,9 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
   const debounceMs = DEBOUNCE_MS[sensitivity] ?? 2000
   const isContinuous = opts.continuous === true
 
+  let config;
   try {
-    const config = await loadConfig()
+    config = await loadConfig()
     await initRouter(config)
   } catch (err) {
     console.error(chalk.red(`Failed to initialise: ${(err as Error).message}`))
