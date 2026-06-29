@@ -72,14 +72,16 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       )
     )
 
-    printDiffBanner({
-      projectName: basename(projectRoot),
-      headBranch,
-      baseBranch: base,
-      changedCount: changedFiles.length,
-      additions,
-      deletions,
-    })
+    console.log(
+      printDiffBanner({
+        projectName: basename(projectRoot),
+        headBranch,
+        baseBranch: base,
+        changedCount: changedFiles.length,
+        additions,
+        deletions,
+      })
+    )
 
     const diffContext: DiffContext = {
       baseBranch: base,
@@ -168,15 +170,17 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
 
     const hasCriticalIntroduced = rankedIntroduced.some((f) => f.severity === 'critical')
 
-    printDiffSummary({
-      score: scoreResult,
-      findingDiff,
-      changedFiles,
-      baseBranch: base,
-      headBranch,
-      hasCriticalIntroduced,
-      durationMs: swarmResult.durationMs,
-    })
+    console.log(
+      printDiffSummary({
+        score: scoreResult,
+        findingDiff,
+        changedFiles,
+        baseBranch: base,
+        headBranch,
+        hasCriticalIntroduced,
+        durationMs: swarmResult.durationMs,
+      })
+    )
 
     const outputDir = join(projectRoot, config.output.dir)
     if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })

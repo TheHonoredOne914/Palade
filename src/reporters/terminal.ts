@@ -182,7 +182,6 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
   lines.push('')
 
   const content = lines.join('\n')
-  console.log(content)
 
   return {
     format: 'terminal',
@@ -197,20 +196,22 @@ export function printDiffBanner(ctx: {
   changedCount: number
   additions: number
   deletions: number
-}): void {
-  console.log('')
-  console.log(chalk.bold.blue('╔══════════════════════════════════════════════════════════════╗'))
-  console.log(chalk.bold.blue('║                     PALADE DIFF REVIEW                      ║'))
-  console.log(chalk.bold.blue('╚══════════════════════════════════════════════════════════════╝'))
-  console.log('')
-  console.log(`  ${chalk.bold('Project:')}   ${ctx.projectName}`)
-  console.log(
+}): string {
+  const lines: string[] = []
+  lines.push('')
+  lines.push(chalk.bold.blue('╔══════════════════════════════════════════════════════════════╗'))
+  lines.push(chalk.bold.blue('║                     PALADE DIFF REVIEW                      ║'))
+  lines.push(chalk.bold.blue('╚══════════════════════════════════════════════════════════════╝'))
+  lines.push('')
+  lines.push(`  ${chalk.bold('Project:')}   ${ctx.projectName}`)
+  lines.push(
     `  ${chalk.bold('Comparing:')} ${chalk.cyan(ctx.headBranch)} → ${chalk.gray(ctx.baseBranch)}`
   )
-  console.log(
+  lines.push(
     `  ${chalk.bold('Changed:')}   ${ctx.changedCount} files  ${chalk.green(`(+${ctx.additions})`)} ${chalk.red(`(-${ctx.deletions})`)}`
   )
-  console.log('')
+  lines.push('')
+  return lines.join('\n')
 }
 
 export function printDiffSummary(ctx: {
@@ -221,10 +222,11 @@ export function printDiffSummary(ctx: {
   headBranch: string
   hasCriticalIntroduced: boolean
   durationMs: number
-}): void {
-  const { score, findingDiff, changedFiles, baseBranch, hasCriticalIntroduced, durationMs } = ctx
+}): string {
+  const { score, findingDiff, baseBranch, durationMs } = ctx
+  const lines: string[] = []
 
-  console.log(chalk.gray('─'.repeat(50)))
+  lines.push(chalk.gray('─'.repeat(50)))
 
   const scoreColor = getScoreColor(score.score)
   const deltaStr =
@@ -234,11 +236,11 @@ export function printDiffSummary(ctx: {
         ? chalk.green(`  +${score.delta}`)
         : chalk.red(`  ${score.delta}`)
 
-  console.log(
+  lines.push(
     `  ${chalk.bold('Diff Score:')}  ${scoreColor(score.score.toString())} ${chalk.gray('/ 100')} ${chalk.bold(`(delta: ${deltaStr} vs ${baseBranch})`)}`
   )
-  console.log('')
-  console.log(
+  lines.push('')
+  lines.push(
     `  Findings in changed files: ${chalk.bold(String(findingDiff.introduced.length))} total`
   )
 
@@ -247,33 +249,35 @@ export function printDiffSummary(ctx: {
   const medium = findingDiff.introduced.filter((f) => f.severity === 'medium')
 
   if (critical.length > 0) {
-    console.log(`    ${SEVERITY_COLORS.critical('Critical introduced:')} ${critical.length}`)
+    lines.push(`    ${SEVERITY_COLORS.critical('Critical introduced:')} ${critical.length}`)
   }
   if (high.length > 0) {
-    console.log(`    ${SEVERITY_COLORS.high('High introduced:')}     ${high.length}`)
+    lines.push(`    ${SEVERITY_COLORS.high('High introduced:')}     ${high.length}`)
   }
   if (medium.length > 0) {
-    console.log(`    ${SEVERITY_COLORS.medium('Medium introduced:')}   ${medium.length}`)
+    lines.push(`    ${SEVERITY_COLORS.medium('Medium introduced:')}   ${medium.length}`)
   }
 
   // Print critical findings inline (max 3)
   if (critical.length > 0) {
-    console.log('')
-    console.log(chalk.red.bold(`  ⚠ ${critical.length} critical finding(s) introduced:`))
+    lines.push('')
+    lines.push(chalk.red.bold(`  ⚠ ${critical.length} critical finding(s) introduced:`))
     for (const f of critical.slice(0, 3)) {
       const loc = f.filePath
         ? chalk.gray(` → ${f.filePath}${f.lineStart ? `:${f.lineStart}` : ''}`)
         : ''
-      console.log(`    ${chalk.red(f.title)}${loc}`)
+      lines.push(`    ${chalk.red(f.title)}${loc}`)
     }
     if (critical.length > 3) {
-      console.log(chalk.gray(`    ... and ${critical.length - 3} more`))
+      lines.push(chalk.gray(`    ... and ${critical.length - 3} more`))
     }
   }
 
-  console.log('')
-  console.log(chalk.dim(`  Report:  .palade/reports/diff-*`))
-  console.log(chalk.gray('─'.repeat(50)))
-  console.log(chalk.dim(`  Total time: ${(durationMs / 1000).toFixed(1)}s`))
-  console.log('')
+  lines.push('')
+  lines.push(chalk.dim(`  Report:  .palade/reports/diff-*`))
+  lines.push(chalk.gray('─'.repeat(50)))
+  lines.push(chalk.dim(`  Total time: ${(durationMs / 1000).toFixed(1)}s`))
+  lines.push('')
+
+  return lines.join('\n')
 }

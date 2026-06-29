@@ -367,7 +367,8 @@ export async function reviewCommand(
 
   // 14. Print summary
   console.log()
-  await reportTerminal(reporterCtx)
+  const termReport = await reportTerminal(reporterCtx)
+  console.log(termReport.content)
 
   console.log()
   if (htmlPath) {
