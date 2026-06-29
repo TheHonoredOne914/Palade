@@ -1,17 +1,10 @@
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { ReporterContext, ReporterOutput, MarkdownTableOptions } from './types.js'
-import type { ScoreCategory } from '../scorer/types.js'
+import { CATEGORY_LABELS } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
 
-const CATEGORY_LABELS: Record<ScoreCategory, string> = {
-  security: 'Security',
-  architecture: 'Architecture',
-  performance: 'Performance',
-  maintainability: 'Maintainability',
-  deadCode: 'Dead Code',
-  testIntelligence: 'Test Intelligence',
-}
+
 
 const SEVERITY_EMOJI: Record<Severity, string> = {
   critical: '🔴',
@@ -78,12 +71,15 @@ function renderCategoryScoresTable(
   categories: { category: ScoreCategory; score: number; findingCount: number }[]
 ): string {
   const headers = ['Category', 'Score', 'Bar', 'Findings']
-  const rows = categories.map((c) => [
-    CATEGORY_LABELS[c.category],
-    String(c.score),
-    renderScoreBar(c.score, 8),
-    String(c.findingCount),
-  ])
+  const rows = categories.map((c) => {
+    const label = CATEGORY_LABELS[c.category] ?? (c.category.charAt(0).toUpperCase() + c.category.slice(1))
+    return [
+      label,
+      String(c.score),
+      renderScoreBar(c.score, 8),
+      String(c.findingCount),
+    ]
+  })
   return createMarkdownTable(headers, rows)
 }
 

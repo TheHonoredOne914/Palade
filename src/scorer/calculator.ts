@@ -2,14 +2,7 @@ import type { AgentFinding, Severity } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from './types.js'
 
-const CATEGORY_AGENT_MAP: Record<ScoreCategory, string> = {
-  security: 'security',
-  architecture: 'architecture',
-  performance: 'performance',
-  maintainability: 'maintainability',
-  deadCode: 'deadCode',
-  testIntelligence: 'testIntelligence',
-}
+
 
 const SEVERITY_WEIGHTS: Record<Severity, number> = {
   critical: 10,
@@ -55,7 +48,7 @@ export function calculateCategoryScore(
   findings: AgentFinding[],
   category: ScoreCategory
 ): CategoryScore {
-  const agentName = CATEGORY_AGENT_MAP[category]
+  const agentName = category
   const { total, critical, high } = countBySeverity(findings, agentName)
 
   let penalty = 0
@@ -101,7 +94,7 @@ export function calculateScore(
   crossAgentFindings: CrossAgentFinding[],
   previousScore: number | null = null
 ): ScoreResult {
-  const categories: ScoreCategory[] = [
+  const baseCategories: ScoreCategory[] = [
     'security',
     'architecture',
     'performance',
@@ -109,6 +102,9 @@ export function calculateScore(
     'deadCode',
     'testIntelligence',
   ]
+
+  const uniqueAgents = Array.from(new Set(findings.map((f) => f.agentName)))
+  const categories = Array.from(new Set([...baseCategories, ...uniqueAgents]))
 
   const categoryScores = categories.map((cat) => calculateCategoryScore(findings, cat))
 

@@ -4,14 +4,7 @@ import type { ScoreCategory, ScoreResult } from '../scorer/types.js'
 import type { Severity, AgentFinding } from '../agents/base.js'
 import type { FindingDiff, ChangedFile, DiffResult } from '../diff/types.js'
 
-const CATEGORY_LABELS: Record<ScoreCategory, string> = {
-  security: 'Security',
-  architecture: 'Architecture',
-  performance: 'Performance',
-  maintainability: 'Maintainability',
-  deadCode: 'Dead Code',
-  testIntelligence: 'Test Intelligence',
-}
+import { CATEGORY_LABELS } from '../scorer/types.js'
 
 const SEVERITY_COLORS: Record<Severity, (text: string) => string> = {
   critical: chalk.red.bold,
@@ -91,7 +84,8 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
 
   lines.push(chalk.bold.underline('Category Breakdown:'))
   for (const cat of ctx.score.breakdown.categories) {
-    lines.push(renderCategoryScore(CATEGORY_LABELS[cat.category], cat.score, cat.findingCount))
+    const label = CATEGORY_LABELS[cat.category] ?? (cat.category.charAt(0).toUpperCase() + cat.category.slice(1))
+    lines.push(renderCategoryScore(label, cat.score, cat.findingCount))
   }
   lines.push('')
 

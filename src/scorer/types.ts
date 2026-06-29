@@ -1,8 +1,7 @@
 import type { AgentFinding, AgentName } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 
-export type ScoreCategory =
-  'security' | 'architecture' | 'performance' | 'maintainability' | 'deadCode' | 'testIntelligence'
+export type ScoreCategory = string
 
 export interface CategoryScore {
   category: ScoreCategory
@@ -42,7 +41,7 @@ export interface BadgeData {
   label: string
 }
 
-export const CATEGORY_LABELS: Record<ScoreCategory, string> = {
+export const CATEGORY_LABELS: Record<string, string> = {
   security: 'Security',
   architecture: 'Architecture',
   performance: 'Performance',

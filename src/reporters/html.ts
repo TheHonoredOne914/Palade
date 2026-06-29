@@ -8,14 +8,7 @@ import type { ReporterContext, ReporterOutput, HtmlTemplateData } from './types.
 import type { ScoreCategory } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
 
-const CATEGORY_LABELS: Record<ScoreCategory, string> = {
-  security: 'Security',
-  architecture: 'Architecture',
-  performance: 'Performance',
-  maintainability: 'Maintainability',
-  deadCode: 'Dead Code',
-  testIntelligence: 'Test Intelligence',
-}
+import { CATEGORY_LABELS } from '../scorer/types.js'
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
   critical: 'severity-critical',
@@ -72,9 +65,10 @@ function renderCategoryScoreHtml(
   findingCount: number
 ): string {
   const color = getScoreColor(score)
+  const label = CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS] ?? (category.charAt(0).toUpperCase() + category.slice(1))
   return `
         <div class="category-item">
-          <div class="category-name">${CATEGORY_LABELS[category]}</div>
+          <div class="category-name">${escapeHtml(label)}</div>
           <div class="category-bar">
             <div class="category-bar-fill" style="width: ${score}%; background: ${color};"></div>
           </div>
