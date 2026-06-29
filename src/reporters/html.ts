@@ -65,7 +65,9 @@ function renderCategoryScoreHtml(
   findingCount: number
 ): string {
   const color = getScoreColor(score)
-  const label = CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS] ?? (category.charAt(0).toUpperCase() + category.slice(1))
+  const label =
+    CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS] ??
+    category.charAt(0).toUpperCase() + category.slice(1)
   return `
         <div class="category-item">
           <div class="category-name">${escapeHtml(label)}</div>

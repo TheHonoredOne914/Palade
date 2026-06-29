@@ -4,8 +4,6 @@ import type { ReporterContext, ReporterOutput, MarkdownTableOptions } from './ty
 import { CATEGORY_LABELS } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
 
-
-
 const SEVERITY_EMOJI: Record<Severity, string> = {
   critical: '🔴',
   high: '🟠',
@@ -72,13 +70,9 @@ function renderCategoryScoresTable(
 ): string {
   const headers = ['Category', 'Score', 'Bar', 'Findings']
   const rows = categories.map((c) => {
-    const label = CATEGORY_LABELS[c.category] ?? (c.category.charAt(0).toUpperCase() + c.category.slice(1))
-    return [
-      label,
-      String(c.score),
-      renderScoreBar(c.score, 8),
-      String(c.findingCount),
-    ]
+    const label =
+      CATEGORY_LABELS[c.category] ?? c.category.charAt(0).toUpperCase() + c.category.slice(1)
+    return [label, String(c.score), renderScoreBar(c.score, 8), String(c.findingCount)]
   })
   return createMarkdownTable(headers, rows)
 }

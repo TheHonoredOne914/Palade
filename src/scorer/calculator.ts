@@ -2,8 +2,6 @@ import type { AgentFinding, Severity } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from './types.js'
 
-
-
 const SEVERITY_WEIGHTS: Record<Severity, number> = {
   critical: 10,
   high: 5,

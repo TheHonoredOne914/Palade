@@ -84,7 +84,8 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
 
   lines.push(chalk.bold.underline('Category Breakdown:'))
   for (const cat of ctx.score.breakdown.categories) {
-    const label = CATEGORY_LABELS[cat.category] ?? (cat.category.charAt(0).toUpperCase() + cat.category.slice(1))
+    const label =
+      CATEGORY_LABELS[cat.category] ?? cat.category.charAt(0).toUpperCase() + cat.category.slice(1)
     lines.push(renderCategoryScore(label, cat.score, cat.findingCount))
   }
   lines.push('')
