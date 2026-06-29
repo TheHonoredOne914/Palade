@@ -13,6 +13,7 @@ export type AgentName =
   | 'maintainability'
   | 'deadCode'
   | 'testIntelligence'
+  | 'pragmatism'
   | (string & {}) // widen to string while keeping autocomplete for built-ins
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'

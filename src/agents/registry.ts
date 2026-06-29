@@ -5,6 +5,7 @@ import { PerformanceAgent } from './specialist/performance.js'
 import { MaintainabilityAgent } from './specialist/maintainability.js'
 import { DeadCodeAgent } from './specialist/deadCode.js'
 import { TestIntelligenceAgent } from './specialist/testIntelligence.js'
+import { PragmatismAgent } from './specialist/pragmatism.js'
 import type { CustomAgentDefinition } from './custom/schema.js'
 import { CustomAgent } from './custom/agent.js'
 
@@ -15,6 +16,7 @@ const BUILTIN_AGENTS = new Map<AgentName, IAgent>([
   ['maintainability', new MaintainabilityAgent()],
   ['deadCode', new DeadCodeAgent()],
   ['testIntelligence', new TestIntelligenceAgent()],
+  ['pragmatism', new PragmatismAgent()],
 ])
 
 /** Derived from BUILTIN_AGENTS for backward compatibility. */
