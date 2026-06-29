@@ -85,8 +85,11 @@ export function Autocomplete({
   }, [matches])
 
   useInput((keyInput, key) => {
-    if (key.tab) {
+    if (key.tab || key.downArrow) {
       setSelectedIdx((i) => Math.min(i + 1, matches.length - 1))
+    }
+    if (key.upArrow) {
+      setSelectedIdx((i) => Math.max(i - 1, 0))
     }
     if (key.escape) {
       onSelect('') // close autocomplete

@@ -18,6 +18,7 @@ const RAW_MODE_SUPPORTED =
 interface SafeInputHandlerProps {
   status: 'idle' | 'running'
   showSettings: boolean
+  showAutocomplete: boolean
   onCtrlC: () => void
   onAbort: () => void
   onUp: () => void
@@ -30,6 +31,7 @@ interface SafeInputHandlerProps {
 function SafeInputHandler({
   status,
   showSettings,
+  showAutocomplete,
   onCtrlC,
   onAbort,
   onUp,
@@ -66,7 +68,7 @@ function SafeInputHandler({
       }
       return
     }
-    if (!showSettings) {
+    if (!showSettings && !showAutocomplete) {
       if (key.upArrow) onUp()
       if (key.downArrow) onDown()
     }
@@ -213,6 +215,7 @@ export function App({
         <SafeInputHandler
           status={status}
           showSettings={showSettings}
+          showAutocomplete={showAutocomplete}
           onCtrlC={exit}
           onAbort={() => {
             abortRef.current?.abort()
