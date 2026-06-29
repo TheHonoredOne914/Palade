@@ -47,5 +47,19 @@ describe('agents/registry', () => {
       const agents = getAgentsForMode('standard', [])
       expect(agents).toHaveLength(7)
     })
+
+    it('instantiates custom agents dynamically', () => {
+      const customDefs = [
+        {
+          name: 'myCustomAgent',
+          domain: 'customDomain',
+          description: 'A custom agent',
+          systemPrompt: 'You are a custom agent.',
+        },
+      ]
+      const agents = getAgentsForMode('standard', undefined, customDefs)
+      expect(agents).toHaveLength(8)
+      expect(agents.some((a) => a.name === 'myCustomAgent')).toBe(true)
+    })
   })
 })

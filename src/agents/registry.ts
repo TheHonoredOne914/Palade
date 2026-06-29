@@ -22,22 +22,16 @@ const BUILTIN_AGENTS = new Map<AgentName, IAgent>([
 /** Derived from BUILTIN_AGENTS for backward compatibility. */
 export const AGENT_REGISTRY: IAgent[] = Array.from(BUILTIN_AGENTS.values())
 
-let customAgents: Map<string, CustomAgent> = new Map()
-
-/** Register custom agents from user config. Called once at swarm startup. */
-export function registerCustomAgents(defs: CustomAgentDefinition[]): void {
-  customAgents = new Map()
-  for (const def of defs) {
+export function getAgentsForMode(
+  mode: ReviewMode,
+  agentOverrides?: AgentName[],
+  customAgentDefs: CustomAgentDefinition[] = []
+): IAgent[] {
+  const customAgents = new Map<string, CustomAgent>()
+  for (const def of customAgentDefs) {
     customAgents.set(def.name, new CustomAgent(def))
   }
-}
 
-/** Get all registered custom agent names. */
-export function getCustomAgentNames(): string[] {
-  return Array.from(customAgents.keys())
-}
-
-export function getAgentsForMode(mode: ReviewMode, agentOverrides?: AgentName[]): IAgent[] {
   // Merge built-in + custom for lookup
   const allAgents = new Map<string, IAgent>([...BUILTIN_AGENTS, ...customAgents])
 

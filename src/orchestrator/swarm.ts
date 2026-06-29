@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import chalk from 'chalk'
 import pLimit from 'p-limit'
 import type { AgentFinding, AgentContext, AgentName, IAgent } from '../agents/base.js'
-import { getAgentsForMode, registerCustomAgents } from '../agents/registry.js'
+import { getAgentsForMode } from '../agents/registry.js'
 import { synthesize as analyzeSynthesis } from '../agents/synthesis.js'
 import { CombinedAnalyzer } from '../agents/combined.js'
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
@@ -22,11 +22,6 @@ export async function runSwarm(
   const runId = crypto.randomUUID().slice(0, 8)
   const startTime = Date.now()
 
-  // Register custom agents from palade.agents.ts (if any)
-  if (options.customAgents && options.customAgents.length > 0) {
-    registerCustomAgents(options.customAgents)
-  }
-
   // Pass 1: Triage — reduce 400+ chunks to ~45 high-value chunks (unless exhaustive)
   const reviewChunks =
     manifests && !options.exhaustive
@@ -41,7 +36,7 @@ export async function runSwarm(
   // mode, since they can't be merged into the combined prompt reliably.
   const agents: IAgent[] = options.economyMode
     ? [new CombinedAnalyzer()]
-    : getAgentsForMode(context.mode, context.modeConfig?.agentOverrides)
+    : getAgentsForMode(context.mode, context.modeConfig?.agentOverrides, options.customAgents)
   const memory = new AgentMemory()
 
   const agentTimings: Partial<Record<AgentName, number>> = {}
