@@ -77,7 +77,9 @@ targetsCommand
   .action(async (): Promise<void> => {
     const targets = await loadTargets(process.cwd())
     if (targets.length === 0) {
-      console.log(theme.dim("  No targets defined. Run 'palade init' or edit .palade/palade.targets.ts."))
+      console.log(
+        theme.dim("  No targets defined. Run 'palade init' or edit .palade/palade.targets.ts.")
+      )
       return
     }
     console.log(theme.dim(`  Defined targets (${targets.length}):`))

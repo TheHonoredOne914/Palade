@@ -26,11 +26,13 @@ export function infoBox(lines: string[]): string {
 
 export function formatDriftAlert(filePath: string, findings: AgentFinding[]): string {
   const lines: string[] = []
-  
+
   for (const f of findings.slice(0, 5)) {
     const loc = f.lineStart ? `:${f.lineStart}` : ''
     const title = truncate(f.title, 60)
-    lines.push(` ${severityChip(f.severity)} ${theme.dim(f.agentName.padEnd(16))} ${title} ${theme.dim(loc)}`)
+    lines.push(
+      ` ${severityChip(f.severity)} ${theme.dim(f.agentName.padEnd(16))} ${title} ${theme.dim(loc)}`
+    )
   }
 
   if (findings.length > 5) {

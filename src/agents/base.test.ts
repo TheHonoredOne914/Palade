@@ -111,10 +111,14 @@ describe('buildSystemPrompt', () => {
   it('appends diff context', () => {
     const ctx: AgentContext = {
       ...baseContext,
-      diffContext: { headBranch: 'feat', baseBranch: 'main', changedFiles: [{ path: 'a.ts', status: 'modified', additions: 1, deletions: 1 }] }
+      diffContext: {
+        headBranch: 'feat',
+        baseBranch: 'main',
+        changedFiles: [{ path: 'a.ts', status: 'modified', additions: 1, deletions: 1 }],
+      },
     }
     const res = buildSystemPrompt('Base', ctx)
-    expect(res).toContain('DIFF CONTEXT: This is a diff review of branch \'feat\' vs \'main\'')
+    expect(res).toContain("DIFF CONTEXT: This is a diff review of branch 'feat' vs 'main'")
   })
 
   it('appends target description', () => {
@@ -141,12 +145,11 @@ describe('buildSystemPrompt', () => {
         reviewRequests: [{ filePath: 'a.ts', line: 10, reason: 'check this' }],
         focusRequests: [],
         ignoredFiles: [],
-        ignoredLines: []
-      }
+        ignoredLines: [],
+      },
     }
     const res = buildSystemPrompt('Base', ctx)
     expect(res).toContain('DEVELOPER REVIEW REQUESTS')
     expect(res).toContain('a.ts:10 — "check this"')
   })
 })
-

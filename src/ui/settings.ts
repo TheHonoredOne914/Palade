@@ -384,7 +384,9 @@ async function writeConfigPatch(
   // and abort. Their manual edits outside the patch cannot be safely preserved.
   if (fileExists && !hasExistingObject) {
     console.log()
-    console.log(theme.error('  ✗  Cannot safely modify complex .palade/palade.config.ts automatically.'))
+    console.log(
+      theme.error('  ✗  Cannot safely modify complex .palade/palade.config.ts automatically.')
+    )
     console.log(theme.dim('     Please edit the configuration file manually.'))
     return
   }

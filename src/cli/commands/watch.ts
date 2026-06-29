@@ -20,13 +20,16 @@ const DEBOUNCE_MS: Record<string, number> = {
   high: 500,
 }
 
-export async function watchCommand(opts: { sensitivity?: string; continuous?: boolean }): Promise<void> {
+export async function watchCommand(opts: {
+  sensitivity?: string
+  continuous?: boolean
+}): Promise<void> {
   const projectRoot = process.cwd()
   const sensitivity = opts.sensitivity ?? 'medium'
   const debounceMs = DEBOUNCE_MS[sensitivity] ?? 2000
   const isContinuous = opts.continuous === true
 
-  let config;
+  let config
   try {
     config = await loadConfig()
     await initRouter(config)
@@ -139,7 +142,7 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
           const timeoutMs = (config.swarm as any)?.timeoutMs ?? 60000
           const ac = new AbortController()
           const timer = setTimeout(() => ac.abort(), timeoutMs)
-          
+
           const onParentAbort = () => {
             ac.abort()
             clearTimeout(timer)
@@ -254,15 +257,15 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
       // chokidar emits OS-native separators (backslash on Windows). walkProject
       // produces forward-slash paths, so normalise before passing as scope.
       const normalizedPath = path.split('\\').join('/')
-      
+
       if (!urgentQueue.includes(normalizedPath)) {
         urgentQueue.push(normalizedPath)
       }
-      
+
       if (currentSweepController) {
         currentSweepController.abort()
       }
-      
+
       void processNext()
     }, debounceMs)
   })

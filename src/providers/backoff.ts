@@ -16,8 +16,12 @@ export async function withExponentialBackoff<T>(
       return await fn()
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
-      const isFatal = fatalErrors.some((msg) => error.message.toLowerCase().includes(msg.toLowerCase()))
-      const isRetryable = retryableErrors.some((msg) => error.message.toLowerCase().includes(msg.toLowerCase()))
+      const isFatal = fatalErrors.some((msg) =>
+        error.message.toLowerCase().includes(msg.toLowerCase())
+      )
+      const isRetryable = retryableErrors.some((msg) =>
+        error.message.toLowerCase().includes(msg.toLowerCase())
+      )
 
       if (isFatal || !isRetryable || attempt >= maxRetries) {
         throw error
