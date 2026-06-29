@@ -257,6 +257,7 @@ function chunkPython(content: string, filePath: string): CodeChunk[] {
     const tree = pyParser.parse(content)
     const chunks: CodeChunk[] = []
     const lines = content.split('\n')
+    const coveredRanges: Array<[number, number]> = []
 
     function walkNode(node: any): void {
       if (!node) return
@@ -267,6 +268,7 @@ function chunkPython(content: string, filePath: string): CodeChunk[] {
       if (shouldChunk && node.startPosition && node.endPosition) {
         const startLine = node.startPosition.row + 1
         const endLine = node.endPosition.row + 1
+        coveredRanges.push([startLine, endLine])
         const chunkContent = lines.slice(startLine - 1, endLine).join('\n')
         let symbolName: string | undefined
 
@@ -306,6 +308,36 @@ function chunkPython(content: string, filePath: string): CodeChunk[] {
       return chunkBySlidingWindow(content, filePath, 'python')
     }
 
+    coveredRanges.sort((a, b) => a[0] - b[0])
+    let cursor = 1
+    const gaps: Array<[number, number]> = []
+    for (const [s, e] of coveredRanges) {
+      if (s > cursor) {
+        gaps.push([cursor, s - 1])
+      }
+      cursor = Math.max(cursor, e + 1)
+    }
+    if (cursor <= lines.length) {
+      gaps.push([cursor, lines.length])
+    }
+
+    for (const [gStart, gEnd] of gaps) {
+      const gapContent = lines.slice(gStart - 1, gEnd).join('\n')
+      if (gapContent.trim().length === 0) continue
+      const gapChunk: CodeChunk = {
+        id: makeChunkId(filePath, gStart, gEnd),
+        filePath,
+        startLine: gStart,
+        endLine: gEnd,
+        content: gapContent,
+        tokenCount: estimateTokens(gapContent),
+        language: 'python',
+      }
+      chunks.push(...splitLargeChunk(gapChunk))
+    }
+
+    chunks.sort((a, b) => a.startLine - b.startLine)
+
     return chunks
   } catch {
     return chunkBySlidingWindow(content, filePath, 'python')
@@ -344,15 +376,11 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
         chunks = chunkBySlidingWindow(content, manifest.path, manifest.language)
     }
 
-    allChunks.push(...chunks)
-
-    if (allChunks.length > MAX_CHUNKS_PER_FILE) {
-      break
+    if (chunks.length > MAX_CHUNKS_PER_FILE) {
+      chunks.length = MAX_CHUNKS_PER_FILE
     }
-  }
 
-  if (allChunks.length > MAX_CHUNKS_PER_FILE) {
-    allChunks.length = MAX_CHUNKS_PER_FILE
+    allChunks.push(...chunks)
   }
 
   return allChunks
