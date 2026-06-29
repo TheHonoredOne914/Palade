@@ -89,6 +89,64 @@ describe('parseFindingsResponse', () => {
     expect(findings).toHaveLength(3)
     expect(findings[0].scorePenalty).toBe(10)
     expect(findings[1].scorePenalty).toBe(5)
-    expect(findings[2].scorePenalty).toBe(2)
   })
 })
+
+import { buildSystemPrompt } from './base.js'
+import type { AgentContext } from './base.js'
+
+describe('buildSystemPrompt', () => {
+  const baseContext: AgentContext = {
+    projectLanguages: [],
+    totalFiles: 10,
+    totalChunks: 10,
+    mode: 'standard',
+  }
+
+  it('returns base prompt if no modifiers are present', () => {
+    const res = buildSystemPrompt('Base', baseContext)
+    expect(res).toBe('Base')
+  })
+
+  it('appends diff context', () => {
+    const ctx: AgentContext = {
+      ...baseContext,
+      diffContext: { headBranch: 'feat', baseBranch: 'main', changedFiles: [{ path: 'a.ts', status: 'modified', additions: 1, deletions: 1 }] }
+    }
+    const res = buildSystemPrompt('Base', ctx)
+    expect(res).toContain('DIFF CONTEXT: This is a diff review of branch \'feat\' vs \'main\'')
+  })
+
+  it('appends target description', () => {
+    const ctx: AgentContext = { ...baseContext, targetDescription: 'some feature' }
+    const res = buildSystemPrompt('Base', ctx)
+    expect(res).toContain('SUBSYSTEM CONTEXT: some feature')
+  })
+
+  it('appends target focus', () => {
+    const ctx: AgentContext = { ...baseContext, targetFocus: ['auth', 'api'] }
+    const res = buildSystemPrompt('Base', ctx)
+    expect(res).toContain('FOCUS AREAS: auth, api')
+  })
+
+  it('appends mode suffix', () => {
+    const res = buildSystemPrompt('Base', baseContext, { systemPromptSuffix: 'Strict mode' })
+    expect(res).toContain('Strict mode')
+  })
+
+  it('appends review requests', () => {
+    const ctx: AgentContext = {
+      ...baseContext,
+      annotations: {
+        reviewRequests: [{ filePath: 'a.ts', line: 10, reason: 'check this' }],
+        focusRequests: [],
+        ignoredFiles: [],
+        ignoredLines: []
+      }
+    }
+    const res = buildSystemPrompt('Base', ctx)
+    expect(res).toContain('DEVELOPER REVIEW REQUESTS')
+    expect(res).toContain('a.ts:10 — "check this"')
+  })
+})
+

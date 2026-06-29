@@ -78,6 +78,7 @@ export interface AgentContext {
   diffContext?: DiffContext
   annotations?: AnnotationSummary
   modeConfig?: ModeConfig
+  providerName?: string
 }
 
 export interface IAgent {
@@ -211,4 +212,40 @@ export function buildSystemPrompt(
     prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}`
   }
   return prompt
+}
+
+import { getProvider, type ProviderRole } from '../providers/router.js'
+
+export abstract class BaseSpecialistAgent implements IAgent {
+  abstract name: AgentName
+  abstract domain: string
+  protected abstract getSystemPrompt(): string
+
+  async analyze(
+    chunks: CodeChunk[],
+    context: AgentContext,
+    signal?: AbortSignal
+  ): Promise<AgentFinding[]> {
+    try {
+      const providerName = (context.providerName as ProviderRole) ?? 'primary'
+      const provider = getProvider(providerName)
+      const systemPrompt = buildSystemPrompt(this.getSystemPrompt(), context, context.modeConfig)
+      const userPrompt = buildChunkContext(chunks)
+      const response = await provider.complete({
+        systemPrompt,
+        userPrompt,
+        maxTokens: 4096,
+        signal,
+      })
+      const findings = parseFindingsResponse(response.content ?? '', this.name)
+      for (const f of findings) {
+        f.provider = response.provider
+        f.model = response.model
+      }
+      return findings
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return []
+      throw err
+    }
+  }
 }

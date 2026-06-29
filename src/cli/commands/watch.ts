@@ -4,10 +4,12 @@ import { loadConfig } from '../../config/loader.js'
 import { initRouter, getProvider } from '../../providers/router.js'
 import { walkProject } from '../../ingestion/walker.js'
 import { chunkFiles } from '../../ingestion/chunker.js'
+import { scheduleBatches } from '../../orchestrator/scheduler.js'
 import type { AgentFinding, AgentContext } from '../../agents/base.js'
 import { MaintainabilityAgent } from '../../agents/specialist/maintainability.js'
 import { ArchitectureAgent } from '../../agents/specialist/architecture.js'
 import { theme } from '../../ui/theme.js'
+import { formatDriftAlert } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -129,32 +131,38 @@ export async function watchCommand(opts: { sensitivity?: string; continuous?: bo
       // Run lightweight agents
       const agents = [new ArchitectureAgent(), new MaintainabilityAgent()]
       const allFindings: AgentFinding[] = []
+      const batches = scheduleBatches(chunks)
 
       for (const agent of agents) {
-        try {
-          const findings = await agent.analyze(chunks, context, signal)
-          allFindings.push(...findings)
-        } catch (err: unknown) {
-          if (err instanceof Error && err.name === 'AbortError') {
-             throw err // pass aborts up
+        for (const batch of batches) {
+          const timeoutMs = (config.swarm as any)?.timeoutMs ?? 60000
+          const ac = new AbortController()
+          const timer = setTimeout(() => ac.abort(), timeoutMs)
+          
+          const onParentAbort = () => {
+            ac.abort()
+            clearTimeout(timer)
           }
-          // silent — watch mode is best-effort
+          if (signal) signal.addEventListener('abort', onParentAbort)
+
+          try {
+            const findings = await agent.analyze(batch, context, ac.signal)
+            allFindings.push(...findings)
+          } catch (err: unknown) {
+            if (err instanceof Error && err.name === 'AbortError') {
+              if (signal?.aborted) throw err // pass parent aborts up
+              console.log(theme.dim(`    ⚠ ${agent.name} timed out.`))
+            }
+          } finally {
+            clearTimeout(timer)
+            if (signal) signal.removeEventListener('abort', onParentAbort)
+          }
         }
       }
 
       if (allFindings.length > 0) {
         accumulatedFindings.set(filePath, allFindings)
-        console.log(theme.warning(`  ⚠ Drift detected in ${filePath}`))
-        for (const f of allFindings.slice(0, 3)) {
-          const loc = f.lineStart ? `:${f.lineStart}` : ''
-          console.log(
-            `    ${theme.dim(f.agentName)}: ${f.title} ${theme.dim(`${f.filePath}${loc}`)}`
-          )
-        }
-        if (allFindings.length > 3) {
-          console.log(theme.dim(`    ... and ${allFindings.length - 3} more`))
-        }
-        console.log()
+        console.log('\n' + formatDriftAlert(filePath, allFindings))
       } else {
         accumulatedFindings.delete(filePath)
         console.log(theme.success(`  ✓ Clean: ${filePath}\n`))

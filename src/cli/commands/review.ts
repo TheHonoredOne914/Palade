@@ -11,6 +11,7 @@ import { renderBadge, getScoreColor, getBadgeData } from '../../scorer/badge.js'
 import { reportJson } from '../../reporters/json.js'
 import { writeHtmlReport, startLocalServer } from '../../reporters/html.js'
 import { reportMarkdown } from '../../reporters/markdown.js'
+import { reportTerminal } from '../../reporters/terminal.js'
 import { validateMode, getModeConfig } from '../../modes/index.js'
 import { writeOnboardDocs } from '../../modes/onboard.js'
 import { createLiveProgress } from '../../ui/progress.js'
@@ -360,38 +361,10 @@ export async function reviewCommand(
   }
 
   // 14. Print summary
-  const grouped = groupBySeverity(swarmResult.findings)
-  const critical = grouped.critical
-  const high = grouped.high
-  const medium = grouped.medium
-  const low = [...grouped.low, ...grouped.info]
+  console.log()
+  await reportTerminal(reporterCtx)
 
   console.log()
-  console.log(divider())
-
-  const scoreStr = scoreTheme(scoreResult.score)(`${scoreResult.score}/100`)
-  const deltaStr = formatDelta(scoreResult.delta)
-  const gradeStr = scoreGrade(scoreResult.score)
-
-  console.log(
-    `  Palade Score   ${scoreStr}  ${theme.dim(deltaStr)}  ${theme.dim(`Grade: ${gradeStr}`)}`
-  )
-
-  console.log(
-    [
-      `  Findings       `,
-      theme.critical(`${critical.length} critical`),
-      `  `,
-      theme.high(`${high.length} high`),
-      `  `,
-      theme.medium(`${medium.length} medium`),
-      `  `,
-      theme.dim(`${low.length} low`),
-    ].join('')
-  )
-
-  console.log()
-
   if (htmlPath) {
     console.log(`  ${theme.dim('→ HTML')}     ${chalk.cyan(htmlPath)}`)
   }
@@ -406,22 +379,6 @@ export async function reviewCommand(
     )
   }
 
-  console.log()
-  console.log(divider())
-  console.log(`  ${theme.dim('Total time:')}  ${(swarmResult.durationMs / 1000).toFixed(1)}s`)
-  if (swarmResult.fallbackStats) {
-    const fs = swarmResult.fallbackStats
-    const pFallbacks = fs.primary.fallbacks
-    const sFallbacks = fs.synthesis.fallbacks
-    if (pFallbacks > 0 || sFallbacks > 0) {
-      const parts: string[] = []
-      if (pFallbacks > 0)
-        parts.push(`primary: ${pFallbacks}/${fs.primary.total} calls used fallback`)
-      if (sFallbacks > 0)
-        parts.push(`synthesis: ${sFallbacks}/${fs.synthesis.total} calls used fallback`)
-      console.log(`  ${chalk.yellow('⚠')} ${theme.dim(parts.join(' | '))}`)
-    }
-  }
   console.log()
 
   // 15. Open browser

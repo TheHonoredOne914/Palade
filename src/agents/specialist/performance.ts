@@ -1,14 +1,4 @@
-import type { CodeChunk } from '../../ingestion/types.js'
-import { getProvider } from '../../providers/router.js'
-import {
-  type AgentFinding,
-  type AgentContext,
-  type IAgent,
-  type AgentName,
-  buildChunkContext,
-  buildSystemPrompt,
-  parseFindingsResponse,
-} from '../base.js'
+import { type AgentName, BaseSpecialistAgent } from '../base.js'
 
 const SYSTEM_PROMPT = `You are a specialist performance code reviewer. You are part of a parallel AI swarm analyzing a codebase.
 
@@ -52,34 +42,11 @@ Additional performance focus:
 - Memory leaks (event listeners not removed, unclosed streams)
 - Synchronous file I/O in request handlers`
 
-export class PerformanceAgent implements IAgent {
+export class PerformanceAgent extends BaseSpecialistAgent {
   name: AgentName = 'performance'
   domain = 'performance'
 
-  async analyze(
-    chunks: CodeChunk[],
-    context: AgentContext,
-    signal?: AbortSignal
-  ): Promise<AgentFinding[]> {
-    try {
-      const provider = getProvider('primary')
-      const systemPrompt = buildSystemPrompt(SYSTEM_PROMPT, context, context.modeConfig)
-      const userPrompt = buildChunkContext(chunks)
-      const response = await provider.complete({
-        systemPrompt,
-        userPrompt,
-        maxTokens: 4096,
-        signal,
-      })
-      const findings = parseFindingsResponse(response.content ?? '', this.name)
-      for (const f of findings) {
-        f.provider = response.provider
-        f.model = response.model
-      }
-      return findings
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return []
-      throw err
-    }
+  protected getSystemPrompt(): string {
+    return SYSTEM_PROMPT
   }
 }

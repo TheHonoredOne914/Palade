@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
@@ -12,9 +12,12 @@ if (!existsSync(scriptPath)) {
   process.exit(1)
 }
 
-const args = process.argv.slice(2).join(' ')
+const args = process.argv.slice(2)
 try {
-  execSync(`node ${scriptPath} ${args}`, { stdio: 'inherit', env: { ...process.env, FORCE_COLOR: '1' } })
+  const result = spawnSync('node', [scriptPath, ...args], { stdio: 'inherit', env: { ...process.env, FORCE_COLOR: '1' } })
+  if (result.status !== null) {
+    process.exit(result.status)
+  }
 } catch {
   process.exit(1)
 }

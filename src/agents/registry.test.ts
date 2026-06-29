@@ -3,15 +3,16 @@ import { getAgentsForMode } from './registry.js'
 
 describe('agents/registry', () => {
   describe('getAgentsForMode', () => {
-    it('returns all 6 agents for standard mode', () => {
+    it('returns all 7 agents for standard mode', () => {
       const agents = getAgentsForMode('standard')
-      expect(agents).toHaveLength(6)
+      expect(agents).toHaveLength(7)
       const names = agents.map((a) => a.name).sort()
       expect(names).toEqual([
         'architecture',
         'deadCode',
         'maintainability',
         'performance',
+        'pragmatism',
         'security',
         'testIntelligence',
       ])
@@ -38,13 +39,13 @@ describe('agents/registry', () => {
     })
 
     it('falls back to full registry when overrides reference unknown agents', () => {
-      const agents = getAgentsForMode('standard', ['nonexistent' as never])
-      expect(agents).toHaveLength(6)
+      const agents = getAgentsForMode('standard', ['nonexistent' as any])
+      expect(agents).toHaveLength(7)
     })
 
     it('ignores an empty overrides array', () => {
       const agents = getAgentsForMode('standard', [])
-      expect(agents).toHaveLength(6)
+      expect(agents).toHaveLength(7)
     })
   })
 })

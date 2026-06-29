@@ -2,6 +2,7 @@ import boxen from 'boxen'
 import Table from 'cli-table3'
 import chalk from 'chalk'
 import { theme } from './theme.js'
+import type { AgentFinding } from '../agents/base.js'
 
 export function sectionBox(title: string, content: string): string {
   return boxen(content, {
@@ -20,6 +21,29 @@ export function infoBox(lines: string[]): string {
     margin: { top: 0, bottom: 1, left: 0, right: 0 },
     borderStyle: 'round',
     borderColor: '#374151',
+  })
+}
+
+export function formatDriftAlert(filePath: string, findings: AgentFinding[]): string {
+  const lines: string[] = []
+  
+  for (const f of findings.slice(0, 5)) {
+    const loc = f.lineStart ? `:${f.lineStart}` : ''
+    const title = truncate(f.title, 60)
+    lines.push(` ${severityChip(f.severity)} ${theme.dim(f.agentName.padEnd(16))} ${title} ${theme.dim(loc)}`)
+  }
+
+  if (findings.length > 5) {
+    lines.push(theme.dim(`\n ... and ${findings.length - 5} more issues`))
+  }
+
+  return boxen(lines.join('\n'), {
+    title: theme.warning(` ⚠ Drift Detected: ${filePath} `),
+    titleAlignment: 'left',
+    padding: { top: 1, bottom: 1, left: 1, right: 1 },
+    margin: { top: 0, bottom: 1, left: 2, right: 0 },
+    borderStyle: 'round',
+    borderColor: '#FFEA00',
   })
 }
 
