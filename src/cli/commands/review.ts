@@ -62,6 +62,11 @@ export async function reviewCommand(
   pathArg: string | undefined,
   opts: ReviewOptions
 ): Promise<void> {
+  if (!pathArg && !opts.allTargets && !opts.target && !opts.dir && (!opts.file || opts.file.length === 0) && !opts.glob && !opts.pick) {
+    if (process.stdin.isTTY) {
+      opts.pick = true
+    }
+  }
   // Parse file::symbol syntax
   let symbolFilter: string | undefined
   let rawPath = pathArg ?? ''
