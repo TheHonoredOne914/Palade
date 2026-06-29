@@ -68,7 +68,7 @@ function renderScoreBar(score: number, width: number = 10): string {
 }
 
 function renderCategoryScoresTable(
-  categories: { category: ScoreCategory; score: number; findingCount: number }[]
+  categories: { category: string; score: number; findingCount: number }[]
 ): string {
   const headers = ['Category', 'Score', 'Bar', 'Findings']
   const rows = categories.map((c) => {
