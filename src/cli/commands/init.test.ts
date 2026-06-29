@@ -8,11 +8,10 @@ describe('init .gitignore guard', () => {
     // Simulate the logic: check if '# Palade' marker exists
     const GITIGNORE_APPEND = `
 # Palade
-palade.config.ts
 .palade/
 `
 
-    const existing = `node_modules/\ndist/\n\n# Palade\npalade.config.ts\n.palade/\n`
+    const existing = `node_modules/\ndist/\n\n# Palade\n.palade/\n`
     const hasMarker = existing.includes('# Palade')
 
     // If marker exists, we should skip appending

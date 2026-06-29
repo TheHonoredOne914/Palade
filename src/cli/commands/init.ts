@@ -57,23 +57,22 @@ coverage/
 
 const GITIGNORE_APPEND = `
 # Palade
-palade.config.ts
 .palade/
 `
 
 export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
   const cwd = process.cwd()
 
-  const configExists = existsSync(join(cwd, 'palade.config.ts'))
-  const targetsExists = existsSync(join(cwd, 'palade.targets.ts'))
-  const agentsExists = existsSync(join(cwd, 'palade.agents.ts'))
-  const ignoreExists = existsSync(join(cwd, '.paladeignore'))
+  const configExists = existsSync(join(cwd, '.palade', 'palade.config.ts'))
+  const targetsExists = existsSync(join(cwd, '.palade', 'palade.targets.ts'))
+  const agentsExists = existsSync(join(cwd, '.palade', 'palade.agents.ts'))
+  const ignoreExists = existsSync(join(cwd, '.palade', 'ignore'))
 
   const existingFiles: string[] = []
-  if (configExists) existingFiles.push('palade.config.ts')
-  if (targetsExists) existingFiles.push('palade.targets.ts')
-  if (agentsExists) existingFiles.push('palade.agents.ts')
-  if (ignoreExists) existingFiles.push('.paladeignore')
+  if (configExists) existingFiles.push('.palade/palade.config.ts')
+  if (targetsExists) existingFiles.push('.palade/palade.targets.ts')
+  if (agentsExists) existingFiles.push('.palade/palade.agents.ts')
+  if (ignoreExists) existingFiles.push('.palade/ignore')
 
   if (existingFiles.length > 0 && !opts?.yes) {
     if (!process.stdin.isTTY) {
@@ -96,45 +95,45 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
 
   const results: string[] = []
 
-  // a) palade.config.ts
-  if (configExists) {
-    results.push('palade.config.ts already exists, skipping')
-  } else {
-    writeFileSync(join(cwd, 'palade.config.ts'), CONFIG_TEMPLATE, 'utf-8')
-    results.push('palade.config.ts created')
-  }
-
-  // b) palade.targets.ts
-  if (targetsExists) {
-    results.push('palade.targets.ts already exists, skipping')
-  } else {
-    writeFileSync(join(cwd, 'palade.targets.ts'), TARGETS_TEMPLATE, 'utf-8')
-    results.push('palade.targets.ts created')
-  }
-
-  // b2) palade.agents.ts
-  if (agentsExists) {
-    results.push('palade.agents.ts already exists, skipping')
-  } else {
-    writeFileSync(join(cwd, 'palade.agents.ts'), AGENTS_TEMPLATE, 'utf-8')
-    results.push('palade.agents.ts created')
-  }
-
-  // c) .paladeignore
-  if (ignoreExists) {
-    results.push('.paladeignore already exists, skipping')
-  } else {
-    writeFileSync(join(cwd, '.paladeignore'), IGNORE_TEMPLATE, 'utf-8')
-    results.push('.paladeignore created')
-  }
-
-  // d) .palade/ directory
+  // a) .palade/ directory (must create first)
   const paladeDir = join(cwd, '.palade')
   if (!existsSync(paladeDir)) {
     mkdirSync(paladeDir, { recursive: true })
     results.push('.palade/ directory created')
   } else {
     results.push('.palade/ directory already exists, skipping')
+  }
+
+  // b) palade.config.ts
+  if (configExists) {
+    results.push('.palade/palade.config.ts already exists, skipping')
+  } else {
+    writeFileSync(join(paladeDir, 'palade.config.ts'), CONFIG_TEMPLATE, 'utf-8')
+    results.push('.palade/palade.config.ts created')
+  }
+
+  // c) palade.targets.ts
+  if (targetsExists) {
+    results.push('.palade/palade.targets.ts already exists, skipping')
+  } else {
+    writeFileSync(join(paladeDir, 'palade.targets.ts'), TARGETS_TEMPLATE, 'utf-8')
+    results.push('.palade/palade.targets.ts created')
+  }
+
+  // d) palade.agents.ts
+  if (agentsExists) {
+    results.push('.palade/palade.agents.ts already exists, skipping')
+  } else {
+    writeFileSync(join(paladeDir, 'palade.agents.ts'), AGENTS_TEMPLATE, 'utf-8')
+    results.push('.palade/palade.agents.ts created')
+  }
+
+  // e) ignore
+  if (ignoreExists) {
+    results.push('.palade/ignore already exists, skipping')
+  } else {
+    writeFileSync(join(paladeDir, 'ignore'), IGNORE_TEMPLATE, 'utf-8')
+    results.push('.palade/ignore created')
   }
 
   // e) .gitignore
@@ -156,7 +155,7 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
   console.log('\n' + results.map((r) => `  ✓ ${r}`).join('\n'))
   console.log(`
 Next steps:
-  1. Add your API keys to palade.config.ts or set env vars
+  1. Add your API keys to .palade/palade.config.ts or set env vars
   2. Run: npx palade review
 `)
 }

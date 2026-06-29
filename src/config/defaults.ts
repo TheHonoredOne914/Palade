@@ -18,6 +18,6 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
   score: {
     historyFile: '.palade/history.json',
     badge: true,
-    badgePath: 'palade-badge.svg',
+    badgePath: '.palade/badge.svg',
   },
 }

@@ -28,7 +28,7 @@ targetsCommand
 
 targetsCommand
   .command('add')
-  .description('Install a target package from npm into palade.targets.ts')
+  .description('Install a target package from npm into .palade/palade.targets.ts')
   .argument('<package>', 'npm package name (e.g. palade-target-auth)')
   .action(async (pkg: string): Promise<void> => {
     const target = await getTargetFromRegistry(pkg)
@@ -37,14 +37,14 @@ targetsCommand
       return
     }
     appendTargetToFile(process.cwd(), target)
-    console.log(theme.success(`Target "${target.name}" installed into palade.targets.ts`))
+    console.log(theme.success(`Target "${target.name}" installed into .palade/palade.targets.ts`))
   })
 
 // ============================================================================
 // SECURITY NOTE:
 // The `generate` and `add` commands below are the ONLY operations in Palade
-// that write source code to disk (`palade.targets.ts`). The `review` and
-// `diff` commands are strictly read-only by design.
+// that write source code to disk (`.palade/palade.targets.ts`). The `review` and
+// `watch` commands are read-only operations that do not modify project source code.
 // ============================================================================
 targetsCommand
   .command('generate')
@@ -65,7 +65,8 @@ targetsCommand
     appendTargetToFile(process.cwd(), target)
     console.log(
       theme.success(
-        `Target "${target.name}" generated and installed into palade.targets.ts\n  Run ${chalk.cyan(`palade review --target ${target.name}`)} to review it.`
+        `Target "${target.name}" generated and installed into .palade/palade.targets.ts
+  Run ${chalk.cyan(`palade review --target ${target.name}`)} to review it.`
       )
     )
   })
@@ -76,7 +77,7 @@ targetsCommand
   .action(async (): Promise<void> => {
     const targets = await loadTargets(process.cwd())
     if (targets.length === 0) {
-      console.log(theme.dim("  No targets defined. Run 'palade init' or edit palade.targets.ts."))
+      console.log(theme.dim("  No targets defined. Run 'palade init' or edit .palade/palade.targets.ts."))
       return
     }
     console.log(theme.dim(`  Defined targets (${targets.length}):`))

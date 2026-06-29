@@ -166,9 +166,14 @@ export async function walkProject(
     ig.add(pattern)
   }
 
-  // Try to load .paladeignore
+  // Try to load .palade/ignore
   try {
-    const ignoreContent = await readFile(join(projectRoot, '.paladeignore'), 'utf-8')
+    let ignoreContent = ''
+    try {
+      ignoreContent = await readFile(join(projectRoot, '.palade', 'ignore'), 'utf-8')
+    } catch {
+      ignoreContent = await readFile(join(projectRoot, '.paladeignore'), 'utf-8')
+    }
     const customRules = ignoreContent
       .split('\n')
       .map((line) => line.trim())
@@ -177,7 +182,7 @@ export async function walkProject(
       ig.add(rule.replace(/\r/g, ''))
     }
   } catch {
-    // .paladeignore not found — use defaults only
+    // .palade/ignore not found — use defaults only
   }
 
   // Also load .gitignore if present

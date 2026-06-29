@@ -1,11 +1,11 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, join } from 'node:path'
 import type { TargetDefinition } from './schema.js'
 
 const NPM_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search'
 const NPM_REGISTRY_URL = 'https://registry.npmjs.org'
 const REGISTRY_TIMEOUT_MS = 5000
-const TARGETS_FILE = 'palade.targets.ts'
+const TARGETS_FILE = join('.palade', 'palade.targets.ts')
 
 export interface RegistryTarget {
   name: string

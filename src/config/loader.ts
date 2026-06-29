@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { config as dotenvConfig } from 'dotenv'
 import { pathToFileURL } from 'node:url'
@@ -101,7 +101,13 @@ export async function loadConfig(): Promise<PaladeConfig> {
   let raw: Record<string, unknown> | undefined
 
   try {
-    let configPath = join(process.cwd(), 'palade.config.ts')
+    let configPath = join(process.cwd(), '.palade', 'palade.config.ts')
+    if (!existsSync(configPath)) {
+      const fallbackPath = join(process.cwd(), 'palade.config.ts')
+      if (existsSync(fallbackPath)) {
+        configPath = fallbackPath
+      }
+    }
 
     const configArgIdx = process.argv.indexOf('--config')
     if (configArgIdx !== -1 && process.argv.length > configArgIdx + 1) {

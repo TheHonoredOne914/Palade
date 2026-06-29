@@ -16,7 +16,7 @@ export async function launchSettingsUI(projectRoot: string): Promise<void> {
       'Settings',
       [
         `  ${theme.dim('Configure Palade for this project.')}`,
-        `  ${theme.dim('Changes are saved to')} ${chalk.cyan('palade.config.ts')}`,
+        `  ${theme.dim('Changes are saved to')} ${chalk.cyan('.palade/palade.config.ts')}`,
       ].join('\n')
     )
   )
@@ -49,7 +49,7 @@ async function mainMenu(projectRoot: string): Promise<void> {
             value: 'score',
           },
           {
-            name: `  ${theme.accent('◆')} Ignore Rules       — edit .paladeignore`,
+            name: `  ${theme.accent('◆')} Ignore Rules       — edit .palade/ignore`,
             value: 'ignore',
           },
           new Inq.Separator(theme.dim('─'.repeat(50))),
@@ -284,7 +284,7 @@ async function scoreMenu(projectRoot: string): Promise<void> {
 }
 
 async function ignoreMenu(projectRoot: string): Promise<void> {
-  const ignorePath = join(projectRoot, '.paladeignore')
+  const ignorePath = join(projectRoot, '.palade', 'ignore')
   let current = ''
   try {
     current = await readFile(ignorePath, 'utf-8')
@@ -293,7 +293,7 @@ async function ignoreMenu(projectRoot: string): Promise<void> {
   }
 
   console.log()
-  console.log(theme.dim('  Current .paladeignore contents:'))
+  console.log(theme.dim('  Current .palade/ignore contents:'))
   console.log(theme.dim('  ──────────────────────────────'))
   current.split('\n').forEach((l) => console.log(theme.dim(`  ${l}`)))
   console.log()
@@ -315,7 +315,7 @@ async function ignoreMenu(projectRoot: string): Promise<void> {
 
   if (action === 'reset') {
     await writeFile(ignorePath, DEFAULT_IGNORE_CONTENT)
-    console.log(theme.success('  ✓ .paladeignore reset to defaults.'))
+    console.log(theme.success('  ✓ .palade/ignore reset to defaults.'))
     return
   }
 
@@ -344,7 +344,7 @@ async function writeConfigPatch(
   projectRoot: string,
   patch: Record<string, unknown>
 ): Promise<void> {
-  const configPath = join(projectRoot, 'palade.config.ts')
+  const configPath = join(projectRoot, '.palade', 'palade.config.ts')
   let existing: Record<string, unknown> = {}
   let hasExistingObject = false
   let fileExists = false
@@ -384,7 +384,7 @@ async function writeConfigPatch(
   // and abort. Their manual edits outside the patch cannot be safely preserved.
   if (fileExists && !hasExistingObject) {
     console.log()
-    console.log(theme.error('  ✗  Cannot safely modify complex palade.config.ts automatically.'))
+    console.log(theme.error('  ✗  Cannot safely modify complex .palade/palade.config.ts automatically.'))
     console.log(theme.dim('     Please edit the configuration file manually.'))
     return
   }

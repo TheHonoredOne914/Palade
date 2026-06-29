@@ -102,8 +102,8 @@ async function showCurrentConfig(projectRoot: string): Promise<void> {
 }
 
 async function initConfig(projectRoot: string): Promise<void> {
-  const configPath = join(projectRoot, 'palade.config.ts')
-  const ignorePath = join(projectRoot, '.paladeignore')
+  const configPath = join(projectRoot, '.palade', 'palade.config.ts')
+  const ignorePath = join(projectRoot, '.palade', 'ignore')
 
   if (!existsSync(join(projectRoot, '.palade'))) {
     await mkdir(join(projectRoot, '.palade'), { recursive: true })
@@ -140,9 +140,9 @@ export default {
 }
 `
     await writeFile(configPath, configContent, 'utf-8')
-    console.log(theme.success('  ✓ palade.config.ts created'))
+    console.log(theme.success('  ✓ .palade/palade.config.ts created'))
   } else {
-    console.log(theme.dim('  palade.config.ts already exists, skipping'))
+    console.log(theme.dim('  .palade/palade.config.ts already exists, skipping'))
   }
 
   if (!existsSync(ignorePath)) {
@@ -157,9 +157,9 @@ coverage/
 .palade/
 `
     await writeFile(ignorePath, ignoreContent, 'utf-8')
-    console.log(theme.success('  ✓ .paladeignore created'))
+    console.log(theme.success('  ✓ .palade/ignore created'))
   } else {
-    console.log(theme.dim('  .paladeignore already exists, skipping'))
+    console.log(theme.dim('  .palade/ignore already exists, skipping'))
   }
 
   console.log()
@@ -170,7 +170,7 @@ coverage/
 }
 
 async function applySets(projectRoot: string, sets: string[]): Promise<void> {
-  const configPath = join(projectRoot, 'palade.config.ts')
+  const configPath = join(projectRoot, '.palade', 'palade.config.ts')
   let configContent: string
 
   try {
@@ -355,6 +355,6 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
     return lines.join('\n')
   }
 
-  console.log(theme.dim(`  ⚠ Could not set ${dotPath} — edit palade.config.ts manually`))
+  console.log(theme.dim(`  ⚠ Could not set ${dotPath} — edit .palade/palade.config.ts manually`))
   return content
 }

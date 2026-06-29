@@ -3,7 +3,7 @@ import { resolve, relative } from 'node:path'
 import { existsSync } from 'node:fs'
 import { TargetDefinitionSchema, type TargetDefinition } from './schema.js'
 
-const TARGETS_FILE = 'palade.targets.ts'
+const TARGETS_FILE = '.palade/palade.targets.ts'
 
 export async function loadTargets(projectRoot: string): Promise<TargetDefinition[]> {
   const filePath = resolve(projectRoot, TARGETS_FILE)
