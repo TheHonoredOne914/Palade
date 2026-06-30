@@ -26,17 +26,16 @@ describe('agents/registry', () => {
     })
 
     it('respects agentOverrides over the mode default', () => {
-      // onboard mode config sets [architecture, maintainability]
-      const agents = getAgentsForMode('onboard', ['architecture', 'maintainability'])
+      const agents = getAgentsForMode('standard', ['security', 'performance'])
       expect(agents).toHaveLength(2)
       const names = agents.map((a) => a.name).sort()
-      expect(names).toEqual(['architecture', 'maintainability'])
+      expect(names).toEqual(['performance', 'security'])
     })
 
     it('ghost mode honors explicit overrides too', () => {
-      const agents = getAgentsForMode('ghost', ['deadCode'])
+      const agents = getAgentsForMode('ghost', ['architecture'])
       expect(agents).toHaveLength(1)
-      expect(agents[0].name).toBe('deadCode')
+      expect(agents[0].name).toBe('architecture')
     })
 
     it('falls back to full registry when overrides reference unknown agents', () => {
@@ -53,9 +52,8 @@ describe('agents/registry', () => {
       const customDefs = [
         {
           name: 'myCustomAgent',
-          domain: 'customDomain',
-          description: 'A custom agent',
-          systemPrompt: 'You are a custom agent.',
+          domain: 'Custom Domain',
+          prompt: 'Custom Prompt',
         },
       ]
       const agents = getAgentsForMode('standard', undefined, customDefs)

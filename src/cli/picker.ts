@@ -1,4 +1,4 @@
-import inquirer from 'inquirer'
+import { askCheckbox } from '../ui/prompt.js'
 import type { FileManifest } from '../ingestion/types.js'
 
 export async function launchPicker(
@@ -14,23 +14,13 @@ export async function launchPicker(
     return []
   }
 
-  const choices = manifests.map((m) => ({
-    name: m.path,
-    value: m.path,
-  }))
+  const choices = manifests.map((m) => m.path)
 
-  const answer = await inquirer.prompt<{ selected: string[] }>([
-    {
-      type: 'checkbox',
-      name: 'selected',
-      message: 'Select files to review:',
-      choices,
-    },
-  ])
+  const selected = await askCheckbox('Select files to review:', choices)
 
-  if (!answer.selected || answer.selected.length === 0) {
+  if (!selected || selected.length === 0) {
     return []
   }
 
-  return answer.selected
+  return selected
 }

@@ -1,27 +1,66 @@
-import boxen from 'boxen'
-import Table from 'cli-table3'
 import chalk from 'chalk'
 import { theme } from './theme.js'
 import type { AgentFinding } from '../agents/base.js'
 
+function drawBox(text: string, title?: string): string {
+  const lines = text.split('\n')
+  const width = Math.max(
+    ...lines.map((l) => l.replace(/\u001b\[\d+m/g, '').length),
+    title ? title.length + 2 : 0
+  )
+
+  const top = title
+    ? `╭─ ${title} ${'─'.repeat(Math.max(0, width - title.length - 3))}╮`
+    : `╭${'─'.repeat(width + 2)}╮`
+
+  const middle = lines
+    .map((l) => {
+      const visibleLength = l.replace(/\u001b\[\d+m/g, '').length
+      return `│ ${l}${' '.repeat(Math.max(0, width - visibleLength))} │`
+    })
+    .join('\n')
+
+  const bottom = `╰${'─'.repeat(width + 2)}╯`
+
+  return [top, middle, bottom].join('\n')
+}
+
+export function createPanel(content: string, title?: string): string {
+  if (!process.stdout.isTTY) return content
+  return drawBox(content, title)
+}
+
+export function createStatsTable(stats: Record<string, string | number>): string {
+  if (!process.stdout.isTTY) {
+    return Object.entries(stats)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('\n')
+  }
+
+  const lines = Object.entries(stats).map(
+    ([k, v]) => `${theme.dim(k.padEnd(20))} ${theme.primary(v)}`
+  )
+  return drawBox(lines.join('\n'), 'Results')
+}
+
+export function createErrorBox(error: Error | string): string {
+  const message = error instanceof Error ? error.message : error
+
+  if (!process.stdout.isTTY) {
+    return `ERROR: ${message}`
+  }
+
+  const lines = [theme.error('✖ Analysis Failed'), '', theme.dim(message)]
+
+  return drawBox(lines.join('\n'))
+}
+
 export function sectionBox(title: string, content: string): string {
-  return boxen(content, {
-    title: theme.primaryBold(` ${title} `),
-    titleAlignment: 'left',
-    padding: { top: 0, bottom: 0, left: 1, right: 1 },
-    margin: { top: 0, bottom: 1, left: 0, right: 0 },
-    borderStyle: 'round',
-    borderColor: '#EF4444',
-  })
+  return drawBox(content, title)
 }
 
 export function infoBox(lines: string[]): string {
-  return boxen(lines.join('\n'), {
-    padding: { top: 0, bottom: 0, left: 1, right: 1 },
-    margin: { top: 0, bottom: 1, left: 0, right: 0 },
-    borderStyle: 'round',
-    borderColor: '#374151',
-  })
+  return drawBox(lines.join('\n'))
 }
 
 export function formatDriftAlert(filePath: string, findings: AgentFinding[]): string {
@@ -39,14 +78,7 @@ export function formatDriftAlert(filePath: string, findings: AgentFinding[]): st
     lines.push(theme.dim(`\n ... and ${findings.length - 5} more issues`))
   }
 
-  return boxen(lines.join('\n'), {
-    title: theme.warning(` ⚠ Drift Detected: ${filePath} `),
-    titleAlignment: 'left',
-    padding: { top: 1, bottom: 1, left: 1, right: 1 },
-    margin: { top: 0, bottom: 1, left: 2, right: 0 },
-    borderStyle: 'round',
-    borderColor: '#FFEA00',
-  })
+  return drawBox(lines.join('\n'), theme.warning(` ⚠ Drift Detected: ${filePath} `))
 }
 
 export function kvTable(rows: [string, string][]): string {
@@ -62,46 +94,40 @@ export function findingsTable(
     title: string
   }[]
 ): string {
-  const table = new Table({
-    head: [
-      theme.primaryBold('Severity'),
-      theme.primaryBold('Agent'),
-      theme.primaryBold('Location'),
-      theme.primaryBold('Issue'),
-    ],
-    colWidths: [12, 20, 30, 40],
-    style: { head: [], border: ['grey'], compact: true },
-    chars: {
-      top: '─',
-      'top-mid': '┬',
-      'top-left': '┌',
-      'top-right': '┐',
-      bottom: '─',
-      'bottom-mid': '┴',
-      'bottom-left': '└',
-      'bottom-right': '┘',
-      left: '│',
-      'left-mid': '├',
-      mid: '─',
-      'mid-mid': '┼',
-      right: '│',
-      'right-mid': '┤',
-      middle: '│',
-    },
-  })
+  const lines: string[] = []
+
+  // Table Header
+  lines.push(
+    `  ${theme.primaryBold('Severity'.padEnd(12))} ${theme.primaryBold('Agent'.padEnd(20))} ${theme.primaryBold('Location'.padEnd(30))} ${theme.primaryBold('Issue')}`
+  )
+  lines.push(theme.dim('  ' + '─'.repeat(12 + 20 + 30 + 40 + 3)))
 
   for (const f of findings.slice(0, 30)) {
     const loc = f.filePath ? `${truncatePath(f.filePath, 20)}:${f.lineStart ?? '?'}` : '—'
 
-    table.push([
-      severityChip(f.severity),
-      theme.dim(f.agentName),
-      theme.dim(loc),
-      truncate(f.title, 38),
-    ])
+    // strip-ansi equivalent for padEnd calculations isn't available easily,
+    // but we can just use template literals with fixed manual padding.
+    // We'll pad the raw values, then apply color.
+
+    const sevRaw = f.severity.padEnd(12)
+    const agentRaw = f.agentName.padEnd(20)
+    const locRaw = loc.padEnd(30)
+
+    const coloredSev =
+      f.severity === 'critical'
+        ? theme.error(sevRaw)
+        : f.severity === 'high'
+          ? theme.warning(sevRaw)
+          : f.severity === 'medium'
+            ? theme.accent(sevRaw)
+            : theme.dim(sevRaw)
+
+    lines.push(
+      `  ${coloredSev} ${theme.dim(agentRaw)} ${theme.dim(locRaw)} ${truncate(f.title, 38)}`
+    )
   }
 
-  return table.toString()
+  return lines.join('\n')
 }
 
 export function divider(width?: number): string {

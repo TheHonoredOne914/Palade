@@ -96,9 +96,21 @@ export async function runSwarm(
       allFindings = results.flat()
     } catch (err: unknown) {
       agentError = err instanceof Error ? err : new Error(String(err))
+
+      const msg = agentError.message.toLowerCase()
+      const isFatalAuth =
+        msg.includes('401') ||
+        msg.includes('403') ||
+        msg.includes('unauthorized') ||
+        msg.includes('invalid api key') ||
+        msg.includes('authentication')
+      if (isFatalAuth) {
+        throw agentError
+      }
+
       console.warn(
         chalk.yellow(
-          `⚠ ${agent.name}: ${agentError.message} (keeping ${allFindings.length} partial findings)`
+          `\n⚠ ${agent.name}: ${agentError.message} (keeping ${allFindings.length} partial findings)`
         )
       )
     }
@@ -139,9 +151,19 @@ export async function runSwarm(
     synthesis = await analyzeSynthesis(mergedFindings, crossAgentFindings, context)
     options.onSynthesisComplete?.(Date.now() - synthStart)
   } catch (err) {
-    console.warn(
-      chalk.red(`⚠ Synthesis failed: ${err instanceof Error ? err.message : String(err)}`)
-    )
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    const msgLower = errorMsg.toLowerCase()
+    const isFatalAuth =
+      msgLower.includes('401') ||
+      msgLower.includes('403') ||
+      msgLower.includes('unauthorized') ||
+      msgLower.includes('invalid api key') ||
+      msgLower.includes('authentication')
+    if (isFatalAuth) {
+      throw err instanceof Error ? err : new Error(errorMsg)
+    }
+
+    console.warn(chalk.red(`⚠ Synthesis failed: ${errorMsg}`))
   }
 
   return {

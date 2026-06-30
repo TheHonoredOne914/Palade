@@ -1,4 +1,3 @@
-import Table from 'cli-table3'
 import { join } from 'node:path'
 import { readHistory } from '../../scorer/history.js'
 import { loadConfig } from '../../config/loader.js'
@@ -45,25 +44,26 @@ export async function scoreCommand(opts: { history?: boolean }): Promise<void> {
     // History table
     const displayEntries = opts.history ? entries : entries.slice(-10)
 
-    const table = new Table({
-      head: [theme.primaryBold('Date'), theme.primaryBold('Score'), theme.primaryBold('Delta')],
-      colWidths: [18, 12, 10],
-      style: { head: [], border: ['grey'] },
-    })
+    const lines: string[] = []
+    lines.push(
+      `  ${theme.primaryBold('Date'.padEnd(18))} ${theme.primaryBold('Score'.padEnd(12))} ${theme.primaryBold('Delta')}`
+    )
+    lines.push(theme.dim('  ' + '─'.repeat(18 + 12 + 10)))
 
     for (const e of [...displayEntries].reverse()) {
-      table.push([
-        theme.dim(new Date(e.timestamp).toLocaleDateString()),
-        scoreTheme(e.score)(`${e.score}/100`),
+      const dateStr = new Date(e.timestamp).toLocaleDateString().padEnd(18)
+      const scoreStr = `${e.score}/100`.padEnd(12)
+      const deltaStr =
         e.delta !== null
           ? e.delta >= 0
             ? theme.success(`↑${e.delta}`)
             : theme.error(`↓${Math.abs(e.delta)}`)
-          : theme.dim('—'),
-      ])
+          : theme.dim('—')
+
+      lines.push(`  ${theme.dim(dateStr)} ${scoreTheme(e.score)(scoreStr)} ${deltaStr}`)
     }
 
-    console.log(table.toString())
+    console.log(lines.join('\n'))
     console.log()
   } catch (err) {
     console.error(theme.error(`Score lookup failed: ${(err as Error).message}`))

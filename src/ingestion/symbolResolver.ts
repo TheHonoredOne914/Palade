@@ -2,48 +2,10 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { CodeChunk } from './types.js'
 
-let tsParser: any = null
-let jsParser: any = null
-let pyParser: any = null
-
-async function loadTreeSitter(): Promise<boolean> {
-  try {
-    const TreeSitter = (await import('tree-sitter')).default
-    if (!TreeSitter) return false
-
-    const tsModule = (await import('tree-sitter-typescript')).default
-    const TypeScriptLang = tsModule.typescript
-    const JavaScriptLang = (await import('tree-sitter-javascript')).default
-    const PythonLang = (await import('tree-sitter-python')).default
-
-    const tsP = new TreeSitter()
-    tsP.setLanguage(TypeScriptLang)
-    tsParser = tsP
-
-    const jsP = new TreeSitter()
-    jsP.setLanguage(JavaScriptLang)
-    jsParser = jsP
-
-    const pyP = new TreeSitter()
-    pyP.setLanguage(PythonLang)
-    pyParser = pyP
-
-    return true
-  } catch {
-    return false
-  }
-}
-
-let treeSitterLoaded: boolean | null = null
-
 export async function resolveSymbol(
   symbolRef: string,
   projectRoot: string
 ): Promise<CodeChunk | null> {
-  if (treeSitterLoaded === null) {
-    treeSitterLoaded = await loadTreeSitter()
-  }
-
   const doubleColonIndex = symbolRef.indexOf('::')
   if (doubleColonIndex === -1) {
     console.warn(
@@ -66,78 +28,6 @@ export async function resolveSymbol(
   }
 
   const lines = content.split('\n')
-
-  // Try tree-sitter parsing
-  if (treeSitterLoaded) {
-    try {
-      let parser: any = null
-      if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) {
-        parser = tsParser
-      } else if (filePath.endsWith('.py')) {
-        parser = pyParser
-      } else {
-        parser = jsParser
-      }
-
-      if (parser) {
-        const tree = parser.parse(content)
-
-        function findSymbol(node: any): CodeChunk | null {
-          if (!node) return null
-
-          const type = node.type
-          const isTarget =
-            (type === 'function_declaration' ||
-              type === 'class_declaration' ||
-              type === 'method_definition' ||
-              type === 'function_definition' ||
-              type === 'class_definition') &&
-            node.childCount > 0
-
-          if (isTarget) {
-            for (let i = 0; i < node.childCount; i++) {
-              const child = node.child(i)
-              if (
-                child &&
-                (child.type === 'identifier' ||
-                  child.type === 'property_identifier' ||
-                  child.type === 'type_identifier')
-              ) {
-                if (child.text === symbolName) {
-                  const startLine = node.startPosition.row + 1
-                  const endLine = node.endPosition.row + 1
-                  const chunkContent = lines.slice(startLine - 1, endLine).join('\n')
-
-                  return {
-                    id: `${filePath}:${startLine}-${endLine}`,
-                    filePath,
-                    startLine,
-                    endLine,
-                    content: chunkContent,
-                    symbolName,
-                    tokenCount: Math.ceil(chunkContent.length / 4),
-                    language: getLanguage(filePath),
-                  }
-                }
-              }
-            }
-          }
-
-          for (let i = 0; i < node.childCount; i++) {
-            const result = findSymbol(node.child(i))
-            if (result) return result
-          }
-
-          return null
-        }
-
-        const result = findSymbol(tree.rootNode)
-        if (result) return result
-      }
-    } catch {
-      // Fall through to regex fallback
-    }
-  }
 
   // Regex fallback: search for function/class declarations
   const patterns = [

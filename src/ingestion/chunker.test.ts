@@ -20,99 +20,30 @@ async function createTmpFile(name: string, content: string, dir: string): Promis
 }
 
 describe('ingestion/chunker', () => {
-  it('produces a single chunk for a class with multiple methods', async () => {
+  it('produces chunks using sliding window', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'palade-chunker-'))
     try {
-      const code = `class UserService {
-  async getUser(id: string) { return db.find(id) }
-  async createUser(data: any) { return db.insert(data) }
-  async deleteUser(id: string) { return db.remove(id) }
-}`
-      const manifest = await createTmpFile('service.ts', code, dir)
+      const code = Array.from({ length: 300 }, (_, i) => `// line ${i}`).join('\n')
+      const manifest = await createTmpFile('large.ts', code, dir)
       const chunks = await chunkFiles([manifest])
 
-      const classChunks = chunks.filter((c) => c.symbolName === 'UserService')
-      expect(classChunks).toHaveLength(1)
-
-      const allMethods = chunks.filter(
-        (c) =>
-          c.symbolName === 'getUser' ||
-          c.symbolName === 'createUser' ||
-          c.symbolName === 'deleteUser'
-      )
-      expect(allMethods).toHaveLength(0)
+      expect(chunks.length).toBeGreaterThan(0)
+      expect(chunks[0].startLine).toBe(1)
+      expect(chunks[0].content).toContain('line 0')
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
   })
 
-  it('chunks standalone functions independently', async () => {
+  it('respects MAX_CHUNKS_PER_FILE limit', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'palade-chunker-'))
     try {
-      const code = `function a() { return 1 }
-function b() { return 2 }`
-      const manifest = await createTmpFile('fns.ts', code, dir)
+      // Create a massive file to force truncation
+      const code = Array.from({ length: 15000 }, (_, i) => `// line ${i}`).join('\n')
+      const manifest = await createTmpFile('massive.ts', code, dir)
       const chunks = await chunkFiles([manifest])
 
-      expect(chunks).toHaveLength(2)
-      expect(chunks[0].symbolName).toBe('a')
-      expect(chunks[1].symbolName).toBe('b')
-    } finally {
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('does not double-count class body in method chunks', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'palade-chunker-'))
-    try {
-      const code = `class Parser {
-  parse(input: string) { return JSON.parse(input) }
-  validate(data: unknown) { return !!data }
-}`
-      const manifest = await createTmpFile('parser.ts', code, dir)
-      const chunks = await chunkFiles([manifest])
-
-      const classChunk = chunks.find((c) => c.symbolName === 'Parser')
-      expect(classChunk).toBeDefined()
-
-      const methodChunks = chunks.filter(
-        (c) => c.symbolName === 'parse' || c.symbolName === 'validate'
-      )
-      expect(methodChunks).toHaveLength(0)
-
-      const totalTokens = chunks.reduce((s, c) => s + c.tokenCount, 0)
-      const classTokens = classChunk!.tokenCount
-      expect(totalTokens).toBe(classTokens)
-    } finally {
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('produces a single chunk for a Python class with methods', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'palade-chunker-'))
-    try {
-      const code = `class UserService:
-    def get_user(self, id):
-        return db.find(id)
-
-    def create_user(self, data):
-        return db.insert(data)
-
-    def delete_user(self, id):
-        return db.remove(id)`
-      const manifest = await createTmpFile('service.py', code, dir)
-      const chunks = await chunkFiles([manifest])
-
-      const classChunks = chunks.filter((c) => c.symbolName === 'UserService')
-      expect(classChunks).toHaveLength(1)
-
-      const methodChunks = chunks.filter(
-        (c) =>
-          c.symbolName === 'get_user' ||
-          c.symbolName === 'create_user' ||
-          c.symbolName === 'delete_user'
-      )
-      expect(methodChunks).toHaveLength(0)
+      expect(chunks.length).toBeLessThanOrEqual(50) // MAX_CHUNKS_PER_FILE is 50
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

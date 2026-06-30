@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import inquirer from 'inquirer'
+import { askConfirm } from '../../ui/prompt.js'
 import chalk from 'chalk'
 
 const CONFIG_TEMPLATE = `// palade.config.ts
@@ -78,14 +78,9 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
     if (!process.stdin.isTTY) {
       // Non-interactive: skip existing, only create missing
     } else {
-      const { proceed } = await inquirer.prompt<{ proceed: boolean }>([
-        {
-          type: 'confirm',
-          name: 'proceed',
-          message: `${existingFiles.length} config file(s) already exist. Create missing files and update .gitignore?`,
-          default: true,
-        },
-      ])
+      const proceed = await askConfirm(
+        `${existingFiles.length} config file(s) already exist. Create missing files and update .gitignore?`
+      )
       if (!proceed) {
         console.log(chalk.gray('Init cancelled.'))
         return

@@ -18,7 +18,6 @@ import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentContext, AgentName, DiffContext } from '../../agents/base.js'
 import { CliExitError } from '../../errors/types.js'
 import chalk from 'chalk'
-import ora from 'ora'
 import { mkdirSync, existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
 
@@ -100,35 +99,42 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     const agentCount = config.swarm.agentCount
     let completedAgents = 0
 
-    const progressSpinner = ora('  Starting analysis...').start()
+    console.log(theme.dim('  Starting analysis...'))
 
     let swarmResult: any
     try {
       swarmResult = await runSwarm(chunks, context, {
         onAgentStart: (name: AgentName): void => {
-          progressSpinner.text = `  [${completedAgents}/${agentCount}] ${name} agent analyzing...`
+          console.log(theme.dim(`  [${completedAgents}/${agentCount}] ${name} agent analyzing...`))
         },
         onAgentComplete: (name: AgentName, findings: number, durationMs: number): void => {
           completedAgents++
-          progressSpinner.text = `  [${completedAgents}/${agentCount}] ${name} complete (${findings} findings, ${(durationMs / 1000).toFixed(1)}s)`
+          console.log(
+            theme.dim(
+              `  [${completedAgents}/${agentCount}] ${name} complete (${findings} findings, ${(durationMs / 1000).toFixed(1)}s)`
+            )
+          )
         },
         onSynthesisStart: (): void => {
-          progressSpinner.text = '  Synthesizing cross-agent findings...'
+          console.log(theme.dim('  Synthesizing cross-agent findings...'))
         },
         onSynthesisComplete: (durationMs: number): void => {
-          progressSpinner.text = `  Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`
+          console.log(theme.dim(`  Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`))
         },
         timeoutMs: config.swarm.timeoutMs,
         maxReviewTokens: config.swarm.maxReviewTokens,
         customAgents: customAgentDefs,
         economyMode: config.swarm.economyMode,
       })
-
-      progressSpinner.succeed(
-        `  Analysis complete — ${swarmResult.findings.length} findings in ${(swarmResult.durationMs / 1000).toFixed(1)}s`
+      console.log(
+        theme.success(
+          `  Analysis complete — ${swarmResult.findings.length} findings in ${(swarmResult.durationMs / 1000).toFixed(1)}s`
+        )
       )
     } catch (err) {
-      progressSpinner.fail(`  Analysis failed: ${err instanceof Error ? err.message : String(err)}`)
+      console.error(
+        theme.error(`  Analysis failed: ${err instanceof Error ? err.message : String(err)}`)
+      )
       throw err
     }
 

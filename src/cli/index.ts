@@ -29,23 +29,7 @@ process.emit = function (name: any, data: any, ...args: any[]) {
 } as any
 
 const rawArgs = process.argv.slice(2)
-const hasCommand =
-  rawArgs.some((a) => !a.startsWith('-') && a.length > 0) ||
-  rawArgs.includes('--help') ||
-  rawArgs.includes('-h') ||
-  rawArgs.includes('--version') ||
-  rawArgs.includes('-V')
-
-if (hasCommand) {
-  runClassicCLI()
-} else {
-  launchTUI()
-}
-
-async function launchTUI(): Promise<void> {
-  const { launchTUI: startTUI } = await import('../tui/launch.js')
-  await startTUI()
-}
+runClassicCLI()
 
 async function runClassicCLI(): Promise<void> {
   const { Command } = await import('commander')
@@ -70,8 +54,7 @@ async function runClassicCLI(): Promise<void> {
   })
 
   const isQuiet = process.argv.includes('--quiet')
-  const isTuiCommand = process.argv.includes('tui')
-  if (!isQuiet && !isTuiCommand) {
+  if (!isQuiet) {
     printBanner({ version: pkg.version })
   }
 
@@ -183,26 +166,6 @@ async function runClassicCLI(): Promise<void> {
         await initCommand(opts)
       } catch (err) {
         handleFatalError(err)
-      }
-    })
-
-  program
-    .command('tui')
-    .description('Launch experimental Terminal UI')
-    .option('--unstable-tui', 'Acknowledge this feature is unstable')
-    .action(async (opts: { unstableTui?: boolean }): Promise<void> => {
-      if (!opts.unstableTui) {
-        console.error(
-          chalk.red('The TUI is highly experimental. You must pass --unstable-tui to run it.')
-        )
-        process.exit(1)
-      }
-      try {
-        const { launchTUI } = await import('../tui/launch.js')
-        await launchTUI()
-      } catch (err: unknown) {
-        console.error(chalk.yellow('\n⚠ TUI failed to load. Falling back to classic CLI.'))
-        console.error(chalk.dim('Reason: ' + (err instanceof Error ? err.message : String(err))))
       }
     })
 
