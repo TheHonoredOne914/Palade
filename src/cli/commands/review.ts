@@ -249,6 +249,9 @@ export async function reviewCommand(
         onAgentStart: (name: AgentName): void => {
           progress?.agentStart(name)
         },
+        onAgentBatchComplete: (name: AgentName, current: number, total: number, findings: number): void => {
+          progress?.agentBatchDone(name, current, total, findings)
+        },
         onAgentComplete: (name: AgentName, findings: number, durationMs: number): void => {
           completedAgents++
           progress?.agentDone(name, findings, durationMs)
