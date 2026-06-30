@@ -53,7 +53,7 @@ export function Autocomplete({
         // The user specifically asked for targets to appear for auto completion.
       }
 
-      return targets
+      const targetMatches = targets
         .filter(
           (t) =>
             t.name.toLowerCase().includes(query) ||
@@ -64,7 +64,16 @@ export function Autocomplete({
           display: isTargetFlag ? t.name : `--target ${t.name}`,
           desc: `Target (${Array.isArray(t.entry) ? t.entry.length + ' files' : t.entry})`,
         }))
-        .slice(0, 6)
+        .slice(0, 5)
+
+      if (!isTargetFlag && cmd === 'review' && '.'.includes(query)) {
+        return [
+          { text: '/review .', display: '/review .', desc: 'Full codebase review' },
+          ...targetMatches
+        ]
+      }
+      
+      return targetMatches
     }
 
     // Command autocomplete
