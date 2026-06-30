@@ -9,6 +9,13 @@ export class PaladeConfigError extends Error {
   }
 }
 
+export class WorkspaceTooLargeError extends Error {
+  constructor(public limit: number) {
+    super(`Workspace is too large to scan (>${limit} files).`)
+    this.name = 'WorkspaceTooLargeError'
+  }
+}
+
 export class NoProvidersError extends Error {
   constructor() {
     super(

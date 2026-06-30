@@ -3,6 +3,7 @@ import { join, relative, extname, sep } from 'node:path'
 import ignore, { Ignore } from 'ignore'
 import type { FileManifest, Language, ScopeOptions, LanguageProfile } from './types.js'
 import { parseFile } from './annotationParser.js'
+import { WorkspaceTooLargeError } from '../errors/types.js'
 
 const DEFAULT_IGNORES = [
   'node_modules',
@@ -62,7 +63,7 @@ async function walkDir(
   dir: string,
   ig: Ignore,
   projectRoot: string,
-  visitedDirs: Set<string>
+  state: { visitedDirs: Set<string>; filesScanned: number }
 ): Promise<FileManifest[]> {
   const results: FileManifest[] = []
 
@@ -75,8 +76,8 @@ async function walkDir(
   } catch {
     return results
   }
-  if (visitedDirs.has(realDir)) return results
-  visitedDirs.add(realDir)
+  if (state.visitedDirs.has(realDir)) return results
+  state.visitedDirs.add(realDir)
 
   let entries: import('node:fs').Dirent[]
   try {
@@ -92,7 +93,7 @@ async function walkDir(
     if (ig.ignores(relPath)) continue
 
     if (entry.isDirectory()) {
-      const subResults = await walkDir(fullPath, ig, projectRoot, visitedDirs)
+      const subResults = await walkDir(fullPath, ig, projectRoot, state)
       results.push(...subResults)
       continue
     }
@@ -109,6 +110,16 @@ async function walkDir(
     try {
       fileStat = await stat(fullPath)
     } catch {
+      continue
+    }
+
+    state.filesScanned++
+    if (state.filesScanned > 20000) {
+      throw new WorkspaceTooLargeError(20000)
+    }
+
+    if (fileStat.size > 2 * 1024 * 1024) {
+      // Skip files > 2MB to prevent memory exhaustion
       continue
     }
 
@@ -199,10 +210,11 @@ export async function walkProject(
     // .gitignore not found — continue
   }
 
-  // Walk all files
-  let manifests = await walkDir(projectRoot, ig, projectRoot, new Set())
+  // 2. Start walk
+  const state = { visitedDirs: new Set<string>(), filesScanned: 0 }
+  let manifests = await walkDir(projectRoot, ig, projectRoot, state)
 
-  // Apply scope filtering
+  // 3. Apply target / glob scoping (unless doing annotations only which scopes later)
   if (scope.dirs && scope.dirs.length > 0) {
     manifests = manifests.filter((m) =>
       scope.dirs!.some((d) => m.path === d || m.path.startsWith(d + '/'))

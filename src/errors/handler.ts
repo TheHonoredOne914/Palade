@@ -4,6 +4,7 @@ import {
   NoProvidersError,
   TargetNotFoundError,
   SwarmTimeoutError,
+  WorkspaceTooLargeError,
   CliExitError,
 } from './types.js'
 
@@ -22,6 +23,13 @@ export function handleFatalError(err: unknown): undefined {
     console.error(chalk.red(`\nConfiguration error at ${err.field}:`))
     console.error(`  ${err.message}`)
     if (err.suggestion) console.error(chalk.dim(`  Hint: ${err.suggestion}`))
+    process.exit(1)
+  }
+
+  if (err instanceof WorkspaceTooLargeError) {
+    console.error(chalk.red(`\n${err.message}`))
+    console.error(chalk.dim(`  To prevent memory exhaustion, Palade aborted the scan.`))
+    console.error(chalk.dim(`  Please narrow the scope using --dir, --file, or .paladeignore rules.`))
     process.exit(1)
   }
 
