@@ -38,6 +38,7 @@ export const PaladeConfigSchema = z.object({
       // lower-latency and gives each domain its own dedicated system prompt, so
       // users opt into economy mode when token cost matters more than latency.
       economyMode: z.boolean().default(false),
+      specPath: z.string().default('palade.spec.md'),
     })
     .default({}),
   output: z

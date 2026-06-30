@@ -1,4 +1,6 @@
 import crypto from 'node:crypto'
+import { readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
 import type { ScopeOptions, CodeChunk } from '../ingestion/types.js'
@@ -60,7 +62,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       }
     }
 
-    chunks = await chunkFiles(manifests)
+    chunks = await chunkFiles(manifests, opts.projectRoot)
 
     console.log(
       `[pipeline] Chunking complete: ${manifests.length} files → ${chunks.length} chunks (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
@@ -107,6 +109,18 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   if (opts.target) {
     context.targetDescription = opts.target.definition.description
     context.targetFocus = opts.target.definition.focus
+  }
+
+  // Inject logic spec if available
+  const specPath = opts.swarmOptions?.specPath ?? 'palade.spec.md'
+  const absoluteSpecPath = join(opts.projectRoot, specPath)
+  if (existsSync(absoluteSpecPath)) {
+    try {
+      context.spec = readFileSync(absoluteSpecPath, 'utf-8')
+      console.log(`[pipeline] Loaded logic spec from ${specPath}`)
+    } catch {
+      console.log(chalk.yellow(`[pipeline] Failed to read spec file: ${specPath}`))
+    }
   }
 
   if (opts.dryRunConfig) {

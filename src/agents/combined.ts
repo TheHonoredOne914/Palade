@@ -74,6 +74,11 @@ export const DEFAULT_DOMAINS: DomainSpec[] = [
     label: 'Test Intelligence',
     focus: 'untested critical paths, hollow mocks, missing edge cases',
   },
+  {
+    name: 'logic',
+    label: 'Logic & Correctness',
+    focus: 'logical flaws, state mismanagement, race conditions, invalid assumptions',
+  },
 ]
 
 function buildCombinedSystemPrompt(domains: DomainSpec[]): string {
@@ -91,7 +96,7 @@ Return ONLY a valid JSON array of findings. No markdown. No explanation. No prea
 
 Each finding must match this exact schema, and MUST include its originating agentName:
 {
-  "agentName": "security" | "architecture" | "performance" | "maintainability" | "deadCode" | "testIntelligence",
+  "agentName": "security" | "architecture" | "performance" | "maintainability" | "deadCode" | "testIntelligence" | "logic",
   "severity": "critical" | "high" | "medium" | "low" | "info",
   "title": "Short title, max 10 words",
   "description": "2-4 sentences. Be specific. Explain the risk or problem clearly.",

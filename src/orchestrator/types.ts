@@ -71,4 +71,5 @@ export interface SwarmOptions {
    */
   exhaustive?: boolean
   signal?: AbortSignal
+  specPath?: string
 }

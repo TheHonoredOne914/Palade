@@ -265,6 +265,7 @@ export async function reviewCommand(
         economyMode: opts.economy ?? config.swarm.economyMode,
         exhaustive: opts.exhaustive,
         signal: opts.signal,
+        specPath: config.swarm.specPath,
       },
       target: resolvedTarget,
       dryRunConfig: opts.dryRun ? config : undefined,

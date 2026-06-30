@@ -14,6 +14,7 @@ export type AgentName =
   | 'deadCode'
   | 'testIntelligence'
   | 'pragmatism'
+  | 'logic'
   | (string & {}) // widen to string while keeping autocomplete for built-ins
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'
@@ -79,6 +80,8 @@ export interface AgentContext {
   annotations?: AnnotationSummary
   modeConfig?: ModeConfig
   providerName?: string
+  /** Optional user-provided architectural/business logic spec */
+  spec?: string
 }
 
 export interface IAgent {
@@ -219,7 +222,7 @@ import { getProvider, type ProviderRole } from '../providers/router.js'
 export abstract class BaseSpecialistAgent implements IAgent {
   abstract name: AgentName
   abstract domain: string
-  protected abstract getSystemPrompt(): string
+  protected abstract getSystemPrompt(context?: AgentContext): string
 
   async analyze(
     chunks: CodeChunk[],
@@ -229,7 +232,11 @@ export abstract class BaseSpecialistAgent implements IAgent {
     try {
       const providerName = (context.providerName as ProviderRole) ?? 'primary'
       const provider = getProvider(providerName)
-      const systemPrompt = buildSystemPrompt(this.getSystemPrompt(), context, context.modeConfig)
+      const systemPrompt = buildSystemPrompt(
+        this.getSystemPrompt(context),
+        context,
+        context.modeConfig
+      )
       const userPrompt = buildChunkContext(chunks)
       const response = await provider.complete({
         systemPrompt,

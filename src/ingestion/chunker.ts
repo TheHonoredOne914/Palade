@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import type { FileManifest, CodeChunk } from './types.js'
+import { traceDependencies } from './dependencyTracer.js'
+import { resolve } from 'node:path'
 
 const MAX_TOKENS = 6000
 const CHUNK_LINES = 150
@@ -346,7 +348,10 @@ function chunkPython(content: string, filePath: string): CodeChunk[] {
 
 let treeSitterLoaded: boolean | null = null
 
-export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]> {
+export async function chunkFiles(
+  manifests: FileManifest[],
+  projectRoot?: string
+): Promise<CodeChunk[]> {
   if (treeSitterLoaded === null) {
     const hasSmallFiles = manifests.some((m) => m.sizeBytes <= MAX_TREE_SITTER_BYTES)
     treeSitterLoaded = hasSmallFiles ? await loadTreeSitter() : false
@@ -378,6 +383,33 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
 
     if (chunks.length > MAX_CHUNKS_PER_FILE) {
       chunks.length = MAX_CHUNKS_PER_FILE
+    }
+
+    if (projectRoot) {
+      try {
+        const deps = await traceDependencies(manifest.path, projectRoot, 1)
+        if (deps.length > 0) {
+          let depContext = '\n\n/* [DEPENDENCY CONTEXT] */\n'
+          for (const dep of deps) {
+            try {
+              const depContent = await readFile(resolve(projectRoot, dep), 'utf-8')
+              // Only inject first 150 lines of dependencies to save tokens
+              const shortContent = depContent.split('\n').slice(0, 150).join('\n')
+              depContext += `\n// --- ${dep} ---\n${shortContent}\n`
+            } catch {
+              continue
+            }
+          }
+          // Prepend dependency context to the first chunk of the file
+          if (chunks.length > 0) {
+            chunks[0].content =
+              depContext + '\n/* [END DEPENDENCY CONTEXT] */\n\n' + chunks[0].content
+            chunks[0].tokenCount = estimateTokens(chunks[0].content)
+          }
+        }
+      } catch (e) {
+        // ignore dependency tracing errors
+      }
     }
 
     allChunks.push(...chunks)

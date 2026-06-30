@@ -29,6 +29,7 @@ describe('agents/combined — buildCombinedSystemPrompt (via class)', () => {
     expect(DEFAULT_DOMAINS.map((d) => d.name).sort()).toEqual([
       'architecture',
       'deadCode',
+      'logic',
       'maintainability',
       'performance',
       'security',
