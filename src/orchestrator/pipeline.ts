@@ -90,18 +90,12 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   if (scope.annotationsOnly) {
     activeChunks = activeChunks.filter(
       (c) =>
-        annotationSummary.reviewRequests.some((r) => {
-          const chunk = chunks.find(
-            (ch) => ch.filePath === r.filePath && ch.startLine <= r.line && ch.endLine >= r.line
-          )
-          return chunk?.id === c.id
-        }) ||
-        annotationSummary.focusRequests.some((f) => {
-          const chunk = chunks.find(
-            (ch) => ch.filePath === f.filePath && ch.startLine <= f.line && ch.endLine >= f.line
-          )
-          return chunk?.id === c.id
-        })
+        annotationSummary.reviewRequests.some(
+          (r) => c.filePath === r.filePath && c.startLine <= r.line && c.endLine >= r.line
+        ) ||
+        annotationSummary.focusRequests.some(
+          (f) => c.filePath === f.filePath && c.startLine <= f.line && c.endLine >= f.line
+        )
     )
   }
 
