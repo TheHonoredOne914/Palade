@@ -5,7 +5,8 @@ import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
 import type { ScopeOptions, CodeChunk } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
-import { chunkFiles } from '../ingestion/chunker.js'
+import { chunkFiles, estimateTokens } from '../ingestion/chunker.js'
+import { buildRagIndex, getRagContext } from '../ingestion/rag.js'
 import { buildAnnotationSummary } from '../ingestion/annotationParser.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
 import { estimateTotalTokens } from './scheduler.js'
@@ -62,7 +63,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       }
     }
 
-    chunks = await chunkFiles(manifests, opts.projectRoot)
+    chunks = await chunkFiles(manifests)
 
     console.log(
       `[pipeline] Chunking complete: ${manifests.length} files → ${chunks.length} chunks (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
@@ -102,6 +103,18 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
           return chunk?.id === c.id
         })
     )
+  }
+
+  // Build RAG Index over ALL chunks (even unannotated/unscoped) so we have a global knowledge base
+  const ragIndex = buildRagIndex(chunks)
+
+  // Inject RAG context into active chunks
+  for (const chunk of activeChunks) {
+    const ragContext = getRagContext(chunk, ragIndex)
+    if (ragContext) {
+      chunk.content = ragContext + chunk.content
+      chunk.tokenCount = estimateTokens(chunk.content)
+    }
   }
 
   const context = { ...opts.context }
