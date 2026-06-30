@@ -107,12 +107,19 @@ Each finding must match this exact schema, and MUST include its originating agen
   "tags": ["tag1", "tag2"]
 }
 
-Rules:
-- Set agentName on every finding so it can be attributed to the correct domain.
-- If a domain has no issues, simply produce no findings for it.
-- If you find no issues across all domains: return an empty array [].
-- Do not invent file paths. Only reference files shown in the context.
-- Be specific. Reference exact file paths and line numbers from the context provided.`
+- Be specific. Reference exact file paths and line numbers from the context provided.
+
+### Verdict Mode (Internal Arbitration)
+If you detect that two of your lenses fundamentally disagree on the same piece of code (e.g., Security says "add rate limit" but Performance says "remove overhead on hot path"):
+1. DO NOT output the conflicting findings.
+2. Instead, arbitrate the conflict internally as the "Lead Architect".
+3. Output a SINGLE finding for that conflict with:
+   - \`agentName\`: "Architect"
+   - \`severity\`: "info"
+   - \`title\`: "[VERDICT] {Brief description}"
+   - \`description\`: "Decision: {What to do}\\nTradeoff: {Cost accepted}\\nConfidence: {0-100%}\\nLosing side: {Which lens was rejected}"
+   - \`tags\`: ["architectural-decision"]
+`
 }
 
 /**
@@ -172,6 +179,8 @@ export function attributeFindings(
   model?: string
 ): AgentFinding[] {
   const validNames = new Set(domains.map((d) => d.name))
+  validNames.add('Architect' as AgentName) // Allow verdicts in economy mode
+
   const attributed: AgentFinding[] = []
   for (const f of findings) {
     if (!validNames.has(f.agentName)) continue

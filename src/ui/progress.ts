@@ -5,6 +5,8 @@ export interface LiveProgress {
   agentStart(name: string): void
   agentBatchDone(name: string, current: number, total: number, findings: number): void
   agentDone(name: string, findings: number, ms: number, error?: Error): void
+  conflictDetected(file: string, sideA: string, sideB: string): void
+  verdictDecided(decision: string, confidence: number): void
   synthesisStart(providerName: string): void
   synthesisDone(ms: number): void
   stop(): void
@@ -33,6 +35,14 @@ export function createLiveProgress(): LiveProgress {
       console.log(
         `  ${theme.success('✓')} ${theme.dim(name.padEnd(22))} ${countStr.padEnd(20)} ${theme.dim(time)}`
       )
+    },
+    conflictDetected(file, sideA, sideB) {
+      console.log(`\n  ${theme.warning('⚠ CONFLICT')}  ${theme.white(file)}`)
+      console.log(`  ${theme.dim(`[${sideA}] vs [${sideB}]`)}`)
+      console.log(`  ${theme.dim('⚖ Arbitrating...')}`)
+    },
+    verdictDecided(decision, confidence) {
+      console.log(`  ${theme.primary('[VERDICT]')}   ${decision} ${theme.dim(`(Confidence: ${confidence}%)`)}\n`)
     },
     synthesisStart(providerName) {
       console.log(`  ${theme.dim('Synthesis'.padEnd(22))} ${theme.dim(`${providerName}...`)}`)

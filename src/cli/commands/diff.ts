@@ -11,6 +11,7 @@ import { writeHtmlReport, startLocalServer } from '../../reporters/html.js'
 import { reportMarkdown } from '../../reporters/markdown.js'
 import { isGitRepo, getCurrentBranch, getChangedFiles, getBaseScore } from '../../diff/git.js'
 import { compareFindings, rankIntroducedFindings } from '../../diff/comparator.js'
+import { checkDecisionDrift } from '../../orchestrator/verdict.js'
 import { printDiffBanner, printDiffSummary } from '../../reporters/terminal.js'
 import { theme } from '../../ui/theme.js'
 import { loadCustomAgents } from '../../agents/custom/loader.js'
@@ -20,6 +21,17 @@ import { CliExitError } from '../../errors/types.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
+import * as readline from 'node:readline'
+
+function askOverride(prompt: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+    rl.question(prompt, answer => {
+      rl.close()
+      resolve(answer.trim().toLowerCase() === 'y')
+    })
+  })
+}
 
 interface DiffOpts {
   base?: string
@@ -55,6 +67,16 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     const additions = changedFiles.reduce((s, f) => s + f.additions, 0)
     const deletions = changedFiles.reduce((s, f) => s + f.deletions, 0)
     console.log(theme.dim(`  ${changedFiles.length} changed files (+${additions} / -${deletions})`))
+
+    const driftWarnings = await checkDecisionDrift(projectRoot, changedFiles)
+    for (const warning of driftWarnings) {
+      console.log(chalk.red(`\n  ⚠ DRIFT  ${warning}`))
+      const override = await askOverride(chalk.yellow('  Override? [y/N] '))
+      if (!override) {
+        console.error(theme.error('\n  ✗ Drift blocked by user.'))
+        throw new CliExitError(1)
+      }
+    }
 
     const nonDeleted = changedFiles.filter((f) => f.status !== 'deleted')
     const scope: ScopeOptions = {

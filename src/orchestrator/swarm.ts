@@ -12,6 +12,7 @@ import { AgentMemory } from './memory.js'
 import { mergeFindings } from './merger.js'
 import { scheduleBatches } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
+import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 
 export async function runSwarm(
   allChunks: CodeChunk[],
@@ -145,10 +146,72 @@ export async function runSwarm(
     debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
   }
 
+  // Phase: Verdict Mode (Conflict Arbitration)
+  const projectRoot = manifests?.[0]?.absolutePath ? manifests[0].absolutePath.split('.palade')[0] : process.cwd()
+  let finalFindings = mergedFindings
+  
+  if (!options.noVerdict) {
+    const conflicts = detectConflicts(memory.getAll())
+    for (const conflict of conflicts) {
+      options.onVerdictDetected?.(conflict.filePath, conflict.sideA.agentName, conflict.sideB.agentName)
+      
+      const verdict = await arbitrateConflict(conflict, context, options.signal)
+      if (verdict) {
+        options.onVerdictDecided?.(verdict.decision, verdict.confidence)
+        
+        // Save to ADR
+        const slug = await saveDecision(projectRoot, conflict, verdict)
+        
+        // Inject into findings for synthesis
+        finalFindings.push({
+          agentName: 'Architect',
+          title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
+          description: `Decision: ${verdict.decision}\\nTradeoff: ${verdict.tradeoff_accepted}\\nSaved as: ${slug}.md`,
+          filePath: conflict.filePath,
+          lineStart: conflict.lineStart,
+          lineEnd: conflict.lineEnd,
+          severity: 'info',
+          tags: ['architectural-decision']
+        })
+      }
+    }
+  }
+
+  // Handle Economy Mode internal verdicts
+  for (const finding of finalFindings) {
+    if (finding.agentName === 'Architect' && finding.title.startsWith('[VERDICT]')) {
+      // Parse tradeoff out of description
+      const lines = finding.description.split('\\n')
+      const decisionStr = lines.find(l => l.startsWith('Decision:'))?.replace('Decision:', '').trim() || ''
+      const tradeoffStr = lines.find(l => l.startsWith('Tradeoff:'))?.replace('Tradeoff:', '').trim() || ''
+      const confidenceStr = lines.find(l => l.startsWith('Confidence:'))?.replace('Confidence:', '').replace('%', '').trim() || '50'
+      const losingStr = lines.find(l => l.startsWith('Losing side:'))?.replace('Losing side:', '').trim() || 'Unknown'
+
+      // Save to disk if not already saved (hasn't been run through the arbitrateConflict loop above)
+      if (!lines.some(l => l.includes('Saved as:'))) {
+        const fakeConflict = {
+          filePath: finding.filePath || 'unknown',
+          lineStart: finding.lineStart || 0,
+          lineEnd: finding.lineEnd || 0,
+          sideA: { agentName: 'CombinedAgent(Lens A)', title: '', description: '', severity: 'info', tags: [] } as any,
+          sideB: { agentName: 'CombinedAgent(Lens B)', title: '', description: '', severity: 'info', tags: [] } as any,
+        }
+        const verdict = {
+          decision: decisionStr,
+          tradeoff_accepted: tradeoffStr,
+          confidence: parseInt(confidenceStr, 10),
+          losing_side: losingStr
+        }
+        const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
+        finding.description += `\\nSaved as: ${slug}.md`
+      }
+    }
+  }
+
   try {
     options.onSynthesisStart?.()
     const synthStart = Date.now()
-    synthesis = await analyzeSynthesis(mergedFindings, crossAgentFindings, context)
+    synthesis = await analyzeSynthesis(finalFindings, crossAgentFindings, context)
     options.onSynthesisComplete?.(Date.now() - synthStart)
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err)
@@ -168,7 +231,7 @@ export async function runSwarm(
 
   return {
     runId,
-    findings: mergedFindings,
+    findings: finalFindings,
     crossAgentFindings,
     synthesis,
     agentTimings: agentTimings as Record<AgentName, number>,

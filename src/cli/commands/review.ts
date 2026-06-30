@@ -56,6 +56,7 @@ interface ReviewOptions {
   dryRun?: boolean
   economy?: boolean
   exhaustive?: boolean
+  noVerdict?: boolean
 }
 
 export async function reviewCommand(
@@ -262,11 +263,18 @@ export async function reviewCommand(
         onSynthesisComplete: (durationMs: number): void => {
           progress?.synthesisDone(durationMs)
         },
+        onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
+          progress?.conflictDetected(filePath, sideA, sideB)
+        },
+        onVerdictDecided: (decision: string, confidence: number): void => {
+          progress?.verdictDecided(decision, confidence)
+        },
         timeoutMs: config.swarm.timeoutMs,
         maxReviewTokens: config.swarm.maxReviewTokens,
         customAgents: customAgentDefs,
         economyMode: opts.economy ?? config.swarm.economyMode,
         exhaustive: opts.exhaustive,
+        noVerdict: opts.noVerdict,
         signal: opts.signal,
         specPath: config.swarm.specPath,
       },

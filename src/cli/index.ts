@@ -59,6 +59,7 @@ async function runClassicCLI(): Promise<void> {
   const { diffCommand } = await import('./commands/diff.js')
   const { watchCommand } = await import('./commands/watch.js')
   const { settingsCommand } = await import('./commands/settings.js')
+  const { decisionsCommand } = await import('./commands/decisions.js')
 
   process.on('unhandledRejection', (reason) => {
     handleFatalError(reason)
@@ -107,6 +108,7 @@ async function runClassicCLI(): Promise<void> {
       '-e, --exhaustive',
       'Exhaustive mode: skip triage and analyze the entire project (maximum issues)'
     )
+    .option('--no-verdict', 'Disable Verdict Mode (no conflict resolution)')
     .action(async (pathArg: string | undefined, opts: Record<string, unknown>): Promise<void> => {
       try {
         await reviewCommand(pathArg, opts as Parameters<typeof reviewCommand>[1])
@@ -136,6 +138,18 @@ async function runClassicCLI(): Promise<void> {
     .action(async (opts: { sensitivity?: string; continuous?: boolean }): Promise<void> => {
       try {
         await watchCommand(opts)
+      } catch (err) {
+        handleFatalError(err)
+      }
+    })
+
+  program
+    .command('decisions [action] [slug]')
+    .description('Manage architecture decisions (Verdict Mode ADRs)')
+    .option('--days <number>', 'Number of days for stale check', parseInt, 30)
+    .action(async (action: string | undefined, slug: string | undefined, opts: { days?: number }): Promise<void> => {
+      try {
+        await decisionsCommand(action, slug, opts)
       } catch (err) {
         handleFatalError(err)
       }

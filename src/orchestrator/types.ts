@@ -55,6 +55,8 @@ export interface SwarmOptions {
   ) => void
   onSynthesisStart?: () => void
   onSynthesisComplete?: (durationMs: number) => void
+  onVerdictDetected?: (filePath: string, sideA: string, sideB: string) => void
+  onVerdictDecided?: (decision: string, confidence: number) => void
   timeoutMs?: number
   maxReviewTokens?: number
   /** User-defined custom agents loaded from palade.agents.ts. */
@@ -70,6 +72,7 @@ export interface SwarmOptions {
    * Exhaustive mode: bypass the triage filter phase and review all files in the project.
    */
   exhaustive?: boolean
+  noVerdict?: boolean
   signal?: AbortSignal
   specPath?: string
 }
