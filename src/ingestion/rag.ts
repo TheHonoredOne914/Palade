@@ -15,10 +15,21 @@ export function getRagContext(
   const searchString = `${chunk.symbolName || ''} ${chunk.content.substring(0, 200)}`.toLowerCase()
   // Extract words longer than 3 characters to use as search terms
   let searchTerms = Array.from(new Set(searchString.match(/\b[a-z]{4,}\b/g) || []))
-  
-  const stopWords = new Set(['export', 'import', 'return', 'const', 'function', 'class', 'interface', 'type', 'async', 'await'])
-  searchTerms = searchTerms.filter(t => !stopWords.has(t))
-  
+
+  const stopWords = new Set([
+    'export',
+    'import',
+    'return',
+    'const',
+    'function',
+    'class',
+    'interface',
+    'type',
+    'async',
+    'await',
+  ])
+  searchTerms = searchTerms.filter((t) => !stopWords.has(t))
+
   if (searchTerms.length === 0) return ''
 
   const scoredChunks = index

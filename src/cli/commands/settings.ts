@@ -1,10 +1,11 @@
 import chalk from 'chalk'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, appendFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { theme } from '../../ui/theme.js'
 import { loadConfig } from '../../config/loader.js'
 import { CliExitError } from '../../errors/types.js'
+import { askConfirm, askList, askQuestion } from '../../ui/prompt.js'
 
 interface SettingsOptions {
   set?: string[]
@@ -30,7 +31,37 @@ export async function settingsCommand(opts: SettingsOptions): Promise<void> {
     return
   }
 
+  if (!opts.set && !opts.list && !opts.init) {
+    await interactiveSettings(projectRoot)
+    return
+  }
+
   await showCurrentConfig(projectRoot)
+}
+
+async function interactiveSettings(projectRoot: string): Promise<void> {
+  await showCurrentConfig(projectRoot)
+
+  console.log()
+  const wantsApi = await askConfirm('Do you want to configure an API key for a provider?', true)
+  if (!wantsApi) {
+    return
+  }
+
+  const providers = ['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen']
+  const provider = await askList('Select a provider:', providers)
+
+  const key = await askQuestion(`Enter your API key for ${provider}: `)
+  if (!key.trim()) {
+    console.log(theme.dim('No key provided. Cancelled.'))
+    return
+  }
+
+  const envPath = join(projectRoot, '.env')
+  const envVar = `${provider.toUpperCase().replace('-', '_')}_API_KEY`
+
+  await appendFile(envPath, `\n${envVar}=${key.trim()}\n`, 'utf-8')
+  console.log(theme.success(`\n  ✓ Saved ${envVar} to .env\n`))
 }
 
 async function showCurrentConfig(projectRoot: string): Promise<void> {
