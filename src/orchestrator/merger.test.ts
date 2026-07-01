@@ -23,19 +23,39 @@ describe('orchestrator/merger', () => {
         severity: 'high',
         filePath: 'src/auth.ts',
         lineStart: 10,
-        title: 'SQL injection risk',
+        title: 'SQL injection in getUserById',
       })
       const b = finding({
         severity: 'critical',
         filePath: 'src/auth.ts',
         lineStart: 10,
-        title: 'SQL injection vector',
+        title: 'SQL injection risk in getUserById',
       })
       const merged = mergeFindings([a, b])
-      // character overlap of the two titles is > 0.7 -> merged into one
+      // Jaccard similarity > 0.4 -> merged into one
       expect(merged).toHaveLength(1)
       // keeps the more severe (critical)
       expect(merged[0].severity).toBe('critical')
+    })
+
+    it('does not merge unrelated titles with similar character sets', () => {
+      const a = finding({
+        severity: 'high',
+        filePath: 'src/auth.ts',
+        lineStart: 10,
+        title: 'Hardcoded API key in config file',
+        agentName: 'security'
+      })
+      const b = finding({
+        severity: 'high',
+        filePath: 'src/auth.ts',
+        lineStart: 10,
+        title: 'Inefficient nested loop over large array',
+        agentName: 'performance'
+      })
+      const merged = mergeFindings([a, b])
+      // Although character sets overlap, words do not
+      expect(merged).toHaveLength(2)
     })
 
     it('keeps findings on different files separate', () => {

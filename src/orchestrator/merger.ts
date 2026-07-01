@@ -8,15 +8,21 @@ const SEVERITY_RANK: Record<Severity, number> = {
   info: 4,
 }
 
-function characterOverlap(a: string, b: string): number {
-  const aLower = a.toLowerCase()
-  const bLower = b.toLowerCase()
-  const aSet = new Set(aLower)
-  const bSet = new Set(bLower)
+function jaccardSimilarity(a: string, b: string): number {
+  const getWords = (str: string) => 
+    new Set(str.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 0))
+  
+  const aSet = getWords(a)
+  const bSet = getWords(b)
+  
+  if (aSet.size === 0 && bSet.size === 0) return 1
+  if (aSet.size === 0 || bSet.size === 0) return 0
+  
   let overlap = 0
-  for (const ch of aSet) {
-    if (bSet.has(ch)) overlap++
+  for (const word of aSet) {
+    if (bSet.has(word)) overlap++
   }
+  
   const union = aSet.size + bSet.size - overlap
   return union === 0 ? 0 : overlap / union
 }
@@ -25,7 +31,7 @@ function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
   if (a.filePath && b.filePath && a.filePath === b.filePath) {
     if (a.lineStart !== undefined && b.lineStart !== undefined) {
       if (a.lineStart === b.lineStart) {
-        if (characterOverlap(a.title, b.title) > 0.7) return true
+        if (jaccardSimilarity(a.title, b.title) > 0.4) return true
       }
       if (a.agentName === b.agentName && Math.abs(a.lineStart - b.lineStart) <= 5) {
         return true
