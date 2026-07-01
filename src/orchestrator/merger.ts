@@ -28,14 +28,26 @@ function jaccardSimilarity(a: string, b: string): number {
 }
 
 function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
+  if (
+    a.findingFingerprint &&
+    b.findingFingerprint &&
+    a.findingFingerprint === b.findingFingerprint
+  ) {
+    return true
+  }
+
   if (a.filePath && b.filePath && a.filePath === b.filePath) {
+    const similarTitle = jaccardSimilarity(a.title, b.title) > 0.4
+
     if (a.lineStart !== undefined && b.lineStart !== undefined) {
-      if (a.lineStart === b.lineStart) {
-        if (jaccardSimilarity(a.title, b.title) > 0.4) return true
-      }
-      if (a.agentName === b.agentName && Math.abs(a.lineStart - b.lineStart) <= 5) {
-        return true
-      }
+      if (a.lineStart === b.lineStart && similarTitle) return true
+      if (a.agentName === b.agentName && Math.abs(a.lineStart - b.lineStart) <= 5) return true
+    } else if (a.lineStart === undefined && b.lineStart === undefined) {
+      // Both are file-level findings
+      if (a.agentName === b.agentName && similarTitle) return true
+    } else {
+      // One has a line, one doesn't. If they are the same agent and similar title, merge them.
+      if (a.agentName === b.agentName && similarTitle) return true
     }
   }
   return false
@@ -48,15 +60,15 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
   const discard = sevA <= sevB ? b : a
 
   const tagSet = new Set([...keep.tags, ...discard.tags])
+  const mergedDescription = keep.description === discard.description 
+    ? keep.description 
+    : `${keep.description}\n\nAdditional context: ${discard.description}`
 
   return {
     ...keep,
-    scorePenalty: (keep.scorePenalty ?? 0) + (discard.scorePenalty ?? 0),
+    scorePenalty: Math.max(keep.scorePenalty ?? 0, discard.scorePenalty ?? 0),
     tags: Array.from(tagSet),
-    description:
-      keep.description.length >= discard.description.length
-        ? keep.description
-        : discard.description,
+    description: mergedDescription,
   }
 }
 

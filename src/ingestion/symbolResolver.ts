@@ -42,7 +42,7 @@ export async function resolveSymbol(
       true
     )
 
-    let foundNode: ts.Node | null = null
+    let foundNode: any = null
 
     function visit(node: ts.Node) {
       if (foundNode) return

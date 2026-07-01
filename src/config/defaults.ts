@@ -9,6 +9,7 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     maxReviewTokens: 200_000,
     economyMode: true,
     specPath: 'palade.spec.md',
+    constitutionPath: 'AGENTS.md',
   },
   output: {
     dir: '.palade/reports',

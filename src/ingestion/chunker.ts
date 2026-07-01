@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import type { FileManifest, CodeChunk } from './types.js'
+import ts from 'typescript'
 
 const MAX_TOKENS = 6000
 const CHUNK_LINES = 150
@@ -46,6 +47,89 @@ function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
   }
 
   return chunks
+}
+
+
+function calculateComplexity(node: ts.Node): number {
+  let complexity = 1
+  ts.forEachChild(node, function visit(n) {
+    if (
+      ts.isIfStatement(n) ||
+      ts.isForStatement(n) ||
+      ts.isForInStatement(n) ||
+      ts.isForOfStatement(n) ||
+      ts.isWhileStatement(n) ||
+      ts.isDoStatement(n) ||
+      ts.isCaseClause(n) ||
+      ts.isCatchClause(n) ||
+      ts.isConditionalExpression(n) ||
+      (ts.isBinaryExpression(n) &&
+        (n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+          n.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+          n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken))
+    ) {
+      complexity++
+    }
+    ts.forEachChild(n, visit)
+  })
+  return complexity
+}
+
+function chunkByAST(content: string, filePath: string, language: string): CodeChunk[] {
+  const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
+  const chunks: CodeChunk[] = []
+  let currentStartNode: ts.Node | null = null
+  let currentEndNode: ts.Node | null = null
+  let currentTokenCount = 0
+  
+  const finishChunk = () => {
+     if (!currentStartNode || !currentEndNode) return;
+     const start = sourceFile.getLineAndCharacterOfPosition(currentStartNode.getStart())
+     const end = sourceFile.getLineAndCharacterOfPosition(currentEndNode.getEnd())
+     const chunkContent = content.substring(currentStartNode.getStart(), currentEndNode.getEnd())
+     
+     const tempFile = ts.createSourceFile('temp.ts', chunkContent, ts.ScriptTarget.Latest, true)
+     const complexity = calculateComplexity(tempFile)
+     
+     chunks.push({
+       id: makeChunkId(filePath, start.line + 1, end.line + 1),
+       filePath,
+       startLine: start.line + 1,
+       endLine: end.line + 1,
+       content: chunkContent,
+       tokenCount: estimateTokens(chunkContent),
+       language: language as any,
+       complexity
+     })
+     
+     currentStartNode = null
+     currentEndNode = null
+     currentTokenCount = 0
+  }
+  
+  ts.forEachChild(sourceFile, (node) => {
+    const nodeTokens = estimateTokens(node.getText(sourceFile))
+    
+    if (nodeTokens > 2000) {
+       finishChunk()
+       currentStartNode = node
+       currentEndNode = node
+       finishChunk()
+       return
+    }
+    
+    if (currentTokenCount + nodeTokens > 3000) {
+       finishChunk()
+    }
+    
+    if (!currentStartNode) currentStartNode = node
+    currentEndNode = node
+    currentTokenCount += nodeTokens
+  })
+  
+  finishChunk()
+  
+  return chunks.flatMap(splitLargeChunk)
 }
 
 function chunkByBrackets(content: string, filePath: string, language: string): CodeChunk[] {
@@ -106,11 +190,20 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
     let content: string
     try {
       content = await readFile(manifest.absolutePath, 'utf-8')
-    } catch {
+      if (content.includes('\uFFFD')) {
+        console.warn(`[chunker] Warning: File ${manifest.path} contains invalid UTF-8 characters and may degrade analysis.`)
+      }
+    } catch (err) {
+      console.warn(`[chunker] Failed to read ${manifest.path}: ${err instanceof Error ? err.message : String(err)}`)
       continue
     }
 
-    const chunks = chunkByBrackets(content, manifest.path, manifest.language)
+    let chunks: CodeChunk[]
+    if (manifest.language === 'typescript' || manifest.language === 'javascript') {
+      chunks = chunkByAST(content, manifest.path, manifest.language)
+    } else {
+      chunks = chunkByBrackets(content, manifest.path, manifest.language)
+    }
 
     if (chunks.length > MAX_CHUNKS_PER_FILE) {
       chunks.length = MAX_CHUNKS_PER_FILE

@@ -20,8 +20,10 @@ describe('CombinedAnalyzer.analyze', () => {
 
   it('calls provider and extracts multi-domain findings correctly', async () => {
     mockProvider.complete.mockResolvedValue({
-      content:
-        '[{"agentName":"security","severity":"high","title":"SecTest","description":""}, {"agentName":"architecture","severity":"medium","title":"ArchTest","description":""}]',
+      content: JSON.stringify([
+          { severity: 'high', title: 'SecTest', agentName: 'security', description: 'desc' },
+          { severity: 'medium', title: 'ArchTest', agentName: 'architecture', description: 'desc' },
+        ]),
       provider: 'mock-provider',
       model: 'mock-model-v2',
       inputTokens: 10,
@@ -62,7 +64,7 @@ describe('CombinedAnalyzer.analyze', () => {
   it('filters out findings with invalid agentNames', async () => {
     mockProvider.complete.mockResolvedValue({
       content:
-        '[{"agentName":"invalidDomain","severity":"high","title":"Test","description":""}, {"agentName":"security","severity":"low","title":"SecTest","description":""}]',
+        '[{"agentName":"invalidDomain","severity":"high","title":"Test","description":"desc"}, {"agentName":"security","severity":"low","title":"SecTest","description":"desc"}]',
       provider: 'mock-provider',
       model: 'mock-model-v2',
     })

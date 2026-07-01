@@ -5,7 +5,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import chalk from 'chalk'
 import { z } from 'zod'
-import { getRouter } from '../providers/router.js'
+import { getProvider } from '../providers/router.js'
 import type { AgentFinding, AgentContext } from '../agents/base.js'
 import type { ChangedFile } from '../diff/types.js'
 
@@ -25,13 +25,37 @@ export interface Verdict {
 }
 
 const HARDEN_KEYWORDS = [
-  'add', 'throttle', 'encrypt', 'validate', 'lock', 'strict', 'check',
-  'boundary', 'limit', 'ensure', 'harden', 'guard', 'require', 'prevent'
+  'add',
+  'throttle',
+  'encrypt',
+  'validate',
+  'lock',
+  'strict',
+  'check',
+  'boundary',
+  'limit',
+  'ensure',
+  'harden',
+  'guard',
+  'require',
+  'prevent',
 ]
 
 const RELAX_KEYWORDS = [
-  'remove', 'skip', 'fast-path', 'relax', 'bypass', 'inline', 'delete',
-  'cache', 'memoize', 'omit', 'drop', 'ignore', 'simplify', 'fast'
+  'remove',
+  'skip',
+  'fast-path',
+  'relax',
+  'bypass',
+  'inline',
+  'delete',
+  'cache',
+  'memoize',
+  'omit',
+  'drop',
+  'ignore',
+  'simplify',
+  'fast',
 ]
 
 function getValence(text: string): 'harden' | 'relax' | 'neutral' {
@@ -72,8 +96,7 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
         if (a.agentName === b.agentName) continue
 
         // Check line overlap (or adjacent within 5 lines)
-        const overlap =
-          (a.lineStart! <= b.lineEnd! + 5) && (b.lineStart! <= a.lineEnd! + 5)
+        const overlap = a.lineStart! <= b.lineEnd! + 5 && b.lineStart! <= a.lineEnd! + 5
 
         if (!overlap) continue
 
@@ -105,60 +128,68 @@ const VerdictSchema = z.object({
   decision: z.string().describe('What to actually do'),
   tradeoff_accepted: z.string().describe('The explicit cost being accepted'),
   confidence: z.number().describe('0-100 score of how confident you are in this tradeoff'),
-  losing_side: z.string().describe('Which agent recommendation was NOT taken, and why')
+  losing_side: z.string().describe('Which agent recommendation was NOT taken, and why'),
 })
+
+import * as readline from 'node:readline/promises'
+import { stdin as input, stdout as output } from 'node:process'
 
 export async function arbitrateConflict(
   conflict: Conflict,
   context: AgentContext,
   signal?: AbortSignal
 ): Promise<Verdict | null> {
-  const router = getRouter()
+  if (signal?.aborted) return null
 
-  const systemPrompt = `You are the Lead Architect. Two specialized agents disagree on a piece of code.
-Your job is to resolve the conflict by making a definitive architectural decision. Accept a tradeoff explicitly.
+  console.log(chalk.bold.red('\n[VERDICT MODE] Architectural Conflict Detected!'))
+  console.log(chalk.gray(`File: ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}\n`))
 
-Respond ONLY with JSON matching this schema:
-{
-  "decision": "string (what to actually do)",
-  "tradeoff_accepted": "string (the explicit cost being accepted)",
-  "confidence": "number (0-100)",
-  "losing_side": "string (which agent's recommendation was NOT taken, and why)"
-}`
+  console.log(chalk.bold.blue(`Side A (${conflict.sideA.agentName}):`))
+  console.log(`  Title: ${conflict.sideA.title}`)
+  console.log(`  Reasoning: ${conflict.sideA.description}\n`)
 
-  const userPrompt = `File: ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}
+  console.log(chalk.bold.yellow(`Side B (${conflict.sideB.agentName}):`))
+  console.log(`  Title: ${conflict.sideB.title}`)
+  console.log(`  Reasoning: ${conflict.sideB.description}\n`)
 
-Agent [${conflict.sideA.agentName}] says:
-Title: ${conflict.sideA.title}
-Reasoning: ${conflict.sideA.description}
+  const rl = readline.createInterface({ input, output })
 
-Agent [${conflict.sideB.agentName}] says:
-Title: ${conflict.sideB.title}
-Reasoning: ${conflict.sideB.description}
-
-Please provide your verdict.`
-
-  try {
-    const rawOutput = await router.complete(
-      {
-        model: context.modeConfig?.agentOverrides?.[0]?.model || 'groq:llama3-70b-8192',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.1,
-      },
-      signal
+  let choice = ''
+  while (!['A', 'B', 'C'].includes(choice)) {
+    const answer = await rl.question(
+      'Choose a side to accept: [A] Side A, [B] Side B, [C] Custom Decision (or [S] to skip): '
     )
+    choice = answer.trim().toUpperCase()
+    if (choice === 'S') {
+      rl.close()
+      return null
+    }
+  }
 
-    const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
-    const jsonStr = jsonMatch ? jsonMatch[0] : rawOutput
+  let decision = ''
+  let losing_side = ''
+  let confidence = 100
 
-    const parsed = JSON.parse(jsonStr)
-    return VerdictSchema.parse(parsed)
-  } catch (err) {
-    console.error(chalk.yellow(`\n[verdict] Arbitration failed for ${conflict.filePath}: ${err instanceof Error ? err.message : String(err)}`))
-    return null
+  if (choice === 'A') {
+    decision = `Accepted ${conflict.sideA.agentName}'s recommendation: ${conflict.sideA.title}`
+    losing_side = `Rejected ${conflict.sideB.agentName}`
+  } else if (choice === 'B') {
+    decision = `Accepted ${conflict.sideB.agentName}'s recommendation: ${conflict.sideB.title}`
+    losing_side = `Rejected ${conflict.sideA.agentName}`
+  } else {
+    decision = await rl.question('Enter your custom decision: ')
+    losing_side = 'Custom human decision'
+  }
+
+  const tradeoff_accepted = await rl.question('What explicit tradeoff are you accepting by making this decision? ')
+
+  rl.close()
+
+  return {
+    decision,
+    tradeoff_accepted,
+    confidence,
+    losing_side,
   }
 }
 
@@ -167,8 +198,16 @@ export async function saveDecision(
   conflict: Conflict,
   verdict: Verdict
 ): Promise<string> {
-  const slugBase = conflict.filePath.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'decision'
-  const hash = crypto.createHash('md5').update(conflict.filePath + conflict.lineStart + verdict.decision).digest('hex').slice(0, 6)
+  const slugBase =
+    conflict.filePath
+      .split('/')
+      .pop()
+      ?.replace(/\.[^/.]+$/, '') || 'decision'
+  const hash = crypto
+    .createHash('md5')
+    .update(conflict.filePath + conflict.lineStart + verdict.decision)
+    .digest('hex')
+    .slice(0, 6)
   const slug = `${slugBase}-${hash}`
   const dateStr = new Date().toISOString().split('T')[0]
 
@@ -211,7 +250,7 @@ export async function checkDecisionDrift(
   if (!existsSync(dir)) return []
 
   const files = await readdir(dir)
-  const mdFiles = files.filter(f => f.endsWith('.md'))
+  const mdFiles = files.filter((f) => f.endsWith('.md'))
   if (mdFiles.length === 0) return []
 
   // Build map of diff additions by file
@@ -239,7 +278,7 @@ export async function checkDecisionDrift(
   }
 
   const warnings: string[] = []
-  const router = getRouter()
+  const provider = getProvider('synthesis')
 
   for (const file of mdFiles) {
     const content = await readFile(join(dir, file), 'utf-8')
@@ -253,11 +292,11 @@ export async function checkDecisionDrift(
     const editedLines = addedByPath.get(decisionPath)
     if (!editedLines) continue
 
-    const overlaps = editedLines.some(l => l >= start && l <= end)
+    const overlaps = editedLines.some((l) => l >= start && l <= end)
     if (!overlaps) continue
 
     // There is an overlap! Trigger LLM check to see if it violates
-    const cf = changedFiles.find(c => c.path === decisionPath)
+    const cf = changedFiles.find((c) => c.path === decisionPath)
     if (!cf || !cf.diff) continue
 
     const systemPrompt = `You are Drift Watcher.
@@ -272,14 +311,12 @@ GIT DIFF:
 ${cf.diff}`
 
     try {
-      const result = await router.complete({
-        model: 'groq:llama3-70b-8192',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.1
+      const response = await provider.complete({
+        systemPrompt,
+        userPrompt,
+        temperature: 0.1,
       })
+      const result = response.content || ''
 
       if (result.trim().toUpperCase().includes('YES')) {
         warnings.push(`You're editing logic that contradicts a documented decision (${file}).`)

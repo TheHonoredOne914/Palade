@@ -23,13 +23,13 @@ describe('ingestion/chunker', () => {
   it('produces chunks using bracket boundaries', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'palade-chunker-'))
     try {
-      const code = Array.from({ length: 300 }, (_, i) => `// line ${i}`).join('\n')
+      const code = Array.from({ length: 300 }, (_, i) => `const a${i} = ${i};`).join('\n')
       const manifest = await createTmpFile('large.ts', code, dir)
       const chunks = await chunkFiles([manifest])
 
       expect(chunks.length).toBeGreaterThan(0)
       expect(chunks[0].startLine).toBe(1)
-      expect(chunks[0].content).toContain('line 0')
+      expect(chunks[0].content).toContain('const a0 = 0;')
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -39,7 +39,7 @@ describe('ingestion/chunker', () => {
     const dir = await mkdtemp(join(tmpdir(), 'palade-chunker-'))
     try {
       // Create a massive file to force truncation
-      const code = Array.from({ length: 15000 }, (_, i) => `// line ${i}`).join('\n')
+      const code = Array.from({ length: 15000 }, (_, i) => `const a${i} = ${i};`).join('\n')
       const manifest = await createTmpFile('massive.ts', code, dir)
       const chunks = await chunkFiles([manifest])
 

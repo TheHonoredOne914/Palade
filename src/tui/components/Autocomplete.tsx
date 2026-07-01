@@ -66,13 +66,13 @@ export function Autocomplete({
         }))
         .slice(0, 5)
 
-      if (!isTargetFlag && cmd === 'review' && '.'.includes(query)) {
-        return [
-          { text: '/review .', display: '/review .', desc: 'Full codebase review' },
-          ...targetMatches
-        ]
+      if (!isTargetFlag && cmd === 'review') {
+        const fullReview = { text: '/review .', display: '/review .', desc: 'Full codebase review' }
+        if (query === '' || '.'.includes(query) || 'full'.includes(query) || 'all'.includes(query)) {
+          return [fullReview, ...targetMatches]
+        }
       }
-      
+
       return targetMatches
     }
 

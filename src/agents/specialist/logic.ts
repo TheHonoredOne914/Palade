@@ -13,7 +13,10 @@ CRITICAL INSTRUCTIONS:
 2. Look for off-by-one errors, missing null checks, and unhandled promises.
 3. DO NOT report syntax errors, style issues, or purely architectural smells unless they directly cause logic bugs.
 
-Format your findings as a strict JSON array of objects with this schema:
+Before outputting any JSON, you MUST write a <thinking> block to trace data flow, analyze edge cases, and justify your logic. 
+At the end of your <thinking> block, perform a Self-Critique: ask yourself if there are any conditions where the code is actually safe or if you might be hallucinating. If the code is safe, drop the finding.
+
+After your <thinking> block, format your findings as a strict JSON array of objects with this schema:
 [
   {
     "severity": "critical" | "high" | "medium" | "low" | "info",

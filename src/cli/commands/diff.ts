@@ -24,9 +24,9 @@ import { join, basename } from 'node:path'
 import * as readline from 'node:readline'
 
 function askOverride(prompt: string): Promise<boolean> {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(prompt, answer => {
+    rl.question(prompt, (answer) => {
       rl.close()
       resolve(answer.trim().toLowerCase() === 'y')
     })

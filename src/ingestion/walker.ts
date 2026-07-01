@@ -26,6 +26,17 @@ const EXT_MAP: Record<string, Language> = {
   '.py': 'python',
   '.go': 'go',
   '.rs': 'rust',
+  '.java': 'java',
+  '.cs': 'csharp',
+  '.cpp': 'cpp',
+  '.cc': 'cpp',
+  '.h': 'c',
+  '.hpp': 'cpp',
+  '.rb': 'ruby',
+  '.php': 'php',
+  '.swift': 'swift',
+  '.kt': 'kotlin',
+  '.dart': 'dart',
 }
 
 function detectLanguage(filePath: string): Language {
@@ -131,6 +142,15 @@ async function walkDir(
     }
 
     const linesOfCode = content.split('\n').length
+    
+    const importRegex = /(?:import(?:[\s\S]*?from\s+)?|require\()\s*['"]([^'"]+)['"]/g
+    let match
+    const importedPaths = []
+    let importCount = 0
+    while ((match = importRegex.exec(content)) !== null) {
+      importCount++
+      importedPaths.push(match[1])
+    }
     const annotations = await parseFile(fullPath, language === 'python')
 
     results.push({
@@ -141,7 +161,9 @@ async function walkDir(
       linesOfCode,
       annotations,
       lastModified: fileStat.mtime,
-    })
+      importCount,
+      _rawImports: importedPaths
+    } as any)
   }
 
   return results
@@ -243,6 +265,54 @@ export async function walkProject(
 
   // Sort by path
   manifests.sort((a, b) => a.path.localeCompare(b.path))
+
+  
+  try {
+    const { execSync } = require('child_process')
+    const gitLog = execSync('git log --name-only --pretty=format:', { cwd: projectRoot, encoding: 'utf-8' })
+    const churnMap = new Map<string, number>()
+    for (const line of gitLog.split('\n')) {
+       const trimmed = line.trim()
+       if (trimmed) {
+          churnMap.set(trimmed, (churnMap.get(trimmed) || 0) + 1)
+       }
+    }
+    for (const m of manifests) {
+       m.churnCount = churnMap.get(m.path) || 0
+    }
+  } catch {
+    // Ignored
+  }
+
+  // Build importer map
+  const pathMap = new Map<string, import('./types.js').FileManifest>()
+  for (const m of manifests) {
+    pathMap.set(m.path, m)
+    m.importers = []
+  }
+
+  const nodePath = require('path')
+  for (const m of manifests) {
+    const rawImports = (m as any)._rawImports as string[] || []
+    for (const raw of rawImports) {
+      if (raw.startsWith('.')) {
+        // relative import
+        let resolved = nodePath.normalize(nodePath.join(nodePath.dirname(m.path), raw)).replace(/\\/g, '/')
+        // Try exact match, .ts, .js, /index.ts
+        let target = pathMap.get(resolved)
+        if (!target) target = pathMap.get(resolved + '.ts')
+        if (!target) target = pathMap.get(resolved + '.js')
+        if (!target) target = pathMap.get(resolved + '/index.ts')
+        
+        if (target && target.importers) {
+          if (!target.importers.includes(m.path)) {
+            target.importers.push(m.path)
+          }
+        }
+      }
+    }
+    delete (m as any)._rawImports
+  }
 
   return manifests
 }

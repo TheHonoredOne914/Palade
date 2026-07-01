@@ -39,6 +39,7 @@ export const PaladeConfigSchema = z.object({
       // users opt into economy mode when token cost matters more than latency.
       economyMode: z.boolean().default(false),
       specPath: z.string().default('palade.spec.md'),
+      constitutionPath: z.string().default('.palade/constitution.md'),
     })
     .default({}),
   output: z

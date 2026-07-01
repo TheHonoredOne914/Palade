@@ -113,7 +113,8 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               depth: flag('depth') ? parseInt(flag('depth')!, 10) || 1 : 1,
               format: flag('format'),
               open: hasFlag('no-open') ? false : hasFlag('open') ? true : undefined,
-              quiet: false,
+              quiet: true,
+              tui: true,
               signal: opts.getAbortSignal?.(),
             })
             break

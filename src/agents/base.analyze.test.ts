@@ -26,8 +26,15 @@ describe('BaseSpecialistAgent.analyze', () => {
   })
 
   it('calls provider and parses findings correctly', async () => {
-    mockProvider.complete.mockResolvedValue({
+    mockProvider.complete.mockResolvedValueOnce({
       content: '[{"severity":"high","title":"Test","description":"desc"}]',
+      provider: 'mock-provider',
+      model: 'mock-model-v2',
+      inputTokens: 10,
+      outputTokens: 10,
+      durationMs: 10,
+    }).mockResolvedValueOnce({
+      content: 'YES',
       provider: 'mock-provider',
       model: 'mock-model-v2',
       inputTokens: 10,
