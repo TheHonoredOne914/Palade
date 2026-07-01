@@ -106,7 +106,7 @@ describe('buildSystemPrompt', () => {
   it('returns base prompt if no modifiers are present', () => {
     const res = buildSystemPrompt('Base', baseContext)
     expect(res).toContain('Base')
-    expect(res).toContain('CORE PHILOSOPHY: You are a lazy senior developer.')
+    expect(res).toContain('CORE PHILOSOPHY (PONYTAIL): You are a lazy senior developer.')
     expect(res).toContain('KARPATHY BEHAVIORAL GUIDELINES:')
     expect(res).toContain('GSD & GSTACK REVIEW LENSES:')
   })

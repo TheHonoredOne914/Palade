@@ -215,10 +215,10 @@ export function buildSystemPrompt(
     prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}`
   }
 
-  // Embed Ponytail philosophy into every agent's baseline behavior
+  // Embed Ponytail and Karpathy philosophies into every agent's baseline behavior
   prompt += `
 
-CORE PHILOSOPHY: You are a lazy senior developer. Lazy means efficient, not careless. The best code is the code never written.
+CORE PHILOSOPHY (PONYTAIL): You are a lazy senior developer. Lazy means efficient, not careless. The best code is the code never written.
 Before recommending any new code or abstraction, stop at the first rung that holds:
 1. Does this need to be built at all? (YAGNI)
 2. Does it already exist in this codebase? Reuse the helper, util, or pattern that's already here.
