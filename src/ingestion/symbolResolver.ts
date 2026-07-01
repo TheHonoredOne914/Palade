@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import ts from 'typescript'
 import type { CodeChunk } from './types.js'
 
 export async function resolveSymbol(
@@ -27,43 +28,101 @@ export async function resolveSymbol(
     return null
   }
 
+  const language = getLanguage(filePath)
   const lines = content.split('\n')
 
-  // Regex fallback: search for function/class declarations
-  const patterns = [
-    new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${escapeRegex(symbolName)}\\s*\\(`),
-    new RegExp(`(?:export\\s+)?class\\s+${escapeRegex(symbolName)}\\s`),
-    new RegExp(`(?:export\\s+)?const\\s+${escapeRegex(symbolName)}\\s*=\\s*(?:async\\s+)?\\(`),
-    new RegExp(`(?:def|async\\s+def)\\s+${escapeRegex(symbolName)}\\s*\\(`),
-    new RegExp(`(?:class)\\s+${escapeRegex(symbolName)}\\s*[:(]`),
-  ]
+  let startLine = -1
+  let endLine = -1
 
-  for (let i = 0; i < lines.length; i++) {
-    for (const pattern of patterns) {
-      if (pattern.test(lines[i])) {
-        let endLine = lines.length - 1
-        const indent = lines[i].search(/\S/)
-        for (let j = i + 1; j < lines.length; j++) {
-          if (lines[j].trim().length === 0) continue // skip blank lines
-          const lineIndent = lines[j].search(/\S/)
-          if (lineIndent !== -1 && lineIndent <= indent) {
-            endLine = j - 1
-            break
-          }
-        }
+  if (language === 'typescript' || language === 'javascript') {
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      content,
+      ts.ScriptTarget.Latest,
+      true
+    )
 
-        const chunkContent = lines.slice(i, endLine + 1).join('\n')
-        return {
-          id: `${filePath}:${i + 1}-${endLine + 1}`,
-          filePath,
-          startLine: i + 1,
-          endLine: endLine + 1,
-          content: chunkContent,
-          symbolName,
-          tokenCount: Math.ceil(chunkContent.length / 4),
-          language: getLanguage(filePath),
+    let foundNode: ts.Node | null = null
+
+    function visit(node: ts.Node) {
+      if (foundNode) return
+
+      let nodeName = ''
+      if (
+        ts.isFunctionDeclaration(node) ||
+        ts.isClassDeclaration(node) ||
+        ts.isInterfaceDeclaration(node) ||
+        ts.isTypeAliasDeclaration(node) ||
+        ts.isEnumDeclaration(node)
+      ) {
+        nodeName = node.name?.text ?? ''
+      } else if (ts.isVariableStatement(node)) {
+        const decl = node.declarationList.declarations[0]
+        if (decl && ts.isIdentifier(decl.name)) {
+          nodeName = decl.name.text
         }
       }
+
+      if (nodeName === symbolName) {
+        foundNode = node
+        return
+      }
+
+      ts.forEachChild(node, visit)
+    }
+
+    visit(sourceFile)
+
+    if (foundNode) {
+      const start = sourceFile.getLineAndCharacterOfPosition(foundNode.getStart())
+      const end = sourceFile.getLineAndCharacterOfPosition(foundNode.getEnd())
+      startLine = start.line
+      endLine = end.line
+    }
+  }
+
+  if (startLine === -1) {
+    // Regex fallback: search for function/class declarations for python/go/rust etc, or if TS parsing failed
+    const patterns = [
+      new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${escapeRegex(symbolName)}\\s*\\(`),
+      new RegExp(`(?:export\\s+)?class\\s+${escapeRegex(symbolName)}\\s`),
+      new RegExp(`(?:export\\s+)?const\\s+${escapeRegex(symbolName)}\\s*=\\s*(?:async\\s+)?\\(`),
+      new RegExp(`(?:def|async\\s+def)\\s+${escapeRegex(symbolName)}\\s*\\(`),
+      new RegExp(`(?:class)\\s+${escapeRegex(symbolName)}\\s*[:(]`),
+    ]
+
+    for (let i = 0; i < lines.length; i++) {
+      for (const pattern of patterns) {
+        if (pattern.test(lines[i])) {
+          endLine = lines.length - 1
+          const indent = lines[i].search(/\S/)
+          for (let j = i + 1; j < lines.length; j++) {
+            if (lines[j].trim().length === 0) continue // skip blank lines
+            const lineIndent = lines[j].search(/\S/)
+            if (lineIndent !== -1 && lineIndent <= indent) {
+              endLine = j - 1
+              break
+            }
+          }
+          startLine = i
+          break
+        }
+      }
+      if (startLine !== -1) break
+    }
+  }
+
+  if (startLine !== -1 && endLine !== -1) {
+    const chunkContent = lines.slice(startLine, endLine + 1).join('\n')
+    return {
+      id: `${filePath}:${startLine + 1}-${endLine + 1}`,
+      filePath,
+      startLine: startLine + 1,
+      endLine: endLine + 1,
+      content: chunkContent,
+      symbolName,
+      tokenCount: Math.ceil(chunkContent.length / 4),
+      language,
     }
   }
 

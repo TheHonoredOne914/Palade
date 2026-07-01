@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve, relative, dirname } from 'node:path'
 import { existsSync } from 'node:fs'
+import ts from 'typescript'
 
 function normalizePath(p: string): string {
   return p.replace(/\\/g, '/')
@@ -58,7 +59,7 @@ export async function traceDependencies(
       return
     }
 
-    const importPaths = extractLocalImports(content)
+    const importPaths = extractLocalImports(content, currentPath)
 
     for (const importPath of importPaths) {
       const resolvedFromRoot = resolveImport(currentPath, importPath, projectRoot)
@@ -93,28 +94,48 @@ export async function traceDependencies(
   return results
 }
 
-function extractLocalImports(content: string): string[] {
+function extractLocalImports(content: string, filePath: string): string[] {
   const imports: string[] = []
-  const lines = content.split('\n')
 
-  for (const line of lines) {
-    const fromMatches = line.matchAll(/from\s+['"](\.[^'"]+)['"]/g)
-    for (const match of fromMatches) {
-      if (match[1]) imports.push(match[1])
+  if (filePath.endsWith('.py')) {
+    // python fallback
+    const lines = content.split('\n')
+    for (const line of lines) {
+      const pyRelativeMatch = line.match(/from\s+(\.\S+)\s+import/)
+      if (pyRelativeMatch && !imports.includes(pyRelativeMatch[1])) {
+        imports.push(pyRelativeMatch[1])
+      }
     }
+    return imports
+  }
 
-    const requireMatches = line.matchAll(/require\s*\(\s*['"](\.[^'"]+)['"]\s*\)/g)
-    for (const match of requireMatches) {
-      if (match[1] && !imports.includes(match[1])) {
-        imports.push(match[1])
+  // Use typescript for .ts, .js, .tsx, .jsx
+  const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
+
+  function visit(node: ts.Node) {
+    if (ts.isImportDeclaration(node)) {
+      const moduleSpecifier = node.moduleSpecifier
+      if (ts.isStringLiteral(moduleSpecifier)) {
+        if (moduleSpecifier.text.startsWith('.')) {
+          imports.push(moduleSpecifier.text)
+        }
+      }
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.getText(sourceFile) === 'require' &&
+      node.arguments.length === 1
+    ) {
+      const arg = node.arguments[0]
+      if (ts.isStringLiteral(arg) && arg.text.startsWith('.')) {
+        imports.push(arg.text)
       }
     }
 
-    const pyRelativeMatch = line.match(/from\s+(\.\S+)\s+import/)
-    if (pyRelativeMatch && !imports.includes(pyRelativeMatch[1])) {
-      imports.push(pyRelativeMatch[1])
-    }
+    ts.forEachChild(node, visit)
   }
 
-  return imports
+  visit(sourceFile)
+
+  // Deduplicate
+  return Array.from(new Set(imports))
 }
