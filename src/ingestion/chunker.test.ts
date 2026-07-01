@@ -20,7 +20,7 @@ async function createTmpFile(name: string, content: string, dir: string): Promis
 }
 
 describe('ingestion/chunker', () => {
-  it('produces chunks using sliding window', async () => {
+  it('produces chunks using bracket boundaries', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'palade-chunker-'))
     try {
       const code = Array.from({ length: 300 }, (_, i) => `// line ${i}`).join('\n')

@@ -48,29 +48,37 @@ function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
   return chunks
 }
 
-function chunkBySlidingWindow(content: string, filePath: string, language: string): CodeChunk[] {
+function chunkByBrackets(content: string, filePath: string, language: string): CodeChunk[] {
   const lines = content.split('\n')
   if (lines.length === 0) return []
 
-  if (lines.length <= CHUNK_LINES) {
-    return [
-      {
-        id: makeChunkId(filePath, 1, lines.length),
-        filePath,
-        startLine: 1,
-        endLine: lines.length,
-        content,
-        tokenCount: estimateTokens(content),
-        language: language as CodeChunk['language'],
-      },
-    ]
-  }
-
   const chunks: CodeChunk[] = []
   let startIdx = 0
-
+  
   while (startIdx < lines.length) {
-    const endIdx = Math.min(startIdx + CHUNK_LINES, lines.length)
+    let depth = 0
+    let currentIdx = startIdx
+    let maxLines = 300
+    
+    // Scan forward to find a block boundary or hit maxLines
+    while (currentIdx < lines.length && (currentIdx - startIdx) < maxLines) {
+      const line = lines[currentIdx]
+      // Basic bracket counting ignoring strings/comments for simplicity
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === '{') depth++
+        else if (line[i] === '}') depth--
+      }
+      
+      currentIdx++
+      // If we've closed all blocks and have at least some lines, end chunk here
+      if (depth <= 0 && (currentIdx - startIdx) > 5) {
+        break
+      }
+    }
+    
+    // If we scanned through maxLines but depth > 0, we just slice here
+    const endIdx = currentIdx
+    
     const chunkContent = lines.slice(startIdx, endIdx).join('\n')
     const startLine = startIdx + 1
     const endLine = endIdx
@@ -85,8 +93,7 @@ function chunkBySlidingWindow(content: string, filePath: string, language: strin
       language: language as CodeChunk['language'],
     })
 
-    if (endIdx >= lines.length) break
-    startIdx = endIdx - CHUNK_OVERLAP
+    startIdx = endIdx
   }
 
   return chunks
@@ -103,7 +110,7 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
       continue
     }
 
-    const chunks = chunkBySlidingWindow(content, manifest.path, manifest.language)
+    const chunks = chunkByBrackets(content, manifest.path, manifest.language)
 
     if (chunks.length > MAX_CHUNKS_PER_FILE) {
       chunks.length = MAX_CHUNKS_PER_FILE
