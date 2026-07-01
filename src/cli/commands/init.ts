@@ -148,6 +148,17 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
 
   // f) Print success
   console.log('\n' + results.map((r) => `  ✓ ${r}`).join('\n'))
+
+  try {
+    const { loadConfig } = await import('../../config/loader.js')
+    const config = await loadConfig()
+    console.log(chalk.cyan(`\nProviders initialized:`))
+    console.log(chalk.gray(`  Primary:   ${config.swarm.primary}`))
+    console.log(chalk.gray(`  Synthesis: ${config.swarm.synthesis}`))
+  } catch (e) {
+    // ignore if config fails to load
+  }
+
   console.log(`
 Next steps:
   1. Add your API keys to .palade/palade.config.ts or set env vars
