@@ -76,5 +76,17 @@ palade targets search <query>
 Initialize your project to create a `palade.config.ts` configuration file:
 ```bash
 palade init
-```
 This lets you set your API keys, LLM providers, and customize the swarm's behavior!
+
+### Configuration: Economy Mode
+
+By default, Palade runs in **Economy Mode** (`economyMode: true`), meaning all specialist lenses (Security, Architecture, Performance, etc.) are evaluated in a single API call per chunk. This drastically reduces token spend and latency. 
+
+If you want maximum prompt richness per domain and don't mind the increased API cost, you can disable economy mode in your `palade.config.ts`:
+```typescript
+export default {
+  swarm: {
+    economyMode: false,
+  }
+}
+```

@@ -7,7 +7,7 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     agentCount: 6,
     timeoutMs: 600000,
     maxReviewTokens: 200_000,
-    economyMode: false,
+    economyMode: true,
     specPath: 'palade.spec.md',
   },
   output: {
