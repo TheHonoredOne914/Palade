@@ -71,4 +71,26 @@ describe('estimateRunCost', () => {
     result = estimateRunCost([chunk1], economyConfig)
     expect(result.warningLevel).toBe('medium')
   })
+
+  it('calculates $0 cost for free tier providers', () => {
+    const config = {
+      swarm: { primary: 'opencode-zen', synthesis: 'opencode-zen', agentCount: 1, economyMode: true },
+      providers: {
+        'opencode-zen': { apiKey: 'test', model: 'deepseek-v4-flash-free' }
+      }
+    } as unknown as PaladeConfig
+
+    const chunk1: CodeChunk = {
+      id: '1',
+      filePath: 'a.ts',
+      startLine: 1,
+      endLine: 10,
+      content: 'a'.repeat(400),
+      language: 'typescript',
+    }
+
+    const result = estimateRunCost([chunk1], config)
+    expect(result.estimatedCostUsd['opencode-zen']).toBe(0)
+    expect(result.estimatedCostUsd['groq']).toBeUndefined()
+  })
 })
