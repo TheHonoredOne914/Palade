@@ -75,6 +75,19 @@ describe('FallbackProvider', () => {
     expect(fallback1.complete).not.toHaveBeenCalled()
   })
 
+  // --- Test 1.5: Primary succeeds repeatedly ---
+  it('primary provider succeeding on 10 consecutive calls should result in fallbackCount === 0', async () => {
+    const fp = new FallbackProvider(primary, [fallback1])
+
+    for (let i = 0; i < 10; i++) {
+      await fp.complete(dummyReq)
+    }
+
+    expect(fp.totalCount).toBe(10)
+    expect(fp.fallbackCount).toBe(0)
+    expect(fallback1.complete).not.toHaveBeenCalled()
+  })
+
   // --- Test 2: Primary fails with retryable error, fallback succeeds ---
   it('falls back when primary fails with a retryable error and increments fallbackCount', async () => {
     primary = mockProvider('primary', 'model-a', 'fail-retryable')
@@ -202,19 +215,7 @@ describe('FallbackProvider', () => {
     expect(res.provider).toBe('fallback1')
   })
 
-  it('round-robins the starting provider across successive calls', async () => {
-    const fp = new FallbackProvider(primary, [fallback1])
 
-    // Call 1: starts at index 0 (primary)
-    const res1 = await fp.complete(dummyReq)
-    expect(res1.content).toBe('response from primary')
-
-    // Call 2: starts at index 1 (fallback1), which is not primary → fallbackCount increments
-    const res2 = await fp.complete(dummyReq)
-    expect(res2.provider).toBe('fallback1')
-    expect(fp.fallbackCount).toBe(1)
-    expect(fp.totalCount).toBe(2)
-  })
 
   it('works with multiple fallbacks and skips failing ones', async () => {
     primary = mockProvider('primary', 'model-a', 'fail-retryable')

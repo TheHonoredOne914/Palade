@@ -97,7 +97,6 @@ let allProviders: Map<string, IProvider> = new Map()
 
 export class FallbackProvider implements IProvider {
   private chain: IProvider[]
-  private index = 0
   private _fallbackCount = 0
   private _totalCount = 0
   private deadProviders = new Set<string>()
@@ -123,9 +122,7 @@ export class FallbackProvider implements IProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    // Try each provider in round-robin, fall back on any error
-    const startIndex = this.index % this.chain.length
-    this.index++
+    // Try primary provider first, fall back on error
     this._totalCount++
 
     let lastError: Error | undefined
@@ -134,8 +131,7 @@ export class FallbackProvider implements IProvider {
     const attempts: { provider: string; finalError: string }[] = []
 
     for (let i = 0; i < this.chain.length; i++) {
-      const providerIdx = (startIndex + i) % this.chain.length
-      const provider = this.chain[providerIdx]
+      const provider = this.chain[i]
 
       if (this.deadProviders.has(provider.name)) {
         continue
