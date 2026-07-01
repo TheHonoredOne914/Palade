@@ -56,6 +56,7 @@ interface ReviewOptions {
   dryRun?: boolean
   economy?: boolean
   exhaustive?: boolean
+  strictTriage?: boolean
   noVerdict?: boolean
 }
 
@@ -250,7 +251,12 @@ export async function reviewCommand(
         onAgentStart: (name: AgentName): void => {
           progress?.agentStart(name)
         },
-        onAgentBatchComplete: (name: AgentName, current: number, total: number, findings: number): void => {
+        onAgentBatchComplete: (
+          name: AgentName,
+          current: number,
+          total: number,
+          findings: number
+        ): void => {
           progress?.agentBatchDone(name, current, total, findings)
         },
         onAgentComplete: (name: AgentName, findings: number, durationMs: number): void => {
@@ -274,6 +280,7 @@ export async function reviewCommand(
         customAgents: customAgentDefs,
         economyMode: opts.economy ?? config.swarm.economyMode,
         exhaustive: opts.exhaustive,
+        strictTriage: opts.strictTriage,
         noVerdict: opts.noVerdict,
         signal: opts.signal,
         specPath: config.swarm.specPath,

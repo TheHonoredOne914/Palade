@@ -71,7 +71,10 @@ export interface SwarmOptions {
   /**
    * Exhaustive mode: bypass the triage filter phase and review all files in the project.
    */
-  exhaustive?: boolean
+  /**
+   * Strict Triage mode: Throw an error if any file is dropped due to maxReviewTokens limit.
+   */
+  strictTriage?: boolean
   noVerdict?: boolean
   signal?: AbortSignal
   specPath?: string

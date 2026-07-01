@@ -26,7 +26,10 @@ export async function runSwarm(
   // Pass 1: Triage — reduce 400+ chunks to ~45 high-value chunks (unless exhaustive)
   const reviewChunks =
     manifests && !options.exhaustive
-      ? await triageFiles(manifests, allChunks, options.maxReviewTokens)
+      ? await triageFiles(manifests, allChunks, {
+          maxReviewTokens: options.maxReviewTokens,
+          strictTriage: options.strictTriage,
+        })
       : allChunks
 
   // Economy mode replaces the N parallel per-domain agents with a single
@@ -147,23 +150,30 @@ export async function runSwarm(
   }
 
   // Phase: Verdict Mode (Conflict Arbitration)
-  const projectRoot = manifests?.[0]?.absolutePath ? manifests[0].absolutePath.split('.palade')[0] : process.cwd()
+  const projectRoot = manifests?.[0]?.absolutePath
+    ? manifests[0].absolutePath.split('.palade')[0]
+    : process.cwd()
   let finalFindings = mergedFindings
-  
+
   if (!options.noVerdict) {
     const conflicts = detectConflicts(memory.getAll())
     for (const conflict of conflicts) {
-      options.onVerdictDetected?.(conflict.filePath, conflict.sideA.agentName, conflict.sideB.agentName)
-      
+      options.onVerdictDetected?.(
+        conflict.filePath,
+        conflict.sideA.agentName,
+        conflict.sideB.agentName
+      )
+
       const verdict = await arbitrateConflict(conflict, context, options.signal)
       if (verdict) {
         options.onVerdictDecided?.(verdict.decision, verdict.confidence)
-        
+
         // Save to ADR
         const slug = await saveDecision(projectRoot, conflict, verdict)
-        
+
         // Inject into findings for synthesis
         finalFindings.push({
+          id: crypto.randomUUID(),
           agentName: 'Architect',
           title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
           description: `Decision: ${verdict.decision}\\nTradeoff: ${verdict.tradeoff_accepted}\\nSaved as: ${slug}.md`,
@@ -171,7 +181,8 @@ export async function runSwarm(
           lineStart: conflict.lineStart,
           lineEnd: conflict.lineEnd,
           severity: 'info',
-          tags: ['architectural-decision']
+          tags: ['architectural-decision'],
+          scorePenalty: 0,
         })
       }
     }
@@ -182,25 +193,54 @@ export async function runSwarm(
     if (finding.agentName === 'Architect' && finding.title.startsWith('[VERDICT]')) {
       // Parse tradeoff out of description
       const lines = finding.description.split('\\n')
-      const decisionStr = lines.find(l => l.startsWith('Decision:'))?.replace('Decision:', '').trim() || ''
-      const tradeoffStr = lines.find(l => l.startsWith('Tradeoff:'))?.replace('Tradeoff:', '').trim() || ''
-      const confidenceStr = lines.find(l => l.startsWith('Confidence:'))?.replace('Confidence:', '').replace('%', '').trim() || '50'
-      const losingStr = lines.find(l => l.startsWith('Losing side:'))?.replace('Losing side:', '').trim() || 'Unknown'
+      const decisionStr =
+        lines
+          .find((l) => l.startsWith('Decision:'))
+          ?.replace('Decision:', '')
+          .trim() || ''
+      const tradeoffStr =
+        lines
+          .find((l) => l.startsWith('Tradeoff:'))
+          ?.replace('Tradeoff:', '')
+          .trim() || ''
+      const confidenceStr =
+        lines
+          .find((l) => l.startsWith('Confidence:'))
+          ?.replace('Confidence:', '')
+          .replace('%', '')
+          .trim() || '50'
+      const losingStr =
+        lines
+          .find((l) => l.startsWith('Losing side:'))
+          ?.replace('Losing side:', '')
+          .trim() || 'Unknown'
 
       // Save to disk if not already saved (hasn't been run through the arbitrateConflict loop above)
-      if (!lines.some(l => l.includes('Saved as:'))) {
+      if (!lines.some((l) => l.includes('Saved as:'))) {
         const fakeConflict = {
           filePath: finding.filePath || 'unknown',
           lineStart: finding.lineStart || 0,
           lineEnd: finding.lineEnd || 0,
-          sideA: { agentName: 'CombinedAgent(Lens A)', title: '', description: '', severity: 'info', tags: [] } as any,
-          sideB: { agentName: 'CombinedAgent(Lens B)', title: '', description: '', severity: 'info', tags: [] } as any,
+          sideA: {
+            agentName: 'CombinedAgent(Lens A)',
+            title: '',
+            description: '',
+            severity: 'info',
+            tags: [],
+          } as any,
+          sideB: {
+            agentName: 'CombinedAgent(Lens B)',
+            title: '',
+            description: '',
+            severity: 'info',
+            tags: [],
+          } as any,
         }
         const verdict = {
           decision: decisionStr,
           tradeoff_accepted: tradeoffStr,
           confidence: parseInt(confidenceStr, 10),
-          losing_side: losingStr
+          losing_side: losingStr,
         }
         const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
         finding.description += `\\nSaved as: ${slug}.md`

@@ -108,6 +108,7 @@ async function runClassicCLI(): Promise<void> {
       '-e, --exhaustive',
       'Exhaustive mode: skip triage and analyze the entire project (maximum issues)'
     )
+    .option('--strict-triage', 'Strict triage mode: halt if triage drops any files due to token limits')
     .option('--no-verdict', 'Disable Verdict Mode (no conflict resolution)')
     .action(async (pathArg: string | undefined, opts: Record<string, unknown>): Promise<void> => {
       try {
@@ -147,13 +148,19 @@ async function runClassicCLI(): Promise<void> {
     .command('decisions [action] [slug]')
     .description('Manage architecture decisions (Verdict Mode ADRs)')
     .option('--days <number>', 'Number of days for stale check', parseInt, 30)
-    .action(async (action: string | undefined, slug: string | undefined, opts: { days?: number }): Promise<void> => {
-      try {
-        await decisionsCommand(action, slug, opts)
-      } catch (err) {
-        handleFatalError(err)
+    .action(
+      async (
+        action: string | undefined,
+        slug: string | undefined,
+        opts: { days?: number }
+      ): Promise<void> => {
+        try {
+          await decisionsCommand(action, slug, opts)
+        } catch (err) {
+          handleFatalError(err)
+        }
       }
-    })
+    )
 
   program
     .command('score')

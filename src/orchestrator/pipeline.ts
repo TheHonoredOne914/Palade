@@ -133,7 +133,10 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   if (opts.dryRunConfig) {
     const reviewChunks =
       manifests && !opts.swarmOptions?.exhaustive
-        ? await triageFiles(manifests, activeChunks, opts.swarmOptions?.maxReviewTokens)
+        ? await triageFiles(manifests, activeChunks, {
+            maxReviewTokens: opts.swarmOptions?.maxReviewTokens,
+            strictTriage: opts.swarmOptions?.strictTriage,
+          })
         : activeChunks
 
     const estimate = estimateRunCost(reviewChunks, opts.dryRunConfig)

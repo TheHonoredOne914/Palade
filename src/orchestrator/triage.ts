@@ -1,5 +1,6 @@
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import { getProvider } from '../providers/router.js'
+import { CliExitError } from '../errors/types.js'
 import chalk from 'chalk'
 
 const DEFAULT_MAX_REVIEW_TOKENS = 200_000
@@ -23,9 +24,9 @@ function estimateTokens(chunks: CodeChunk[]): number {
 export async function triageFiles(
   manifests: FileManifest[],
   allChunks: CodeChunk[],
-  maxReviewTokens?: number
+  options?: { maxReviewTokens?: number; strictTriage?: boolean }
 ): Promise<CodeChunk[]> {
-  const budget = maxReviewTokens ?? DEFAULT_MAX_REVIEW_TOKENS
+  const budget = options?.maxReviewTokens ?? DEFAULT_MAX_REVIEW_TOKENS
   const totalTokens = estimateTokens(allChunks)
 
   if (totalTokens <= budget) {
@@ -38,8 +39,19 @@ export async function triageFiles(
   }
 
   console.log(
+    chalk.red(
+      `  [!] WARNING: Project token count (${totalTokens.toLocaleString()}) exceeds budget (${budget.toLocaleString()}). Some files will be silently dropped from the review.`
+    )
+  )
+
+  if (options?.strictTriage) {
+    console.log(chalk.red(`  [!] Strict triage is enabled. Halting review. Please narrow your scope using --include or increase token budget.`))
+    throw new CliExitError(1)
+  }
+
+  console.log(
     chalk.cyan(
-      `  [triage] Selecting high-value files from ${manifests.length} total (${totalTokens.toLocaleString()} tokens exceeds ${budget.toLocaleString()} token budget)...`
+      `  [triage] Selecting high-value files from ${manifests.length} total...`
     )
   )
 
