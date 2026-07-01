@@ -6,7 +6,7 @@ import type { AgentContext } from '../agents/base.js'
 import type { ScopeOptions, CodeChunk } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
 import { chunkFiles, estimateTokens } from '../ingestion/chunker.js'
-import { buildRagIndex, getRagContext } from '../ingestion/rag.js'
+import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
 import { buildAnnotationSummary } from '../ingestion/annotationParser.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
 import { estimateTotalTokens } from './scheduler.js'
@@ -99,14 +99,14 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     )
   }
 
-  // Build RAG Index over ALL chunks (even unannotated/unscoped) so we have a global knowledge base
-  const ragIndex = buildRagIndex(chunks)
+  // Build Keyword Index over ALL chunks (even unannotated/unscoped) so we have a global knowledge base
+  const keywordIndex = buildKeywordIndex(chunks)
 
-  // Inject RAG context into active chunks
+  // Inject KEYWORD context into active chunks
   for (const chunk of activeChunks) {
-    const ragContext = getRagContext(chunk, ragIndex)
-    if (ragContext) {
-      chunk.content = ragContext + chunk.content
+    const keywordContext = getKeywordContext(chunk, keywordIndex)
+    if (keywordContext) {
+      chunk.content = keywordContext + chunk.content
       chunk.tokenCount = estimateTokens(chunk.content)
     }
   }
@@ -149,13 +149,16 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       ])
     )
     console.log('\nEstimated Cost (USD):')
-    console.log(
-      kvTable([
-        ['Groq:', `$${estimate.estimatedCostUsd.groq.toFixed(2)}`],
-        ['OpenRouter:', `$${estimate.estimatedCostUsd.openrouter.toFixed(2)}`],
-        ['Cerebras:', `$${estimate.estimatedCostUsd.cerebras.toFixed(2)}`],
-      ])
-    )
+    
+    const costEntries = Object.entries(estimate.estimatedCostUsd)
+      .filter(([_, cost]) => cost !== null)
+      .map(([provider, cost]) => [provider + ':', `$${cost?.toFixed(2)}`])
+      
+    if (costEntries.length > 0) {
+      console.log(kvTable(costEntries as [string, string][]))
+    } else {
+      console.log('  No known pricing for configured providers.')
+    }
     console.log()
 
     throw new CliExitError(0)
