@@ -46,7 +46,7 @@ export async function askCheckbox(query: string, choices: string[]): Promise<str
     if (trimmed === 'none' || trimmed === '') return []
 
     const parts = trimmed.split(/\s+/)
-    const selected: string[] = []
+    const selectedIdx = new Set<number>()
     let valid = true
     for (const part of parts) {
       const num = parseInt(part, 10)
@@ -54,9 +54,9 @@ export async function askCheckbox(query: string, choices: string[]): Promise<str
         valid = false
         break
       }
-      selected.push(choices[num - 1])
+      selectedIdx.add(num - 1)
     }
-    if (valid) return selected
+    if (valid) return [...selectedIdx].map((i) => choices[i])
     console.log('Invalid selection.')
   }
 }

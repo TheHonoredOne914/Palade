@@ -2,20 +2,26 @@ import chalk from 'chalk'
 import { theme } from './theme.js'
 import type { AgentFinding } from '../agents/base.js'
 
+// Matches all SGR (color/style) escape sequences, including 256-color
+// (38;5;n) and truecolor (38;2;r;g;b) codes which contain semicolons.
+const ANSI_PATTERN = /\u001b\[[0-9;]*m/g
+
+export function visibleWidth(s: string): number {
+  return s.replace(ANSI_PATTERN, '').length
+}
+
 function drawBox(text: string, title?: string): string {
   const lines = text.split('\n')
-  const width = Math.max(
-    ...lines.map((l) => l.replace(/\u001b\[\d+m/g, '').length),
-    title ? title.length + 2 : 0
-  )
+  const titleWidth = title ? visibleWidth(title) : 0
+  const width = Math.max(...lines.map((l) => visibleWidth(l)), title ? titleWidth + 2 : 0)
 
   const top = title
-    ? `╭─ ${title} ${'─'.repeat(Math.max(0, width - title.length - 3))}╮`
+    ? `╭─ ${title} ${'─'.repeat(Math.max(0, width - titleWidth - 3))}╮`
     : `╭${'─'.repeat(width + 2)}╮`
 
   const middle = lines
     .map((l) => {
-      const visibleLength = l.replace(/\u001b\[\d+m/g, '').length
+      const visibleLength = visibleWidth(l)
       return `│ ${l}${' '.repeat(Math.max(0, width - visibleLength))} │`
     })
     .join('\n')
@@ -96,11 +102,20 @@ export function findingsTable(
 ): string {
   const lines: string[] = []
 
+  // Column widths, shared between the header, the separator, and the rows so
+  // the separator length always matches the actual visible column layout.
+  const SEV_W = 12
+  const AGENT_W = 20
+  const LOC_W = 30
+  const ISSUE_W = 38
+  // Three single-space gaps sit between the four columns.
+  const separatorWidth = SEV_W + AGENT_W + LOC_W + ISSUE_W + 3
+
   // Table Header
   lines.push(
-    `  ${theme.primaryBold('Severity'.padEnd(12))} ${theme.primaryBold('Agent'.padEnd(20))} ${theme.primaryBold('Location'.padEnd(30))} ${theme.primaryBold('Issue')}`
+    `  ${theme.primaryBold('Severity'.padEnd(SEV_W))} ${theme.primaryBold('Agent'.padEnd(AGENT_W))} ${theme.primaryBold('Location'.padEnd(LOC_W))} ${theme.primaryBold('Issue')}`
   )
-  lines.push(theme.dim('  ' + '─'.repeat(12 + 20 + 30 + 40 + 3)))
+  lines.push(theme.dim('  ' + '─'.repeat(separatorWidth)))
 
   for (const f of findings.slice(0, 30)) {
     const loc = f.filePath ? `${truncatePath(f.filePath, 20)}:${f.lineStart ?? '?'}` : '—'
@@ -109,9 +124,9 @@ export function findingsTable(
     // but we can just use template literals with fixed manual padding.
     // We'll pad the raw values, then apply color.
 
-    const sevRaw = f.severity.padEnd(12)
-    const agentRaw = f.agentName.padEnd(20)
-    const locRaw = loc.padEnd(30)
+    const sevRaw = f.severity.padEnd(SEV_W)
+    const agentRaw = f.agentName.padEnd(AGENT_W)
+    const locRaw = loc.padEnd(LOC_W)
 
     const coloredSev =
       f.severity === 'critical'
@@ -123,7 +138,7 @@ export function findingsTable(
             : theme.dim(sevRaw)
 
     lines.push(
-      `  ${coloredSev} ${theme.dim(agentRaw)} ${theme.dim(locRaw)} ${truncate(f.title, 38)}`
+      `  ${coloredSev} ${theme.dim(agentRaw)} ${theme.dim(locRaw)} ${truncate(f.title, ISSUE_W)}`
     )
   }
 
