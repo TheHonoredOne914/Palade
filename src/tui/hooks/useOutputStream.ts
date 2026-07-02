@@ -5,7 +5,9 @@ export function useOutputStream() {
   const idRef = useRef(0)
   const assignId = useCallback((line: OutputLine): OutputLine => {
     if (line.id === undefined) {
-      line.id = ++idRef.current
+      // Return a new object rather than mutating the caller's line in place, so
+      // we don't violate React's immutability expectations for state values.
+      return { ...line, id: ++idRef.current }
     }
     return line
   }, [])

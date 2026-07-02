@@ -25,6 +25,40 @@ export const PROVIDERS = [
 
 export type ProviderId = (typeof PROVIDERS)[number]['id']
 
+/** Emit a value as a safe single-quoted TypeScript string literal, escaping
+ * any character that could break out of the literal or corrupt the generated
+ * source (quotes, backslashes, newlines). JSON.stringify handles escaping for
+ * us; we then convert the double-quoted result to a single-quoted literal to
+ * match the surrounding config style. */
+export function toTsStringLiteral(value: string): string {
+  const jsonEscaped = JSON.stringify(value)
+  // Strip the surrounding double quotes, un-escape any JSON-escaped double
+  // quote (which does not need escaping inside single quotes), then escape
+  // single quotes, and wrap in single quotes.
+  const inner = jsonEscaped
+    .slice(1, -1)
+    .replace(/\\"/g, '"')
+    .replace(/'/g, "\\'")
+  return `'${inner}'`
+}
+
+/** Reverse the escaping applied by toTsStringLiteral for the common escapes
+ * that appear in an extracted string body. */
+function decodeTsStringBody(body: string): string {
+  return body.replace(/\\(['"\\nrt])/g, (_m, ch) => {
+    switch (ch) {
+      case 'n':
+        return '\n'
+      case 'r':
+        return '\r'
+      case 't':
+        return '\t'
+      default:
+        return ch
+    }
+  })
+}
+
 export async function readCurrentKeys(projectRoot: string): Promise<Record<string, string>> {
   const configPath = join(projectRoot, 'palade.config.ts')
   const result: Record<string, string> = {}
@@ -32,9 +66,13 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
   try {
     const content = await readFile(configPath, 'utf-8')
     for (const p of PROVIDERS) {
-      const re = new RegExp(`${p.id}[\\s\\S]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
+      // Match the string body allowing escaped quotes/backslashes inside, then
+      // decode the escapes so the returned value matches what was written.
+      const re = new RegExp(
+        `${p.id}[\\s\\S]{0,200}?apiKey:\\s*(['"])((?:\\\\.|(?!\\1).)*)\\1`
+      )
       const m = content.match(re)
-      if (m) result[p.id] = m[1]
+      if (m) result[p.id] = decodeTsStringBody(m[2])
     }
   } catch {
     /* ignore */
@@ -59,12 +97,18 @@ async function saveApiKey(
   }
 
   const prov = PROVIDERS.find((p) => p.id === providerId)!
-  const updateRe = new RegExp(`(${providerId}[\\s\\S]{0,200}?apiKey:\\s*)(['"])([^'"]*)(\\2)`)
+  const keyLiteral = toTsStringLiteral(apiKey)
+  // Replace the whole apiKey value (quotes included) with a freshly-escaped
+  // literal. Use a replacer function so characters like `$` in the key are not
+  // interpreted as replacement-pattern references.
+  const updateRe = new RegExp(
+    `(${providerId}[\\s\\S]{0,200}?apiKey:\\s*)(['"])(?:\\\\.|(?!\\2).)*\\2`
+  )
   if (updateRe.test(content)) {
-    content = content.replace(updateRe, `$1$2${apiKey}$4`)
+    content = content.replace(updateRe, (_full, prefix: string) => `${prefix}${keyLiteral}`)
   } else {
-    const provBlock = `    '${providerId}': {\n      apiKey: '${apiKey}',\n      model: '${prov.model}'\n    },\n`
-    content = content.replace(/(providers\s*:\s*\{)/, `$1\n${provBlock}`)
+    const provBlock = `    '${providerId}': {\n      apiKey: ${keyLiteral},\n      model: ${toTsStringLiteral(prov.model)}\n    },\n`
+    content = content.replace(/(providers\s*:\s*\{)/, (_full, prefix: string) => `${prefix}\n${provBlock}`)
   }
 
   await writeFile(configPath, content, 'utf-8')

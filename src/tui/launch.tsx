@@ -58,5 +58,13 @@ export async function launchTUI(): Promise<void> {
     }
   )
 
-  await waitUntilExit()
+  try {
+    await waitUntilExit()
+  } catch (err: unknown) {
+    // Ink rejects waitUntilExit() if rendering throws. Surface a readable
+    // message instead of crashing with an unhandled rejection.
+    const message = err instanceof Error ? err.message : String(err)
+    process.stderr.write(`\nPalade TUI exited unexpectedly: ${message}\n`)
+    process.exitCode = 1
+  }
 }

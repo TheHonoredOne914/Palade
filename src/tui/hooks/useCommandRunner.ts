@@ -81,19 +81,34 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
       }
 
       function flag(name: string): string | undefined {
-        const idx = rest.indexOf(`--${name}`)
-        if (idx === -1) return undefined
-        const next = rest[idx + 1]
-        // If next arg is another flag or doesn't exist, flag has no value
-        if (!next || next.startsWith('--')) return undefined
-        return next
+        for (let i = 0; i < rest.length; i++) {
+          const tok = rest[i]
+          // Support `--name=value`
+          if (tok.startsWith(`--${name}=`)) {
+            return tok.slice(`--${name}=`.length)
+          }
+          // Support `--name value`
+          if (tok === `--${name}`) {
+            const next = rest[i + 1]
+            // If next arg is another flag or doesn't exist, flag has no value
+            if (!next || next.startsWith('--')) return undefined
+            return next
+          }
+        }
+        return undefined
       }
       function hasFlag(name: string): boolean {
-        return rest.includes(`--${name}`)
+        return rest.some((tok) => tok === `--${name}` || tok.startsWith(`--${name}=`))
       }
-      const positional = rest.filter(
-        (r, i) => !r.startsWith('--') && (i === 0 || !rest[i - 1]?.startsWith('--'))
-      )
+      // Positional args are tokens that are neither a flag (`--x` / `--x=y`) nor
+      // the value consumed by a preceding value-taking flag (`--x value`).
+      const positional = rest.filter((tok, i) => {
+        if (tok.startsWith('--')) return false
+        const prev = rest[i - 1]
+        // Previous `--name` (without `=`) consumes this token as its value.
+        if (prev && prev.startsWith('--') && !prev.includes('=')) return false
+        return true
+      })
 
       opts.setStatus('running')
 
