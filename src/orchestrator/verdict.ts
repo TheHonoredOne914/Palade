@@ -220,9 +220,9 @@ export async function checkDecisionDrift(
     if (cf.diff && cf.status !== 'deleted') {
       const lines: number[] = []
       let headLine = 0
-      for (const line of cf.diff.split('\\n')) {
+      for (const line of cf.diff.split('\n')) {
         if (line.startsWith('@@')) {
-          const match = line.match(/\\+(\\d+)/)
+          const match = line.match(/\+(\d+)/)
           if (match) headLine = parseInt(match[1], 10)
           continue
         }
@@ -243,7 +243,7 @@ export async function checkDecisionDrift(
 
   for (const file of mdFiles) {
     const content = await readFile(join(dir, file), 'utf-8')
-    const match = content.match(/\\*\\*File:\\*\\*\\s+(.+):(\\d+)-(\\d+)/)
+    const match = content.match(/\*\*File:\*\*\s+(.+):(\d+)-(\d+)/)
     if (!match) continue
 
     const decisionPath = match[1]

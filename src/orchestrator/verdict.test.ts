@@ -1,6 +1,24 @@
-import { describe, it, expect } from 'vitest'
-import { detectConflicts } from './verdict.js'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mkdtemp, rm, readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+// Capture prompts sent to the router so tests can assert the drift check ran.
+const completeMock = vi.fn(async () => 'NO')
+
+vi.mock('../providers/router.js', () => ({
+  getRouter: () => ({ complete: completeMock }),
+}))
+
+import {
+  detectConflicts,
+  saveDecision,
+  checkDecisionDrift,
+  type Conflict,
+  type Verdict,
+} from './verdict.js'
 import type { AgentFinding } from '../agents/base.js'
+import type { ChangedFile } from '../diff/types.js'
 
 describe('Conflict Detector', () => {
   it('detects a conflict when agents disagree on the same lines with opposite valences', () => {
@@ -144,5 +162,123 @@ describe('Conflict Detector', () => {
 
     const conflicts = detectConflicts(findings)
     expect(conflicts.length).toBe(1)
+  })
+})
+
+// Regression tests for the decision-drift parsing bugs: previously the diff was
+// split on the literal string '\\n' and the hunk / **File:** regexes were
+// double-escaped, so drift was never detected. These feed real multi-line
+// strings and assert the added-line map and **File:** line are parsed.
+describe('Decision Drift', () => {
+  const conflict: Conflict = {
+    filePath: 'src/auth.ts',
+    lineStart: 10,
+    lineEnd: 12,
+    sideA: {
+      id: 'a',
+      agentName: 'Security',
+      severity: 'high',
+      title: 'harden it',
+      description: 'add validation',
+      tags: [],
+      scorePenalty: 0,
+    },
+    sideB: {
+      id: 'b',
+      agentName: 'Performance',
+      severity: 'medium',
+      title: 'relax it',
+      description: 'remove validation',
+      tags: [],
+      scorePenalty: 0,
+    },
+  }
+
+  const verdict: Verdict = {
+    decision: 'Keep the validation.',
+    tradeoff_accepted: 'Slightly slower.',
+    confidence: 90,
+    losing_side: 'Performance',
+  }
+
+  let projectRoot: string
+
+  beforeEach(async () => {
+    completeMock.mockClear()
+    completeMock.mockResolvedValue('NO')
+    projectRoot = await mkdtemp(join(tmpdir(), 'palade-verdict-'))
+  })
+
+  afterEach(async () => {
+    await rm(projectRoot, { recursive: true, force: true })
+  })
+
+  it('saveDecision writes a **File:** line that checkDecisionDrift parses, and detects overlap', async () => {
+    await saveDecision(projectRoot, conflict, verdict)
+
+    const dir = join(projectRoot, '.palade', 'decisions')
+    const files = await readdir(dir)
+    expect(files).toHaveLength(1)
+
+    // Added line lands at HEAD line 11 (context line 10, then +) which overlaps
+    // the decision range 10-12. With the pre-fix double-escaped regexes the
+    // **File:** line would not parse and the diff would not split, so no overlap
+    // would be found and the router would never be consulted.
+    const changed: ChangedFile[] = [
+      {
+        path: 'src/auth.ts',
+        status: 'modified',
+        additions: 1,
+        deletions: 0,
+        diff: [
+          '--- a/src/auth.ts',
+          '+++ b/src/auth.ts',
+          '@@ -10,2 +10,3 @@',
+          ' const a = 1',
+          '+const b = 2',
+          ' const c = 3',
+        ].join('\n'),
+      },
+    ]
+
+    await checkDecisionDrift(projectRoot, changed)
+    expect(completeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('emits a warning when the drift check returns YES', async () => {
+    completeMock.mockResolvedValue('YES')
+    await saveDecision(projectRoot, conflict, verdict)
+
+    const changed: ChangedFile[] = [
+      {
+        path: 'src/auth.ts',
+        status: 'modified',
+        additions: 1,
+        deletions: 0,
+        diff: '@@ -10,1 +10,2 @@\n const a = 1\n+const b = 2',
+      },
+    ]
+
+    const warnings = await checkDecisionDrift(projectRoot, changed)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('documented decision')
+  })
+
+  it('does not invoke the drift check when added lines fall outside the decision range', async () => {
+    await saveDecision(projectRoot, conflict, verdict)
+
+    const changed: ChangedFile[] = [
+      {
+        path: 'src/auth.ts',
+        status: 'modified',
+        additions: 1,
+        deletions: 0,
+        diff: '@@ -100,1 +100,2 @@\n const a = 1\n+const b = 2',
+      },
+    ]
+
+    const warnings = await checkDecisionDrift(projectRoot, changed)
+    expect(completeMock).not.toHaveBeenCalled()
+    expect(warnings).toHaveLength(0)
   })
 })
