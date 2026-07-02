@@ -73,7 +73,9 @@ export class OpenCodeZenProvider implements IProvider {
       }
 
       if (attempt >= OpenCodeZenProvider.MAX_429_RETRIES) {
-        this.dailyLimitExhausted = true
+        // A transient rate-limit that is not a daily/per-day cap must not poison
+        // the provider for the rest of the process. Throw a retryable error and
+        // leave `dailyLimitExhausted` untouched so a later call can succeed.
         throw new Error(`OpenCode Zen rate limited — 429 retries exhausted`)
       }
 

@@ -28,8 +28,13 @@ export async function withExponentialBackoff<T>(
       }
 
       attempt++
-      const jitter = Math.random() * 500
-      const delay = Math.min(baseDelayMs * Math.pow(2, attempt) + jitter, maxDelayMs)
+      // Cap the exponential base first, then add jitter within the remaining
+      // headroom below the cap. This keeps the total delay strictly <= maxDelayMs
+      // (the old form added jitter before the cap, so at the cap the jitter was
+      // silently truncated and every retry hit exactly maxDelayMs).
+      const cappedBase = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs)
+      const jitter = Math.random() * Math.min(500, maxDelayMs - cappedBase)
+      const delay = cappedBase + jitter
 
       console.warn(
         `[backoff] attempt ${attempt}/${maxRetries} after ${Math.round(delay)}ms — ${error.message}`
