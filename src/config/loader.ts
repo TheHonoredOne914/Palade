@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, isAbsolute } from 'node:path'
 import { config as dotenvConfig } from 'dotenv'
 import { pathToFileURL } from 'node:url'
 import { PaladeConfigSchema, type PaladeConfig } from './schema.js'
@@ -100,29 +100,32 @@ function formatZodError(error: z.ZodError): string {
 export async function loadConfig(): Promise<PaladeConfig> {
   let raw: Record<string, unknown> | undefined
 
+  let configPath = join(process.cwd(), '.palade', 'palade.config.ts')
+  if (!existsSync(configPath)) {
+    const fallbackPath = join(process.cwd(), 'palade.config.ts')
+    if (existsSync(fallbackPath)) {
+      configPath = fallbackPath
+    }
+  }
+
+  // Validate --config outside the try/catch so validation errors propagate to
+  // the caller instead of being swallowed by the module-load error handler.
+  const configArgIdx = process.argv.indexOf('--config')
+  if (configArgIdx !== -1 && process.argv.length > configArgIdx + 1) {
+    const rawPath = process.argv[configArgIdx + 1]
+    if (!rawPath.endsWith('.ts')) {
+      throw new PaladeConfigError('Config file must be a .ts file', '--config')
+    }
+
+    const absolutePath = join(process.cwd(), rawPath)
+    const rel = relative(process.cwd(), absolutePath)
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+      throw new PaladeConfigError('Config file must be within the working directory', '--config')
+    }
+    configPath = absolutePath
+  }
+
   try {
-    let configPath = join(process.cwd(), '.palade', 'palade.config.ts')
-    if (!existsSync(configPath)) {
-      const fallbackPath = join(process.cwd(), 'palade.config.ts')
-      if (existsSync(fallbackPath)) {
-        configPath = fallbackPath
-      }
-    }
-
-    const configArgIdx = process.argv.indexOf('--config')
-    if (configArgIdx !== -1 && process.argv.length > configArgIdx + 1) {
-      const rawPath = process.argv[configArgIdx + 1]
-      if (!rawPath.endsWith('.ts')) {
-        throw new PaladeConfigError('Config file must be a .ts file', '--config')
-      }
-
-      const absolutePath = join(process.cwd(), rawPath)
-      if (!absolutePath.startsWith(process.cwd())) {
-        throw new PaladeConfigError('Config file must be within the working directory', '--config')
-      }
-      configPath = absolutePath
-    }
-
     const fileUrl = pathToFileURL(configPath).href
     // Dynamic import with invalidation via import specifier — Node's ESM
     // loader ignores query strings for file:// URLs on most platforms, so we
