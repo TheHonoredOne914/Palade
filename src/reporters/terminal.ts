@@ -14,9 +14,12 @@ const SEVERITY_COLORS: Record<Severity, (text: string) => string> = {
   info: chalk.gray,
 }
 
+// Color bands must align with getScoreGrade's tiers below — a B (70+) grade
+// rendered in cautionary yellow would have the two indicators disagreeing
+// about the same number.
 function getScoreColor(score: number): (text: string) => string {
   if (score >= 90) return chalk.green.bold
-  if (score >= 75) return chalk.green
+  if (score >= 70) return chalk.green
   if (score >= 60) return chalk.yellow
   if (score >= 40) return chalk.red
   return chalk.red.bold
@@ -150,17 +153,18 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
 
   lines.push(chalk.bold.underline('Debt Estimate:'))
   const debt = ctx.synthesis.debtEstimate
-  const debtCounts = { critical: 0, high: 0, medium: 0, low: 0, total: 0 }
+  const debtCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 }
   for (const f of ctx.findings) {
     if (f.severity === 'critical') debtCounts.critical++
     if (f.severity === 'high') debtCounts.high++
     if (f.severity === 'medium') debtCounts.medium++
     if (f.severity === 'low') debtCounts.low++
+    if (f.severity === 'info') debtCounts.info++
     debtCounts.total++
   }
 
   lines.push(
-    `  Critical: ${chalk.red(debtCounts.critical.toString())} | High: ${chalk.yellow(debtCounts.high.toString())} | Medium: ${chalk.blue(debtCounts.medium.toString())} | Low: ${chalk.gray(debtCounts.low.toString())}`
+    `  Critical: ${chalk.red(debtCounts.critical.toString())} | High: ${chalk.yellow(debtCounts.high.toString())} | Medium: ${chalk.blue(debtCounts.medium.toString())} | Low: ${chalk.gray(debtCounts.low.toString())} | Info: ${chalk.gray(debtCounts.info.toString())}`
   )
   lines.push(`  Total: ${chalk.bold(debtCounts.total.toString())} findings`)
   if (debt.highestROIFix) {

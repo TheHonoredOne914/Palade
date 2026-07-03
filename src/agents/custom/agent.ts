@@ -38,7 +38,7 @@ export class CustomAgent implements IAgent {
   ): Promise<AgentFinding[]> {
     try {
       const provider = getProvider('primary')
-      const systemPrompt = buildSystemPrompt(this.systemPrompt, context)
+      const systemPrompt = buildSystemPrompt(this.systemPrompt, context, context.modeConfig)
       const userPrompt = buildChunkContext(chunks)
       const response = await provider.complete({
         systemPrompt,

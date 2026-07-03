@@ -68,8 +68,11 @@ export class OpenRouterProvider implements IProvider {
         const waitMs = Math.max(resetMs - Date.now(), 1000)
 
         if (waitMs > 60_000) {
-          this.dailyLimitExhausted = true
-          throw new Error(`OpenRouter rate limit — reset in ${Math.ceil(waitMs / 3600_000)}h`)
+          // A long reset window is not proof of a daily quota (that case is
+          // handled by the 'per-day' message branch above) — don't permanently
+          // disable the provider, just surface a retryable rate-limit error so
+          // the fallback chain moves on.
+          throw new Error(`OpenRouter rate limited — reset in ${Math.ceil(waitMs / 60_000)}m`)
         }
 
         console.warn(

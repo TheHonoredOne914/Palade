@@ -130,16 +130,18 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
     }
   }
 
-  // Fix common LLM JSON errors (trailing commas)
-  cleaned = cleaned.replace(/,\s*([\]}])/g, '$1')
-
   let parsed: unknown
   try {
     parsed = JSON.parse(cleaned)
-  } catch (err) {
-    console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
-    // Dump a snippet of what failed to a debug file or console if needed
-    return []
+  } catch {
+    // Repair fallback only: stripping trailing commas on ALREADY-valid JSON
+    // can corrupt string values that legitimately contain ", ]" or ", }".
+    try {
+      parsed = JSON.parse(cleaned.replace(/,\s*([\]}])/g, '$1'))
+    } catch {
+      console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
+      return []
+    }
   }
 
   if (!Array.isArray(parsed)) {
@@ -210,6 +212,7 @@ export function buildSystemPrompt(
   }
   if (context.annotations?.focusRequests.length) {
     const focuses = context.annotations.focusRequests
+      .slice(0, 10)
       .map((f) => `  - ${f.filePath}:${f.line} → focus: ${f.domain}`)
       .join('\n')
     prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}`

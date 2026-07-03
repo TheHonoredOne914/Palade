@@ -100,11 +100,18 @@ export async function triageFiles(
           .trim()
           .replace(/^\.?\/+/, '')
           .replace(/\/+$/, '')
-        const matching = allChunks.filter((c) => {
-          const cp = c.filePath.replace(/^\.?\/+/, '')
-          if (cp === clean || cp.endsWith('/' + clean)) return true
-          return false
-        })
+        // Exact path match first. Fall back to a suffix match only when it
+        // identifies a SINGLE file — an ambiguous suffix (e.g. `utils/helper.ts`
+        // matching two different directories) would pull unranked files into
+        // the budget.
+        let matching = allChunks.filter((c) => c.filePath.replace(/^\.?\/+/, '') === clean)
+        if (matching.length === 0) {
+          const suffixMatches = allChunks.filter((c) =>
+            c.filePath.replace(/^\.?\/+/, '').endsWith('/' + clean)
+          )
+          const distinctFiles = new Set(suffixMatches.map((c) => c.filePath))
+          if (distinctFiles.size === 1) matching = suffixMatches
+        }
         for (const chunk of matching) {
           if (seenChunkIds.has(chunk.id)) continue
           if (tokensUsed + chunk.tokenCount > budget) break

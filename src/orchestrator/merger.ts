@@ -38,8 +38,13 @@ function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
       if (a.lineStart === b.lineStart) {
         if (jaccardSimilarity(a.title, b.title) > 0.4) return true
       }
-      if (a.agentName === b.agentName && Math.abs(a.lineStart - b.lineStart) <= 5) {
-        return true
+      // Same agent, nearby lines: only merge when the titles actually describe
+      // the same issue — proximity alone collapses unrelated findings and loses
+      // one of them. The 60-line window (not 5) covers duplicates produced by
+      // the chunk splitter, whose halves overlap by up to 50 lines
+      // (scheduler.ts), so the same defect can be reported from both halves.
+      if (a.agentName === b.agentName && Math.abs(a.lineStart - b.lineStart) <= 60) {
+        if (jaccardSimilarity(a.title, b.title) > 0.5) return true
       }
     }
   }

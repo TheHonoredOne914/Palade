@@ -65,7 +65,7 @@ export async function decisionsCommand(
     const content = await readFile(filepath, 'utf-8')
     console.log('\n' + content)
   } else if (act === 'stale') {
-    const days = opts.days || 30
+    const days = opts.days ?? 30
     const files = await readdir(dir)
     const mdFiles = files.filter((f) => f.endsWith('.md'))
     const now = Date.now()

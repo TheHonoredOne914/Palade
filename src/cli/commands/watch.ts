@@ -47,7 +47,9 @@ export async function watchCommand(opts: {
   }
   console.log()
 
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  // Debounce per file — a single shared timer would let a change to file B
+  // cancel file A's pending enqueue, silently dropping A from the scan queue.
+  const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
   let isProcessing = false
   const accumulatedFindings = new Map<string, AgentFinding[]>()
   let sweepQueue: string[] = []
@@ -252,22 +254,27 @@ export async function watchCommand(opts: {
   })
 
   watcher.on('change', (path: string) => {
-    if (debounceTimer) clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => {
-      // chokidar emits OS-native separators (backslash on Windows). walkProject
-      // produces forward-slash paths, so normalise before passing as scope.
-      const normalizedPath = path.split('\\').join('/')
+    const existing = debounceTimers.get(path)
+    if (existing) clearTimeout(existing)
+    debounceTimers.set(
+      path,
+      setTimeout(() => {
+        debounceTimers.delete(path)
+        // chokidar emits OS-native separators (backslash on Windows). walkProject
+        // produces forward-slash paths, so normalise before passing as scope.
+        const normalizedPath = path.split('\\').join('/')
 
-      if (!urgentQueue.includes(normalizedPath)) {
-        urgentQueue.push(normalizedPath)
-      }
+        if (!urgentQueue.includes(normalizedPath)) {
+          urgentQueue.push(normalizedPath)
+        }
 
-      if (currentSweepController) {
-        currentSweepController.abort()
-      }
+        if (currentSweepController) {
+          currentSweepController.abort()
+        }
 
-      void processNext()
-    }, debounceMs)
+        void processNext()
+      }, debounceMs)
+    )
   })
 
   process.on('exit', () => {
@@ -275,7 +282,8 @@ export async function watchCommand(opts: {
   })
 
   process.on('SIGINT', () => {
-    if (debounceTimer) clearTimeout(debounceTimer)
+    for (const timer of debounceTimers.values()) clearTimeout(timer)
+    debounceTimers.clear()
     if (loopTimer) clearTimeout(loopTimer)
     watcher.close()
     console.log(theme.dim('\n  Watcher stopped.'))

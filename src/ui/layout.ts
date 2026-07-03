@@ -2,22 +2,25 @@ import chalk from 'chalk'
 import { theme } from './theme.js'
 import type { AgentFinding } from '../agents/base.js'
 
+// Match full SGR escape sequences, including multi-parameter truecolor codes
+// like \x1b[38;2;R;G;Bm that chalk.hex() (used throughout theme.ts) emits.
+const ANSI_RE = /\u001b\[[0-9;]*m/g
+
+function visibleLen(s: string): number {
+  return s.replace(ANSI_RE, '').length
+}
+
 function drawBox(text: string, title?: string): string {
   const lines = text.split('\n')
-  const width = Math.max(
-    ...lines.map((l) => l.replace(/\u001b\[\d+m/g, '').length),
-    title ? title.length + 2 : 0
-  )
+  const titleLen = title ? visibleLen(title) : 0
+  const width = Math.max(...lines.map(visibleLen), title ? titleLen + 2 : 0)
 
   const top = title
-    ? `╭─ ${title} ${'─'.repeat(Math.max(0, width - title.length - 3))}╮`
+    ? `╭─ ${title} ${'─'.repeat(Math.max(0, width - titleLen - 3))}╮`
     : `╭${'─'.repeat(width + 2)}╮`
 
   const middle = lines
-    .map((l) => {
-      const visibleLength = l.replace(/\u001b\[\d+m/g, '').length
-      return `│ ${l}${' '.repeat(Math.max(0, width - visibleLength))} │`
-    })
+    .map((l) => `│ ${l}${' '.repeat(Math.max(0, width - visibleLen(l)))} │`)
     .join('\n')
 
   const bottom = `╰${'─'.repeat(width + 2)}╯`

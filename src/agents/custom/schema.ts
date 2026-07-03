@@ -8,6 +8,8 @@ const BUILTIN_NAMES = [
   'maintainability',
   'deadCode',
   'testIntelligence',
+  'pragmatism',
+  'logic',
 ] as const
 
 export const CustomAgentDefinitionSchema = z.object({
