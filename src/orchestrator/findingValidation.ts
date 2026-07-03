@@ -3,7 +3,10 @@ import type { AgentFinding } from '../agents/base.js'
 import type { CodeChunk } from '../ingestion/types.js'
 
 function normalizePath(path: string): string {
-  return path.trim().replace(/^\.?\/+/, '').replace(/\\/g, '/')
+  return path
+    .trim()
+    .replace(/^\.?\/+/, '')
+    .replace(/\\/g, '/')
 }
 
 function lineIsInsideChunk(finding: AgentFinding, chunk: CodeChunk): boolean {

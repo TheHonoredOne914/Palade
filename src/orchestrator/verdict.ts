@@ -255,7 +255,7 @@ export async function checkDecisionDrift(
           if (match) headLine = parseInt(match[1], 10)
           continue
         }
-        if (line.startsWith('+++') || line.startsWith('---')) continue
+        if (line.startsWith('+++ ') || line.startsWith('--- ')) continue
         if (line.startsWith('+')) {
           lines.push(headLine)
           headLine++

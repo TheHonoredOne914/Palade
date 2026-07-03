@@ -1,5 +1,5 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { fetchWithRetry } from './base.js'
+import { fetchWithRetry, sleep } from './base.js'
 import chalk from 'chalk'
 
 const AVAILABILITY_CACHE_MS = 60_000
@@ -29,19 +29,23 @@ export class OpenCodeZenProvider implements IProvider {
     // tokens and slow down the request.
     const maxTokens = req.maxTokens ?? 16384
 
-    return this.doComplete(req, maxTokens, 0)
+    // One deadline for the whole logical call: internal 429/500/empty-content
+    // retries share it, so the 3-min ceiling holds across attempts instead of
+    // resetting per attempt.
+    return this.doComplete(req, maxTokens, 0, Date.now() + 180_000)
   }
 
   private async doComplete(
     req: CompletionRequest,
     maxTokens: number,
-    attempt: number
+    attempt: number,
+    deadline: number
   ): Promise<CompletionResponse> {
     const start = Date.now()
     // Combine the caller's cancellation signal with this provider's own 3-min
     // hard ceiling so a swarm-level abort cancels the in-flight request without
     // losing the provider timeout.
-    const timeoutSignal = AbortSignal.timeout(180_000)
+    const timeoutSignal = AbortSignal.timeout(Math.max(deadline - Date.now(), 1))
     const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
 
     const res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
@@ -86,14 +90,14 @@ export class OpenCodeZenProvider implements IProvider {
           `  OpenCode Zen rate limited. Waiting 60s... (${attempt + 1}/${OpenCodeZenProvider.MAX_429_RETRIES})`
         )
       )
-      await new Promise((r) => setTimeout(r, 60_000))
-      return this.doComplete(req, maxTokens, attempt + 1)
+      await sleep(60_000, req.signal)
+      return this.doComplete(req, maxTokens, attempt + 1, deadline)
     }
 
     if (res.status >= 500 && attempt < 2) {
       console.warn(chalk.yellow(`  OpenCode Zen ${res.status} — retrying in 5s...`))
-      await new Promise((r) => setTimeout(r, 5_000))
-      return this.doComplete(req, maxTokens, attempt + 1)
+      await sleep(5_000, req.signal)
+      return this.doComplete(req, maxTokens, attempt + 1, deadline)
     }
 
     if (!res.ok) {
@@ -114,7 +118,7 @@ export class OpenCodeZenProvider implements IProvider {
     if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
       const newMax = Math.min(maxTokens * 2, 32768)
 
-      return this.doComplete(req, newMax, attempt + 1)
+      return this.doComplete(req, newMax, attempt + 1, deadline)
     }
 
     return {

@@ -63,7 +63,11 @@ function next() {
       // using .java to force bracket chunker
       const manifest = await createTmpFile('strings.java', code, dir)
       const chunks = await chunkFiles([manifest])
-      expect(chunks.some((c) => c.content.includes('function greet') && c.content.includes('function next'))).toBe(false)
+      expect(
+        chunks.some(
+          (c) => c.content.includes('function greet') && c.content.includes('function next')
+        )
+      ).toBe(false)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

@@ -99,16 +99,20 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   // Build Keyword Index over ALL chunks (even unannotated/unscoped) so we have a global knowledge base
   const keywordIndex = buildKeywordIndex(chunks)
 
-  // Inject KEYWORD context into active chunks
-  for (const chunk of activeChunks) {
-    const retrievedContext = buildRetrievedContext(chunk, chunks)
-    const keywordContext = getKeywordContext(chunk, keywordIndex)
-    const contextPrefix = retrievedContext + keywordContext
+  // Inject KEYWORD context into active chunks. Compute every prefix against the
+  // pristine chunk corpus BEFORE mutating any chunk.content — otherwise an
+  // earlier chunk's injected foreign-code block would leak into the retrieved
+  // context of later chunks, making the result order-dependent.
+  const contextPrefixes = activeChunks.map(
+    (chunk) => buildRetrievedContext(chunk, chunks) + getKeywordContext(chunk, keywordIndex)
+  )
+  activeChunks.forEach((chunk, i) => {
+    const contextPrefix = contextPrefixes[i]
     if (contextPrefix) {
       chunk.content = contextPrefix + chunk.content
       chunk.tokenCount = estimateTokens(chunk.content)
     }
-  }
+  })
 
   const context = { ...opts.context }
   context.annotations = annotationSummary

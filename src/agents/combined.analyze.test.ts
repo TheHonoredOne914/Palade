@@ -21,9 +21,9 @@ describe('CombinedAnalyzer.analyze', () => {
   it('calls provider and extracts multi-domain findings correctly', async () => {
     mockProvider.complete.mockResolvedValue({
       content: JSON.stringify([
-          { severity: 'high', title: 'SecTest', agentName: 'security', description: 'desc' },
-          { severity: 'medium', title: 'ArchTest', agentName: 'architecture', description: 'desc' },
-        ]),
+        { severity: 'high', title: 'SecTest', agentName: 'security', description: 'desc' },
+        { severity: 'medium', title: 'ArchTest', agentName: 'architecture', description: 'desc' },
+      ]),
       provider: 'mock-provider',
       model: 'mock-model-v2',
       inputTokens: 10,

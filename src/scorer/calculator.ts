@@ -54,8 +54,9 @@ export function calculateCategoryScore(
     if (f.agentName === agentName) {
       let fPenalty = penaltyFor(f)
       if (agentName === 'maintainability' && typeof f.complexity === 'number') {
-         if (f.complexity < 5) fPenalty *= 0.5 // simple function, minor maintainability issue
-         else if (f.complexity > 20) fPenalty *= 1.5 // complex function, major maintainability issue
+        if (f.complexity < 5)
+          fPenalty *= 0.5 // simple function, minor maintainability issue
+        else if (f.complexity > 20) fPenalty *= 1.5 // complex function, major maintainability issue
       }
       penalty += fPenalty
     }

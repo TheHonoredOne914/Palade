@@ -3,6 +3,10 @@ import type { OutputLine } from '../components/OutputPane.js'
 
 export function useOutputStream() {
   const idRef = useRef(0)
+  // Bumped by clearOutput to force Ink's <Static> to remount. Static commits
+  // output permanently and only advances its render cursor when items.length
+  // grows, so a remount is the only way a clear can re-render from scratch.
+  const [clearNonce, setClearNonce] = useState(0)
   const assignId = useCallback((line: OutputLine): OutputLine => {
     if (line.id === undefined) {
       line.id = ++idRef.current
@@ -28,9 +32,12 @@ export function useOutputStream() {
     ).map((l) => assignId(l))
   )
 
+  // NOTE: lines must stay append-only (no front truncation). Ink's <Static>
+  // only renders new items when items.length increases; capping the length
+  // would freeze its render cursor and permanently stop new output.
   const appendLine = useCallback(
     (line: OutputLine) => {
-      setLines((prev) => [...prev, assignId(line)].slice(-500))
+      setLines((prev) => [...prev, assignId(line)])
     },
     [assignId]
   )
@@ -38,7 +45,7 @@ export function useOutputStream() {
   const appendLines = useCallback(
     (newLines: OutputLine[]) => {
       const withIds = newLines.map((l) => assignId(l))
-      setLines((prev) => [...prev, ...withIds].slice(-500))
+      setLines((prev) => [...prev, ...withIds])
     },
     [assignId]
   )
@@ -46,7 +53,8 @@ export function useOutputStream() {
   const clearOutput = useCallback(() => {
     const cleared: OutputLine = { type: 'dim', text: '  Output cleared.' }
     setLines([assignId(cleared)])
+    setClearNonce((n) => n + 1)
   }, [assignId])
 
-  return { lines, appendLine, appendLines, clearOutput }
+  return { lines, appendLine, appendLines, clearOutput, clearNonce }
 }

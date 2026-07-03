@@ -144,7 +144,9 @@ export function appendTargetToFile(projectRoot: string, target: TargetDefinition
       .replace(/\n/g, '\\n')
       .replace(/\r/g, '\\r')
       .replace(/\t/g, '\\t')
-  const entryStr = Array.isArray(target.entry) ? JSON.stringify(target.entry) : `'${esc(target.entry)}'`
+  const entryStr = Array.isArray(target.entry)
+    ? JSON.stringify(target.entry)
+    : `'${esc(target.entry)}'`
   const lines: string[] = []
   lines.push(`{`)
   lines.push(`  name: '${esc(target.name)}',`)

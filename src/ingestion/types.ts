@@ -1,4 +1,19 @@
-export type Language = 'typescript' | 'javascript' | 'python' | 'go' | 'rust' | 'unknown' | 'java' | 'csharp' | 'cpp' | 'c' | 'ruby' | 'php' | 'swift' | 'kotlin' | 'dart'
+export type Language =
+  | 'typescript'
+  | 'javascript'
+  | 'python'
+  | 'go'
+  | 'rust'
+  | 'unknown'
+  | 'java'
+  | 'csharp'
+  | 'cpp'
+  | 'c'
+  | 'ruby'
+  | 'php'
+  | 'swift'
+  | 'kotlin'
+  | 'dart'
 
 export interface LanguageProfile {
   primary: Language[]
