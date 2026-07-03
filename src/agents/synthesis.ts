@@ -27,11 +27,13 @@ export interface SynthesisResult {
   debtEstimate: DebtEstimate
 }
 
-const SYNTHESIS_PROMPT = `You are the synthesis agent for a codebase review. You have received findings from 6 specialist agents.
+const SYNTHESIS_PROMPT = `You are the synthesis agent for a codebase review. You have received findings from a parallel AI swarm.
 
 Your job: synthesize these findings into a coherent report.
 
-Return ONLY valid JSON matching this exact schema:
+Before outputting any JSON, you MUST write a <thinking> block to weigh the severity of findings, look for root causes, and plan your synthesis.
+
+After your <thinking> block, return ONLY valid JSON matching this exact schema:
 {
   "executiveSummary": "3-5 paragraph string summarizing the overall codebase health",
   "priorityFixes": [
@@ -60,6 +62,10 @@ Be direct. Be specific. Do not repeat individual findings — synthesize pattern
 
 function parseSynthesisResponse(raw: string): SynthesisResult | null {
   let cleaned = raw.trim()
+
+  // Safely strip CoT reasoning blocks
+  cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
+  cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
 
   // Safely strip outer markdown code blocks using a non-greedy match
   const greedyMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
@@ -143,13 +149,23 @@ export async function synthesize(
   try {
     const provider: IProvider = getProvider('synthesis')
 
-    // Cap findings to top 50 by severity to prevent timeout
     const sorted = [...allFindings].sort((a, b) => b.scorePenalty - a.scorePenalty)
     const cappedFindings = sorted.slice(0, 50)
+    const droppedFindings = sorted.slice(50)
+
+    let droppedSummary = ''
+    if (droppedFindings.length > 0) {
+      const countsByAgent: Record<string, number> = {}
+      for (const f of droppedFindings) {
+        countsByAgent[f.agentName] = (countsByAgent[f.agentName] || 0) + 1
+      }
+      droppedSummary = `Additionally, ${droppedFindings.length} lower-severity findings were omitted due to context limits. Breakdown: ${JSON.stringify(countsByAgent)}`
+    }
 
     const userPrompt = JSON.stringify(
       {
         allFindings: cappedFindings,
+        droppedSummary,
         totalFindings: allFindings.length,
         crossAgentFindings,
         context,

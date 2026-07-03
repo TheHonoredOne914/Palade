@@ -80,9 +80,9 @@ describe('parseFindingsResponse', () => {
 
   it('assigns correct scorePenalty for each severity level', () => {
     const raw = JSON.stringify([
-      { severity: 'critical', title: 'c', description: '' },
-      { severity: 'high', title: 'h', description: '' },
-      { severity: 'medium', title: 'm', description: '' },
+      { severity: 'critical', title: 'c', description: 'desc' },
+      { severity: 'high', title: 'h', description: 'desc' },
+      { severity: 'medium', title: 'm', description: 'desc' },
     ])
     const findings = parseFindingsResponse(raw, AGENT)
 
@@ -106,9 +106,17 @@ describe('buildSystemPrompt', () => {
   it('returns base prompt if no modifiers are present', () => {
     const res = buildSystemPrompt('Base', baseContext)
     expect(res).toContain('Base')
-    expect(res).toContain('CORE PHILOSOPHY (PONYTAIL): You are a lazy senior developer.')
-    expect(res).toContain('KARPATHY BEHAVIORAL GUIDELINES:')
-    expect(res).toContain('GSD & GSTACK REVIEW LENSES:')
+    expect(res).toContain('CORE PHILOSOPHY (PONYTAIL)')
+    expect(res).toContain('KARPATHY BEHAVIORAL GUIDELINES')
+    expect(res).toContain('GSTACK LENSES & VOICE')
+    expect(res).not.toContain('AGENT CONSTITUTION')
+  })
+
+  it('appends the constitution if present', () => {
+    const ctx: AgentContext = { ...baseContext, constitution: 'I AM THE LAW' }
+    const res = buildSystemPrompt('Base', ctx)
+    expect(res).toContain('AGENT CONSTITUTION (BEHAVIORAL GUIDELINES):')
+    expect(res).toContain('I AM THE LAW')
   })
 
   it('appends diff context', () => {

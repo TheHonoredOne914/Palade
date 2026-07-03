@@ -1,4 +1,5 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
+import { fetchWithRetry } from './base.js'
 import chalk from 'chalk'
 
 const AVAILABILITY_CACHE_MS = 60_000
@@ -43,7 +44,7 @@ export class OpenCodeZenProvider implements IProvider {
     const timeoutSignal = AbortSignal.timeout(180_000)
     const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
 
-    const res = await fetch(`${this.baseUrl}/chat/completions`, {
+    const res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.apiKey}`,

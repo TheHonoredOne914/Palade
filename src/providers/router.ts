@@ -167,6 +167,7 @@ export class FallbackProvider implements IProvider {
             'insufficient_quota',
             'monthly limit',
           ],
+          signal: req.signal,
         })
 
         if (provider !== primaryProvider) {

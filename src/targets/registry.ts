@@ -137,9 +137,14 @@ export function appendTargetToFile(projectRoot: string, target: TargetDefinition
     return
   }
 
-  const entryStr = Array.isArray(target.entry) ? JSON.stringify(target.entry) : `'${target.entry}'`
-
-  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const esc = (s: string) =>
+    s
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\t/g, '\\t')
+  const entryStr = Array.isArray(target.entry) ? JSON.stringify(target.entry) : `'${esc(target.entry)}'`
   const lines: string[] = []
   lines.push(`{`)
   lines.push(`  name: '${esc(target.name)}',`)

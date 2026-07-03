@@ -4,13 +4,13 @@
   "description": "AI-powered codebase intelligence — reviewed by a swarm, not a single bot.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/placeholder/palade.git"
+    "url": "https://github.com/TheHonoredOne914/Palade.git"
   },
   "bugs": {
-    "url": "https://github.com/placeholder/palade/issues"
+    "url": "https://github.com/TheHonoredOne914/Palade/issues"
   },
-  "homepage": "https://github.com/placeholder/palade#readme",
-  "author": "Palade Engineering",
+  "homepage": "https://github.com/TheHonoredOne914/Palade#readme",
+  "author": "TheHonoredOne914",
   "type": "module",
   "bin": {
     "palade": "./dist/cli/index.js"
@@ -47,7 +47,6 @@
     "prepublishOnly": "npm run clean && npm run build && npm run format:check && npm test"
   },
   "dependencies": {
-    "@types/react": "^19.2.17",
     "chalk": "^5.3.0",
     "chokidar": "^4.0.1",
     "commander": "^12.1.0",
@@ -62,12 +61,11 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "typescript-eslint": "^8.62.0",
     "@types/node": "^22.10.2",
-    "@typescript-eslint/eslint-plugin": "^8.62.0",
-    "@typescript-eslint/parser": "^8.62.0",
+    "@types/react": "^19.2.17",
     "eslint": "^10.6.0",
-    "figlet": "^1.11.0",
-    "pngjs": "^7.0.0",
     "prettier": "^3.9.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",

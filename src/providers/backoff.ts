@@ -6,9 +6,10 @@ export async function withExponentialBackoff<T>(
     maxDelayMs: number
     retryableErrors: string[]
     fatalErrors?: string[]
+    signal?: AbortSignal
   }
 ): Promise<T> {
-  const { maxRetries, baseDelayMs, maxDelayMs, retryableErrors, fatalErrors = [] } = options
+  const { maxRetries, baseDelayMs, maxDelayMs, retryableErrors, fatalErrors = [], signal } = options
   let attempt = 0
 
   while (true) {
@@ -23,7 +24,7 @@ export async function withExponentialBackoff<T>(
         error.message.toLowerCase().includes(msg.toLowerCase())
       )
 
-      if (isFatal || !isRetryable || attempt >= maxRetries) {
+      if (isFatal || !isRetryable || attempt >= maxRetries || signal?.aborted) {
         throw error
       }
 
@@ -35,7 +36,17 @@ export async function withExponentialBackoff<T>(
         `[backoff] attempt ${attempt}/${maxRetries} after ${Math.round(delay)}ms — ${error.message}`
       )
 
-      await new Promise((resolve) => setTimeout(resolve, delay))
+      await new Promise<void>((resolve, reject) => {
+        const onAbort = () => {
+          clearTimeout(timer)
+          reject(new DOMException('Aborted', 'AbortError'))
+        }
+        const timer = setTimeout(() => {
+          signal?.removeEventListener('abort', onAbort)
+          resolve()
+        }, delay)
+        signal?.addEventListener('abort', onAbort, { once: true })
+      })
     }
   }
 }

@@ -7,8 +7,9 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     agentCount: 6,
     timeoutMs: 600000,
     maxReviewTokens: 200_000,
-    economyMode: true,
+    economyMode: false,
     specPath: 'palade.spec.md',
+    constitutionPath: '.palade/constitution.md',
   },
   output: {
     dir: '.palade/reports',
@@ -19,6 +20,6 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
   score: {
     historyFile: '.palade/history.json',
     badge: true,
-    badgePath: '.palade/badge.svg',
+    badgePath: 'palade-badge.svg',
   },
 }

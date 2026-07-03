@@ -84,4 +84,5 @@ export interface SwarmOptions {
   noVerdict?: boolean
   signal?: AbortSignal
   specPath?: string
+  constitutionPath?: string
 }

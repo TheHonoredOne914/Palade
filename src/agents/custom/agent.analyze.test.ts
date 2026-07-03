@@ -20,7 +20,7 @@ describe('CustomAgent.analyze', () => {
 
   it('passes the dynamically loaded system prompt correctly', async () => {
     mockProvider.complete.mockResolvedValue({
-      content: '[{"severity":"medium","title":"Custom","description":""}]',
+      content: '[{"severity":"medium","title":"Custom","description":"desc"}]',
       provider: 'mock-provider',
       model: 'mock-model-v2',
       inputTokens: 10,

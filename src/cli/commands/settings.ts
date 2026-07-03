@@ -289,11 +289,12 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
       continue
     }
 
-    // Closing brace: pop the deepest open section (if indent matches).
+    // Closing brace: a single `}` always closes exactly the innermost open
+    // section, regardless of its indentation — pop one level, not a
+    // variable number based on an indent heuristic (which can over-pop
+    // ancestors when a closer is indented to match a parent's open indent).
     if (trimmed.startsWith('}')) {
-      const indent = line.length - trimmed.length
-      // Pop any sections opened at this indent or deeper.
-      while (openIndents.length > 0 && openIndents[openIndents.length - 1] >= indent) {
+      if (openIndents.length > 0) {
         pathStack.pop()
         openIndents.pop()
       }

@@ -149,9 +149,7 @@ Respond ONLY with JSON matching this schema:
   "losing_side": "string (which agent's recommendation was NOT taken, and why)"
 }`
 
-  const userPrompt = `File: ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}
-
-Agent [${conflict.sideA.agentName}] says:
+  const userPrompt = `Agent [${conflict.sideA.agentName}] says:
 Title: ${conflict.sideA.title}
 Reasoning: ${conflict.sideA.description}
 
@@ -171,10 +169,8 @@ Please provide your verdict.`
       signal,
     })
     const rawOutput = response.content ?? ''
-
     const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
-    const jsonStr = jsonMatch ? jsonMatch[0] : rawOutput
-
+    const jsonStr = jsonMatch?.[0] ?? rawOutput
     const parsed = JSON.parse(jsonStr)
     return VerdictSchema.parse(parsed)
   } catch (err) {

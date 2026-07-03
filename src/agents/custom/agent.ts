@@ -11,6 +11,7 @@ import {
   parseFindingsResponse,
   SEVERITY_PENALTY,
 } from '../base.js'
+import { validateAndFingerprintFindings } from '../../orchestrator/findingValidation.js'
 import type { CustomAgentDefinition } from './schema.js'
 
 export class CustomAgent implements IAgent {
@@ -46,7 +47,10 @@ export class CustomAgent implements IAgent {
         maxTokens: 4096,
         signal,
       })
-      const findings = parseFindingsResponse(response.content ?? '', this.name)
+      const findings = validateAndFingerprintFindings(
+        parseFindingsResponse(response.content ?? '', this.name),
+        chunks
+      )
       // Apply custom score penalties
       for (const f of findings) {
         f.provider = response.provider

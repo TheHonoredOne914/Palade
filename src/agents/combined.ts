@@ -11,6 +11,7 @@ import {
   SEVERITY_PENALTY,
 } from './base.js'
 import type { IAgent } from './base.js'
+import { validateAndFingerprintFindings } from '../orchestrator/findingValidation.js'
 
 /**
  * Economy-mode analyzer: runs ALL specialist domains in a single provider call
@@ -92,7 +93,10 @@ You must review the provided code through ALL of the following lenses in a singl
 
 ${sections}
 
-Return ONLY a valid JSON array of findings. No markdown. No explanation. No preamble. Just the JSON array.
+Before outputting any JSON, you MUST write a <thinking> block to trace data flow, analyze edge cases, and justify your logic for all domains. 
+At the end of your <thinking> block, perform a Self-Critique: ask yourself if there are any conditions where the code is actually safe or if you might be hallucinating. If the code is safe, drop the finding.
+
+After your <thinking> block, return ONLY a valid JSON array of findings. No other text.
 
 Each finding must match this exact schema, and MUST include its originating agentName:
 {
@@ -155,8 +159,13 @@ export class CombinedAnalyzer implements IAgent {
         maxTokens: 8192,
         signal,
       })
-      const findings = parseFindingsResponse(response.content ?? '', this.name)
-      return attributeFindings(findings, this.domains, response.provider, response.model)
+      const findings = attributeFindings(
+        parseFindingsResponse(response.content ?? '', this.name),
+        this.domains,
+        response.provider,
+        response.model
+      )
+      return validateAndFingerprintFindings(findings, chunks)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err

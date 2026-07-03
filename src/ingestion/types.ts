@@ -1,4 +1,4 @@
-export type Language = 'typescript' | 'javascript' | 'python' | 'go' | 'rust' | 'unknown'
+export type Language = 'typescript' | 'javascript' | 'python' | 'go' | 'rust' | 'unknown' | 'java' | 'csharp' | 'cpp' | 'c' | 'ruby' | 'php' | 'swift' | 'kotlin' | 'dart'
 
 export interface LanguageProfile {
   primary: Language[]
@@ -19,6 +19,9 @@ export interface FileManifest {
   linesOfCode: number
   annotations: Annotation[]
   lastModified: Date
+  churnCount?: number
+  importCount?: number
+  importers?: string[]
 }
 
 export interface CodeChunk {
@@ -30,6 +33,7 @@ export interface CodeChunk {
   symbolName?: string
   tokenCount: number
   language: Language
+  complexity?: number
 }
 
 export interface ScopeOptions {

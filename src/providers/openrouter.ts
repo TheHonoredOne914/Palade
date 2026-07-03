@@ -81,7 +81,7 @@ export class OpenRouterProvider implements IProvider {
         await new Promise((r) => setTimeout(r, waitMs + 500))
 
         // Retry once
-        const retryRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        const retryRes = await fetchWithRetry('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${this.apiKey}`,

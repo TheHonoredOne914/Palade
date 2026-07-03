@@ -7,6 +7,7 @@ import type { ScopeOptions, CodeChunk } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
 import { chunkFiles, estimateTokens } from '../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
+import { buildRetrievedContext } from '../ingestion/contextPacks.js'
 import { buildAnnotationSummary } from '../ingestion/annotationParser.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
 import { estimateTotalTokens } from './scheduler.js'
@@ -100,9 +101,11 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
 
   // Inject KEYWORD context into active chunks
   for (const chunk of activeChunks) {
+    const retrievedContext = buildRetrievedContext(chunk, chunks)
     const keywordContext = getKeywordContext(chunk, keywordIndex)
-    if (keywordContext) {
-      chunk.content = keywordContext + chunk.content
+    const contextPrefix = retrievedContext + keywordContext
+    if (contextPrefix) {
+      chunk.content = contextPrefix + chunk.content
       chunk.tokenCount = estimateTokens(chunk.content)
     }
   }
@@ -123,6 +126,18 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       console.log(`[pipeline] Loaded logic spec from ${specPath}`)
     } catch {
       console.log(chalk.yellow(`[pipeline] Failed to read spec file: ${specPath}`))
+    }
+  }
+
+  // Inject agent constitution if available
+  const constitutionPath = opts.swarmOptions?.constitutionPath ?? '.palade/constitution.md'
+  const absoluteConstitutionPath = join(opts.projectRoot, constitutionPath)
+  if (existsSync(absoluteConstitutionPath)) {
+    try {
+      context.constitution = readFileSync(absoluteConstitutionPath, 'utf-8')
+      console.log(`[pipeline] Loaded agent constitution from ${constitutionPath}`)
+    } catch {
+      console.log(chalk.yellow(`[pipeline] Failed to read constitution file: ${constitutionPath}`))
     }
   }
 

@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import chalk from 'chalk'
 import type { CodeChunk, Language } from '../ingestion/types.js'
 import type { ModeConfig } from '../modes/index.js'
+import { validateAndFingerprintFindings } from '../orchestrator/findingValidation.js'
 
 export type ReviewMode = 'standard' | 'security' | 'onboard' | 'debt' | 'ghost'
 
@@ -31,12 +32,14 @@ export interface AgentFinding {
   symbolName?: string
   tags: string[]
   scorePenalty: number
+  findingFingerprint?: string
   estimatedHours?: number
   hoursWasted?: number
   /** The provider that actually produced this finding (may differ from primary on fallback). */
   provider?: string
   /** The model that actually produced this finding. */
   model?: string
+  complexity?: number
 }
 
 export interface DiffContext {
@@ -82,6 +85,8 @@ export interface AgentContext {
   providerName?: string
   /** Optional user-provided architectural/business logic spec */
   spec?: string
+  /** The formal constitution with behavioral guidelines for the agents */
+  constitution?: string
 }
 
 export interface IAgent {
@@ -100,7 +105,13 @@ export const SEVERITY_PENALTY: Record<Severity, number> = {
 
 export function buildChunkContext(chunks: CodeChunk[]): string {
   return chunks
-    .map((c) => `=== FILE: ${c.filePath} (lines ${c.startLine}–${c.endLine}) ===\n${c.content}`)
+    .map((c) => {
+      const numberedContent = c.content
+        .split('\n')
+        .map((line, i) => `${c.startLine + i} | ${line}`)
+        .join('\n')
+      return `=== FILE: ${c.filePath} (lines ${c.startLine}–${c.endLine}) ===\n${numberedContent}`
+    })
     .join('\n\n')
 }
 
@@ -112,21 +123,25 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
 
   let cleaned = raw.trim()
 
+  // Safely strip CoT reasoning blocks
+  cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
+  cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
+
   // Safely strip outer markdown code blocks using a non-greedy match
   const greedyMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
   if (greedyMatch) {
     cleaned = greedyMatch[1].trim()
   }
 
-  // Extract array more robustly to avoid catching conversational '['
-  const arrayMatch = cleaned.match(/\[\s*(?:\{[\s\S]*\})?\s*\]/)
-  if (arrayMatch) {
-    cleaned = arrayMatch[0]
+  // Find outermost JSON array bounds
+  const arrayStart = cleaned.indexOf('[')
+  const arrayEnd = cleaned.lastIndexOf(']')
+  if (arrayStart !== -1 && arrayEnd > arrayStart) {
+    cleaned = cleaned.substring(arrayStart, arrayEnd + 1)
   } else {
-    const arrayStart = cleaned.indexOf('[')
-    const arrayEnd = cleaned.lastIndexOf(']')
-    if (arrayStart !== -1 && arrayEnd > arrayStart) {
-      cleaned = cleaned.substring(arrayStart, arrayEnd + 1)
+    // If no array brackets found, it might be an empty response or pure conversational text
+    if (!cleaned.includes('[')) {
+      return []
     }
   }
 
@@ -160,6 +175,23 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
       const obj = item as Record<string, unknown>
       const severity = obj.severity as Severity
       if (!(severity in SEVERITY_PENALTY)) continue
+
+      const title = obj.title as string
+      if (!title || title.trim().length === 0) continue
+
+      const description = obj.description as string
+      if (typeof description !== 'string' || description.trim().length === 0) continue
+
+      let filePath = obj.filePath as string | undefined
+      if (typeof filePath !== 'string' || filePath.trim().length === 0) {
+        filePath = undefined
+      }
+
+      let lineStart = typeof obj.lineStart === 'number' && !isNaN(obj.lineStart) ? obj.lineStart : undefined
+      let lineEnd = typeof obj.lineEnd === 'number' && !isNaN(obj.lineEnd) ? obj.lineEnd : undefined
+
+      const tags = Array.isArray(obj.tags) ? obj.tags.filter(t => typeof t === 'string') : []
+
       findings.push({
         id: crypto.randomUUID(),
         agentName:
@@ -167,13 +199,13 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
             ? (obj.agentName as AgentName)
             : agentName,
         severity,
-        title: obj.title as string,
-        description: (obj.description as string) ?? '',
-        filePath: obj.filePath as string | undefined,
-        lineStart: obj.lineStart as number | undefined,
-        lineEnd: obj.lineEnd as number | undefined,
-        symbolName: obj.symbolName as string | undefined,
-        tags: Array.isArray(obj.tags) ? (obj.tags as string[]) : [],
+        title,
+        description,
+        filePath,
+        lineStart,
+        lineEnd,
+        symbolName: typeof obj.symbolName === 'string' ? obj.symbolName : undefined,
+        tags,
         scorePenalty: SEVERITY_PENALTY[severity],
         estimatedHours: typeof obj.estimatedHours === 'number' ? obj.estimatedHours : undefined,
         hoursWasted: typeof obj.hoursWasted === 'number' ? obj.hoursWasted : undefined,
@@ -184,12 +216,22 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
   return findings
 }
 
+import { HARDCODED_SKILLS } from './skills.js'
+
 export function buildSystemPrompt(
   base: string,
   context: AgentContext,
   modeConfig?: ModeConfig
 ): string {
   let prompt = base
+
+  prompt += `
+\nSEVERITY RUBRIC:
+- critical: Exploitable security flaw, guaranteed crash, or severe data loss.
+- high: Severe logic bug, hard performance bottleneck, or major architectural flaw.
+- medium: Edge case failure, moderate performance issue, or missing test for complex logic.
+- low: Code smell, style violation, YAGNI, or minor maintainability issue.
+- info: Informational observation or non-blocking suggestion.`
   if (context.diffContext) {
     const dc = context.diffContext
     prompt += `\n\nDIFF CONTEXT: This is a diff review of branch '${dc.headBranch}' vs '${dc.baseBranch}'. Focus on issues in the ${dc.changedFiles.length} changed files. Prioritise newly introduced problems over pre-existing ones.`
@@ -218,30 +260,12 @@ export function buildSystemPrompt(
     prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}`
   }
 
-  // Embed Ponytail and Karpathy philosophies into every agent's baseline behavior
-  prompt += `
+  // Embed Ponytail, Karpathy, and GStack philosophies into every agent's baseline behavior
+  prompt += `\n\n${HARDCODED_SKILLS}`
 
-CORE PHILOSOPHY (PONYTAIL): You are a lazy senior developer. Lazy means efficient, not careless. The best code is the code never written.
-Before recommending any new code or abstraction, stop at the first rung that holds:
-1. Does this need to be built at all? (YAGNI)
-2. Does it already exist in this codebase? Reuse the helper, util, or pattern that's already here.
-3. Does the standard library already do this? Use it.
-4. Does a native platform feature cover it? Use it.
-5. Does an already-installed dependency solve it? Use it.
-6. Can this be one line? Make it one line.
-7. Only then: recommend the minimum code that works.
-
-Prioritize deleting over-engineered code, reinvented standard library functions, unneeded dependencies, speculative abstractions, and dead flexibility. Your ultimate goal is a shorter, leaner codebase without sacrificing security, correctness, or robust error handling.
-
-KARPATHY BEHAVIORAL GUIDELINES:
-1. Think Before Coding: Don't assume. Surface tradeoffs. State your assumptions explicitly.
-2. Simplicity First: Minimum code that solves the problem. No speculative features or abstractions for single-use code.
-3. Surgical Changes: Touch only what you must. Don't "improve" adjacent code, comments, or formatting that aren't broken.
-4. Goal-Driven Execution: Define success criteria. Transform tasks into verifiable goals (e.g., "Write tests for invalid inputs, then make them pass").
-
-GSD & GSTACK REVIEW LENSES:
-- Milestone Alignment (GSD): Flag code that doesn't push the core milestone forward or skips essential audit-fix phase gates. Demand rigorous test coverage for core flows.
-- Frontend & UI Robustness (GStack): Enforce UI/UX design checklists where applicable. Flag brittle browser automation, missing error handling for network interactions, and DevEx bottlenecks.`
+  if (context.constitution) {
+    prompt += `\n\nAGENT CONSTITUTION (BEHAVIORAL GUIDELINES):\n${context.constitution}`
+  }
 
   return prompt
 }
@@ -273,12 +297,68 @@ export abstract class BaseSpecialistAgent implements IAgent {
         maxTokens: 4096,
         signal,
       })
-      const findings = parseFindingsResponse(response.content ?? '', this.name)
+      const findings = validateAndFingerprintFindings(
+        parseFindingsResponse(response.content ?? '', this.name),
+        chunks
+      )
+
       for (const f of findings) {
         f.provider = response.provider
         f.model = response.model
+        
+        if (f.filePath && typeof f.lineStart === 'number') {
+           const match = chunks.find(c => c.filePath === f.filePath && c.startLine <= f.lineStart! && c.endLine >= f.lineStart!)
+           if (match && match.complexity !== undefined) {
+              f.complexity = match.complexity
+           }
+        }
       }
-      return findings
+
+      const validatedFindings: AgentFinding[] = []
+      for (const f of findings) {
+         if (f.severity === 'critical' || f.severity === 'high') {
+             const codeChunk = f.filePath
+               ? chunks.find(c => c.filePath === f.filePath &&
+                   (typeof f.lineStart !== 'number' || (c.startLine <= f.lineStart && c.endLine >= f.lineStart)))
+               : undefined
+             if (!codeChunk) {
+               // No matching chunk to verify against — keep the finding rather
+               // than running a self-consistency check with no code to look at.
+               validatedFindings.push(f)
+               continue
+             }
+             try {
+               const verifyResponse = await provider.complete({
+                  systemPrompt: 'You are an expert verifier. Reply strictly YES or NO.',
+                  userPrompt: `Does the following code ACTUALLY contain this vulnerability/issue?
+Issue: ${f.title} - ${f.description}
+
+Code:
+\`\`\`
+${codeChunk.content}
+\`\`\`
+
+Reply strictly YES or NO.`,
+                  maxTokens: 10,
+                  temperature: 0,
+                  signal
+               })
+               if (verifyResponse.content.includes('YES')) {
+                   validatedFindings.push(f)
+               } else {
+                   console.log(chalk.yellow(`  [${this.name}] Dropped false positive during self-consistency check: ${f.title}`))
+               }
+             } catch (err) {
+               if (err instanceof Error && err.name === 'AbortError') throw err
+               // If validation fails (e.g. timeout), err on the side of caution and keep it
+               validatedFindings.push(f)
+             }
+         } else {
+             validatedFindings.push(f)
+         }
+      }
+
+      return validatedFindings
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err
