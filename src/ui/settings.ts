@@ -103,14 +103,19 @@ function deepMerge(
 
 function generateConfigString(patch: Record<string, unknown>): string {
   const json = JSON.stringify(patch, null, 2)
-  // Remove quotes from keys, then escape single quotes in values
+  // Remove quotes from keys, then convert each double-quoted JSON string to a
+  // single-quoted TS string — escaping any embedded single quotes FIRST. (The
+  // previous order tried to escape quotes in already-single-quoted values,
+  // which never existed yet, so an apostrophe in a value produced invalid TS.)
   return `// palade.config.ts — managed by 'palade settings'
 // Edit manually or run 'palade settings' to update
 
 export default ${json
     .replace(/"([^"]+)":/g, '$1:')
-    .replace(/: '([^']*)'/g, (_, v: string) => `: '${v.replace(/'/g, "\\'")}'`)
-    .replace(/"/g, "'")}
+    .replace(
+      /"((?:[^"\\]|\\.)*)"/g,
+      (_, v: string) => `'${v.replace(/\\"/g, '"').replace(/'/g, "\\'")}'`
+    )}
 `
 }
 

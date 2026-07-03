@@ -30,12 +30,11 @@ export function createLiveProgress(): LiveProgress {
         )
         return
       }
+      const countRaw = findings > 0 ? `${findings} finding${findings !== 1 ? 's' : ''}` : 'clean'
       const countStr =
-        findings > 0
-          ? theme.warning(`${findings} finding${findings !== 1 ? 's' : ''}`)
-          : theme.success('clean')
+        findings > 0 ? theme.warning(countRaw.padEnd(20)) : theme.success(countRaw.padEnd(20))
       console.log(
-        `  ${theme.success('✓')} ${theme.dim(name.padEnd(22))} ${countStr.padEnd(20)} ${theme.dim(time)}`
+        `  ${theme.success('✓')} ${theme.dim(name.padEnd(22))} ${countStr} ${theme.dim(time)}`
       )
     },
     conflictDetected(file, sideA, sideB) {

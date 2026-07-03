@@ -179,7 +179,11 @@ export async function synthesize(
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => {
         controller.abort()
-        reject(new Error('Synthesis timed out'))
+        // Name it AbortError so the catch below returns the graceful
+        // fallback result instead of rethrowing a raw error.
+        const err = new Error('Synthesis timed out')
+        err.name = 'AbortError'
+        reject(err)
       }, 180_000)
       timeoutHandle!.unref?.()
     })

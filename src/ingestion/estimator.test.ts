@@ -74,10 +74,15 @@ describe('estimateRunCost', () => {
 
   it('calculates $0 cost for free tier providers', () => {
     const config = {
-      swarm: { primary: 'opencode-zen', synthesis: 'opencode-zen', agentCount: 1, economyMode: true },
+      swarm: {
+        primary: 'opencode-zen',
+        synthesis: 'opencode-zen',
+        agentCount: 1,
+        economyMode: true,
+      },
       providers: {
-        'opencode-zen': { apiKey: 'test', model: 'deepseek-v4-flash-free' }
-      }
+        'opencode-zen': { apiKey: 'test', model: 'deepseek-v4-flash-free' },
+      },
     } as unknown as PaladeConfig
 
     const chunk1: CodeChunk = {

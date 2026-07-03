@@ -138,31 +138,31 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
 
   const chunks: CodeChunk[] = []
   let startIdx = 0
-  
+
   while (startIdx < lines.length) {
     let depth = 0
     let currentIdx = startIdx
     let maxLines = 300
-    
+
     // Scan forward to find a block boundary or hit maxLines
-    while (currentIdx < lines.length && (currentIdx - startIdx) < maxLines) {
+    while (currentIdx < lines.length && currentIdx - startIdx < maxLines) {
       const line = lines[currentIdx]
       // Basic bracket counting ignoring strings/comments for simplicity
       for (let i = 0; i < line.length; i++) {
         if (line[i] === '{') depth++
         else if (line[i] === '}') depth--
       }
-      
+
       currentIdx++
       // If we've closed all blocks and have at least some lines, end chunk here
-      if (depth <= 0 && (currentIdx - startIdx) > 5) {
+      if (depth <= 0 && currentIdx - startIdx > 5) {
         break
       }
     }
-    
+
     // If we scanned through maxLines but depth > 0, we just slice here
     const endIdx = currentIdx
-    
+
     const chunkContent = lines.slice(startIdx, endIdx).join('\n')
     const startLine = startIdx + 1
     const endLine = endIdx
@@ -202,7 +202,9 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
     if (manifest.language === 'typescript' || manifest.language === 'javascript') {
       chunks = chunkByAST(content, manifest.path, manifest.language)
     } else {
-      chunks = chunkByBrackets(content, manifest.path, manifest.language)
+      // chunkByBrackets caps blocks at 300 lines, but very long lines can still
+      // push a chunk past MAX_TOKENS — enforce the token cap explicitly.
+      chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap(splitLargeChunk)
     }
 
     if (chunks.length > MAX_CHUNKS_PER_FILE) {

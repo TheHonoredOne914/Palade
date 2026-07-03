@@ -47,15 +47,15 @@ export async function triageFiles(
   )
 
   if (options?.strictTriage) {
-    console.log(chalk.red(`  [!] Strict triage is enabled. Halting review. Please narrow your scope using --include or increase token budget.`))
+    console.log(
+      chalk.red(
+        `  [!] Strict triage is enabled. Halting review. Please narrow your scope using --include or increase token budget.`
+      )
+    )
     throw new CliExitError(1)
   }
 
-  console.log(
-    chalk.cyan(
-      `  [triage] Selecting high-value files from ${manifests.length} total...`
-    )
-  )
+  console.log(chalk.cyan(`  [triage] Selecting high-value files from ${manifests.length} total...`))
 
   const compactManifest = manifests.map((m) => `${m.path} (${m.linesOfCode} lines, Churn: ${m.churnCount || 0}, Imports: ${m.importCount || 0})`).join('\n')
 
@@ -104,11 +104,18 @@ export async function triageFiles(
           .trim()
           .replace(/^\.?\/+/, '')
           .replace(/\/+$/, '')
-        const matching = allChunks.filter((c) => {
-          const cp = c.filePath.replace(/^\.?\/+/, '')
-          if (cp === clean || cp.endsWith('/' + clean)) return true
-          return false
-        })
+        // Exact path match first. Fall back to a suffix match only when it
+        // identifies a SINGLE file — an ambiguous suffix (e.g. `utils/helper.ts`
+        // matching two different directories) would pull unranked files into
+        // the budget.
+        let matching = allChunks.filter((c) => c.filePath.replace(/^\.?\/+/, '') === clean)
+        if (matching.length === 0) {
+          const suffixMatches = allChunks.filter((c) =>
+            c.filePath.replace(/^\.?\/+/, '').endsWith('/' + clean)
+          )
+          const distinctFiles = new Set(suffixMatches.map((c) => c.filePath))
+          if (distinctFiles.size === 1) matching = suffixMatches
+        }
         for (const chunk of matching) {
           if (seenChunkIds.has(chunk.id)) continue
           if (tokensUsed + chunk.tokenCount > budget) break

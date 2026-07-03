@@ -100,7 +100,7 @@ After your <thinking> block, return ONLY a valid JSON array of findings. No othe
 
 Each finding must match this exact schema, and MUST include its originating agentName:
 {
-  "agentName": "security" | "architecture" | "performance" | "maintainability" | "deadCode" | "testIntelligence" | "logic" | "pragmatism",
+  "agentName": ${domains.map((d) => `"${d.name}"`).join(' | ')},
   "severity": "critical" | "high" | "medium" | "low" | "info",
   "title": "Short title, max 10 words",
   "description": "2-4 sentences. Be specific. Explain the risk or problem clearly.",

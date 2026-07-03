@@ -62,11 +62,13 @@ function getValence(text: string): 'harden' | 'relax' | 'neutral' {
   const t = text.toLowerCase()
   let hardenHits = 0
   let relaxHits = 0
+  // Whole-word matches only — substring matching miscounts common fragments
+  // ('add' in "address", 'key' in "monkey") and skews the harden/relax tally.
   for (const w of HARDEN_KEYWORDS) {
-    if (t.includes(w)) hardenHits++
+    if (new RegExp(`\\b${w}\\b`).test(t)) hardenHits++
   }
   for (const w of RELAX_KEYWORDS) {
-    if (t.includes(w)) relaxHits++
+    if (new RegExp(`\\b${w}\\b`).test(t)) relaxHits++
   }
   if (hardenHits > relaxHits) return 'harden'
   if (relaxHits > hardenHits) return 'relax'
@@ -127,69 +129,57 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
 const VerdictSchema = z.object({
   decision: z.string().describe('What to actually do'),
   tradeoff_accepted: z.string().describe('The explicit cost being accepted'),
-  confidence: z.number().describe('0-100 score of how confident you are in this tradeoff'),
+  confidence: z.coerce.number().describe('0-100 score of how confident you are in this tradeoff'),
   losing_side: z.string().describe('Which agent recommendation was NOT taken, and why'),
 })
 
-import * as readline from 'node:readline/promises'
-import { stdin as input, stdout as output } from 'node:process'
-
 export async function arbitrateConflict(
   conflict: Conflict,
-  context: AgentContext,
+  _context: AgentContext,
   signal?: AbortSignal
 ): Promise<Verdict | null> {
-  if (signal?.aborted) return null
+  const systemPrompt = `You are the Lead Architect. Two specialized agents disagree on a piece of code.
+Your job is to resolve the conflict by making a definitive architectural decision. Accept a tradeoff explicitly.
 
-  console.log(chalk.bold.red('\n[VERDICT MODE] Architectural Conflict Detected!'))
-  console.log(chalk.gray(`File: ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}\n`))
+Respond ONLY with JSON matching this schema:
+{
+  "decision": "string (what to actually do)",
+  "tradeoff_accepted": "string (the explicit cost being accepted)",
+  "confidence": 85,
+  "losing_side": "string (which agent's recommendation was NOT taken, and why)"
+}`
 
-  console.log(chalk.bold.blue(`Side A (${conflict.sideA.agentName}):`))
-  console.log(`  Title: ${conflict.sideA.title}`)
-  console.log(`  Reasoning: ${conflict.sideA.description}\n`)
+  const userPrompt = `Agent [${conflict.sideA.agentName}] says:
+Title: ${conflict.sideA.title}
+Reasoning: ${conflict.sideA.description}
 
-  console.log(chalk.bold.yellow(`Side B (${conflict.sideB.agentName}):`))
-  console.log(`  Title: ${conflict.sideB.title}`)
-  console.log(`  Reasoning: ${conflict.sideB.description}\n`)
+Agent [${conflict.sideB.agentName}] says:
+Title: ${conflict.sideB.title}
+Reasoning: ${conflict.sideB.description}
 
-  const rl = readline.createInterface({ input, output })
+Please provide your verdict.`
 
-  let choice = ''
-  while (!['A', 'B', 'C'].includes(choice)) {
-    const answer = await rl.question(
-      'Choose a side to accept: [A] Side A, [B] Side B, [C] Custom Decision (or [S] to skip): '
+  try {
+    const provider = getProvider('synthesis')
+    const response = await provider.complete({
+      systemPrompt,
+      userPrompt,
+      maxTokens: 1024,
+      temperature: 0.1,
+      signal,
+    })
+    const rawOutput = response.content ?? ''
+    const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
+    const jsonStr = jsonMatch?.[0] ?? rawOutput
+    const parsed = JSON.parse(jsonStr)
+    return VerdictSchema.parse(parsed)
+  } catch (err) {
+    console.error(
+      chalk.yellow(
+        `\n[verdict] Arbitration failed for ${conflict.filePath}: ${err instanceof Error ? err.message : String(err)}`
+      )
     )
-    choice = answer.trim().toUpperCase()
-    if (choice === 'S') {
-      rl.close()
-      return null
-    }
-  }
-
-  let decision = ''
-  let losing_side = ''
-  let confidence = 100
-
-  if (choice === 'A') {
-    decision = `Accepted ${conflict.sideA.agentName}'s recommendation: ${conflict.sideA.title}`
-    losing_side = `Rejected ${conflict.sideB.agentName}`
-  } else if (choice === 'B') {
-    decision = `Accepted ${conflict.sideB.agentName}'s recommendation: ${conflict.sideB.title}`
-    losing_side = `Rejected ${conflict.sideA.agentName}`
-  } else {
-    decision = await rl.question('Enter your custom decision: ')
-    losing_side = 'Custom human decision'
-  }
-
-  const tradeoff_accepted = await rl.question('What explicit tradeoff are you accepting by making this decision? ')
-
-  rl.close()
-
-  return {
-    decision,
-    tradeoff_accepted,
-    confidence,
-    losing_side,
+    return null
   }
 }
 
@@ -259,9 +249,9 @@ export async function checkDecisionDrift(
     if (cf.diff && cf.status !== 'deleted') {
       const lines: number[] = []
       let headLine = 0
-      for (const line of cf.diff.split('\\n')) {
+      for (const line of cf.diff.split('\n')) {
         if (line.startsWith('@@')) {
-          const match = line.match(/\\+(\\d+)/)
+          const match = line.match(/\+(\d+)/)
           if (match) headLine = parseInt(match[1], 10)
           continue
         }
@@ -278,11 +268,10 @@ export async function checkDecisionDrift(
   }
 
   const warnings: string[] = []
-  const provider = getProvider('synthesis')
 
   for (const file of mdFiles) {
     const content = await readFile(join(dir, file), 'utf-8')
-    const match = content.match(/\\*\\*File:\\*\\*\\s+(.+):(\\d+)-(\\d+)/)
+    const match = content.match(/\*\*File:\*\*\s+(.+):(\d+)-(\d+)/)
     if (!match) continue
 
     const decisionPath = match[1]
@@ -311,17 +300,17 @@ GIT DIFF:
 ${cf.diff}`
 
     try {
-      const response = await provider.complete({
+      const result = await getProvider('primary').complete({
         systemPrompt,
         userPrompt,
+        maxTokens: 8,
         temperature: 0.1,
       })
-      const result = response.content || ''
 
-      if (result.trim().toUpperCase().includes('YES')) {
+      if ((result.content ?? '').trim().toUpperCase().includes('YES')) {
         warnings.push(`You're editing logic that contradicts a documented decision (${file}).`)
       }
-    } catch (e) {
+    } catch {
       // ignore LLM failure in watch mode
     }
   }

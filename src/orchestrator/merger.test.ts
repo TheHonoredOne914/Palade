@@ -44,14 +44,14 @@ describe('orchestrator/merger', () => {
         filePath: 'src/auth.ts',
         lineStart: 10,
         title: 'Hardcoded API key in config file',
-        agentName: 'security'
+        agentName: 'security',
       })
       const b = finding({
         severity: 'high',
         filePath: 'src/auth.ts',
         lineStart: 10,
         title: 'Inefficient nested loop over large array',
-        agentName: 'performance'
+        agentName: 'performance',
       })
       const merged = mergeFindings([a, b])
       // Although character sets overlap, words do not

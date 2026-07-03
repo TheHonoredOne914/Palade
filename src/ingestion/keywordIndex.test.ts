@@ -55,7 +55,7 @@ describe('ingestion/keywordIndex', () => {
     // should not match anything (since it filters itself out)
     expect(context).toBe('')
   })
-  
+
   it('avoids naive substring dictionary hits', () => {
     const dictChunk: CodeChunk = {
       id: 'chunk4',
@@ -77,12 +77,12 @@ describe('ingestion/keywordIndex', () => {
       tokenCount: 3,
       language: 'typescript',
     }
-    
+
     // In naive substring match, "dict" would match everything inside "dictionary" and "dictation",
     // getting an artificially high score. By using full word match, score will only be from exact "dict".
     const index = buildKeywordIndex([dictChunk, queryChunk])
     const context = getKeywordContext(queryChunk, index)
-    
+
     expect(context).toContain('dict.ts')
   })
 })

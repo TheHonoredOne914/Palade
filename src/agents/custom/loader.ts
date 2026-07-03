@@ -43,9 +43,21 @@ export async function loadCustomAgents(projectRoot: string): Promise<CustomAgent
   }
 
   const agents: CustomAgentDefinition[] = []
+  const seenNames = new Set<string>()
   for (let i = 0; i < raw.length; i++) {
     const result = CustomAgentDefinitionSchema.safeParse(raw[i])
     if (result.success) {
+      // Duplicate names would silently overwrite each other in the registry's
+      // Map, so one of the user's agents would never run — same fail-fast
+      // contract as the built-in collision check.
+      if (seenNames.has(result.data.name)) {
+        throw new PaladeConfigError(
+          `${AGENTS_FILE} entry at index ${i} duplicates agent name '${result.data.name}'.`,
+          'agents',
+          `Give each custom agent in ${AGENTS_FILE} a unique name.`
+        )
+      }
+      seenNames.add(result.data.name)
       agents.push(result.data)
     } else {
       // A broken entry (missing/empty systemPrompt, colliding name) must abort

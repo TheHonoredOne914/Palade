@@ -35,18 +35,9 @@ export async function resolveSymbol(
   let endLine = -1
 
   if (language === 'typescript' || language === 'javascript') {
-    const sourceFile = ts.createSourceFile(
-      filePath,
-      content,
-      ts.ScriptTarget.Latest,
-      true
-    )
+    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
 
-    let foundNode: any = null
-
-    function visit(node: ts.Node) {
-      if (foundNode) return
-
+    function visit(node: ts.Node): ts.Node | undefined {
       let nodeName = ''
       if (
         ts.isFunctionDeclaration(node) ||
@@ -57,21 +48,23 @@ export async function resolveSymbol(
       ) {
         nodeName = node.name?.text ?? ''
       } else if (ts.isVariableStatement(node)) {
-        const decl = node.declarationList.declarations[0]
-        if (decl && ts.isIdentifier(decl.name)) {
-          nodeName = decl.name.text
+        // Check every declarator — `const a = 1, target = 2` declares both
+        for (const decl of node.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name) && decl.name.text === symbolName) {
+            nodeName = decl.name.text
+            break
+          }
         }
       }
 
       if (nodeName === symbolName) {
-        foundNode = node
-        return
+        return node
       }
 
-      ts.forEachChild(node, visit)
+      return ts.forEachChild(node, visit)
     }
 
-    visit(sourceFile)
+    const foundNode = visit(sourceFile)
 
     if (foundNode) {
       const start = sourceFile.getLineAndCharacterOfPosition(foundNode.getStart())

@@ -73,7 +73,10 @@ export class OpenCodeZenProvider implements IProvider {
       }
 
       if (attempt >= OpenCodeZenProvider.MAX_429_RETRIES) {
-        this.dailyLimitExhausted = true
+        // Exhausting the retry budget means the rate limit outlasted ~3 min,
+        // not that the daily quota is gone — that case is the explicit
+        // 'daily'/'per-day' branch above. Keep the provider alive so later
+        // calls can succeed once the window clears.
         throw new Error(`OpenCode Zen rate limited — 429 retries exhausted`)
       }
 
@@ -105,9 +108,10 @@ export class OpenCodeZenProvider implements IProvider {
     const usage = data.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
 
     // If content is empty but tokens were used, reasoning model consumed all tokens
-    // Retry with double the tokens (cap at 16384 to avoid runaway)
+    // Retry with double the tokens (cap at 32768 to avoid runaway — the cap must
+    // exceed the 16384 default or the retry re-sends an identical request)
     if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
-      const newMax = Math.min(maxTokens * 2, 16384)
+      const newMax = Math.min(maxTokens * 2, 32768)
 
       return this.doComplete(req, newMax, attempt + 1)
     }

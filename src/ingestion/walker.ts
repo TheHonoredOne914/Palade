@@ -64,8 +64,15 @@ function matchesGlobs(filePath: string, globs: string[]): boolean {
       if (filePath.startsWith(prefix) || filePath.includes('/' + prefix)) return true
       continue
     }
-    // Literal substring (covers "src/foo.ts", "auth", etc.)
-    if (filePath === pattern || filePath.endsWith('/' + pattern)) return true
+    // Literal match (covers "src/foo.ts" and bare directory names like "auth" —
+    // for the latter, match files INSIDE the directory, not just the exact path)
+    if (
+      filePath === pattern ||
+      filePath.endsWith('/' + pattern) ||
+      filePath.startsWith(pattern + '/') ||
+      filePath.includes('/' + pattern + '/')
+    )
+      return true
   }
   return false
 }

@@ -59,6 +59,8 @@ interface ReviewOptions {
   exhaustive?: boolean
   strictTriage?: boolean
   noVerdict?: boolean
+  /** Commander stores `--no-verdict` under the positive key: false when the flag is passed. */
+  verdict?: boolean
 }
 
 export async function reviewCommand(
@@ -110,7 +112,7 @@ export async function reviewCommand(
   }
 
   // Resolve symbol if :: syntax used
-  let resolvedSymbolChunk = undefined
+  let symbolChunks: import('../../ingestion/types.js').CodeChunk[] | undefined
   if (symbolFilter) {
     const symbolRef = rawPath ? `${rawPath}::${symbolFilter}` : `${process.cwd()}::${symbolFilter}`
     const chunk = await resolveSymbol(symbolRef, process.cwd())
@@ -118,10 +120,41 @@ export async function reviewCommand(
       console.error(chalk.red(`  Symbol '${symbolFilter}' not found in ${rawPath || '.'}`))
       throw new CliExitError(1)
     }
-    resolvedSymbolChunk = chunk
+    symbolChunks = [chunk]
     console.log(
       theme.success(`  ✓ Resolved symbol: ${chunk.filePath}:${chunk.startLine}-${chunk.endLine}`)
     )
+
+    // --depth: pull in the symbol's local dependency files as extra context
+    // chunks. Without this the flag is parsed but has no effect at all.
+    const depth = opts.depth ?? 1
+    if (depth > 0) {
+      const { traceDependencies } = await import('../../ingestion/dependencyTracer.js')
+      const { readFile } = await import('node:fs/promises')
+      const deps = await traceDependencies(chunk.filePath, process.cwd(), depth)
+      for (const dep of deps.slice(0, 10)) {
+        try {
+          const content = await readFile(join(process.cwd(), dep), 'utf-8')
+          const lineCount = content.split('\n').length
+          symbolChunks.push({
+            id: `${dep}:1-${lineCount}`,
+            filePath: dep,
+            startLine: 1,
+            endLine: lineCount,
+            content,
+            tokenCount: Math.ceil(content.length / 4),
+            language: chunk.language,
+          })
+        } catch {
+          // unreadable dependency — skip
+        }
+      }
+      if (symbolChunks.length > 1) {
+        console.log(
+          theme.dim(`  + ${symbolChunks.length - 1} dependency file(s) traced (depth ${depth})`)
+        )
+      }
+    }
   }
 
   // 1. Load config + init providers
@@ -160,7 +193,7 @@ export async function reviewCommand(
     files: scopeFiles,
     globs: opts.glob ? [opts.glob] : undefined,
     annotationsOnly: opts.annotations ?? false,
-    symbolChunks: resolvedSymbolChunk ? [resolvedSymbolChunk] : undefined,
+    symbolChunks,
   }
 
   // 5. Handle --pick
@@ -198,6 +231,28 @@ export async function reviewCommand(
       resolvedPaths: resolveTargetPaths(match, projectRoot),
     }
     scope.targetPaths = resolvedTarget.resolvedPaths
+    // Apply the target's optional scope narrowing (dirs/files/globs/annotationsOnly) —
+    // the schema validates it, so silently dropping it reviews far more than intended.
+    if (match.scope) {
+      if (match.scope.dirs?.length) scope.dirs = [...(scope.dirs ?? []), ...match.scope.dirs]
+      if (match.scope.files?.length) scope.files = [...(scope.files ?? []), ...match.scope.files]
+      if (match.scope.globs?.length) scope.globs = [...(scope.globs ?? []), ...match.scope.globs]
+      if (match.scope.annotationsOnly !== undefined)
+        scope.annotationsOnly = match.scope.annotationsOnly
+    }
+  }
+
+  // 6c. Handle --all-targets: review the union of every defined target's paths
+  if (opts.allTargets) {
+    if (allTargets.length === 0) {
+      console.log(theme.dim('  --all-targets: no targets defined; reviewing full codebase.'))
+    } else {
+      const unionPaths = new Set<string>()
+      for (const t of allTargets) {
+        for (const p of resolveTargetPaths(t, projectRoot)) unionPaths.add(p)
+      }
+      scope.targetPaths = Array.from(unionPaths)
+    }
   }
 
   // 6b. Language Detection
@@ -300,7 +355,7 @@ export async function reviewCommand(
         economyMode: opts.economy ?? config.swarm.economyMode,
         exhaustive: opts.exhaustive,
         strictTriage: opts.strictTriage,
-        noVerdict: opts.noVerdict,
+        noVerdict: opts.noVerdict ?? opts.verdict === false,
         signal: opts.signal,
         specPath: config.swarm.specPath,
         constitutionPath: config.swarm.constitutionPath,

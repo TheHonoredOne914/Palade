@@ -269,25 +269,6 @@ function replacePlaceholders(
   data: HtmlTemplateData,
   ctx: ReporterContext
 ): string {
-  let result = template
-
-  result = result.replace(/\{\{TITLE\}\}/g, escapeHtml(data.title))
-  result = result.replace(/\{\{TIMESTAMP\}\}/g, escapeHtml(data.timestamp))
-  result = result.replace(/\{\{PROJECT_NAME\}\}/g, escapeHtml(data.projectName))
-  result = result.replace(/\{\{SCORE\}\}/g, String(data.score))
-  result = result.replace(/\{\{SCORE_COLOR\}\}/g, data.scoreColor)
-  result = result.replace(/\{\{SCORE_GRADE\}\}/g, data.scoreGrade)
-  result = result.replace(/\{\{SCORE_GRADE_CLASS\}\}/g, getScoreGradeClass(data.score))
-  result = result.replace(/\{\{DELTA\}\}/g, String(data.delta))
-  result = result.replace(/\{\{DELTA_TEXT\}\}/g, data.deltaText)
-  result = result.replace(
-    /\{\{DELTA_CLASS\}\}/g,
-    data.delta > 0 ? 'positive' : data.delta < 0 ? 'negative' : 'neutral'
-  )
-  result = result.replace(/\{\{EXECUTIVE_SUMMARY\}\}/g, data.executiveSummary)
-  result = result.replace(/\{\{CATEGORY_SCORES\}\}/g, data.categoryScoresHtml)
-  result = result.replace(/\{\{PRIORITY_FIXES\}\}/g, data.priorityFixesHtml)
-  result = result.replace(/\{\{OBSERVATIONS\}\}/g, data.observationsHtml)
   const debtCounts = { critical: 0, high: 0, medium: 0, low: 0 }
   for (const f of ctx.findings) {
     if (f.severity === 'critical') debtCounts.critical++
@@ -296,27 +277,47 @@ function replacePlaceholders(
     if (f.severity === 'low') debtCounts.low++
   }
 
-  result = result.replace(/\{\{DEBT_CRITICAL\}\}/g, String(debtCounts.critical))
-  result = result.replace(/\{\{DEBT_HIGH\}\}/g, String(debtCounts.high))
-  result = result.replace(/\{\{DEBT_MEDIUM\}\}/g, String(debtCounts.medium))
-  result = result.replace(/\{\{DEBT_LOW\}\}/g, String(debtCounts.low))
-  result = result.replace(
-    /\{\{DEBT_HIGHEST_ROI\}\}/g,
-    ctx.synthesis.debtEstimate.highestROIFix
+  const values: Record<string, string> = {
+    TITLE: escapeHtml(data.title),
+    TIMESTAMP: escapeHtml(data.timestamp),
+    PROJECT_NAME: escapeHtml(data.projectName),
+    SCORE: String(data.score),
+    SCORE_COLOR: data.scoreColor,
+    SCORE_GRADE: data.scoreGrade,
+    SCORE_GRADE_CLASS: getScoreGradeClass(data.score),
+    DELTA: String(data.delta),
+    DELTA_TEXT: data.deltaText,
+    DELTA_CLASS: data.delta > 0 ? 'positive' : data.delta < 0 ? 'negative' : 'neutral',
+    EXECUTIVE_SUMMARY: data.executiveSummary,
+    CATEGORY_SCORES: data.categoryScoresHtml,
+    PRIORITY_FIXES: data.priorityFixesHtml,
+    OBSERVATIONS: data.observationsHtml,
+    DEBT_CRITICAL: String(debtCounts.critical),
+    DEBT_HIGH: String(debtCounts.high),
+    DEBT_MEDIUM: String(debtCounts.medium),
+    DEBT_LOW: String(debtCounts.low),
+    DEBT_HIGHEST_ROI: ctx.synthesis.debtEstimate.highestROIFix
       ? `<div style="margin-top: 1rem; padding: 1rem; background: #0f1117; border-radius: 6px;"><strong style="color: #3fb950;">Highest ROI:</strong> ${escapeHtml(ctx.synthesis.debtEstimate.highestROIFix)}</div>`
-      : ''
-  )
-  result = result.replace(/\{\{CROSS_AGENT_FINDINGS\}\}/g, data.crossAgentFindingsHtml)
-  result = result.replace(/\{\{AGENT_TIMINGS\}\}/g, data.agentTimingsHtml)
-  result = result.replace(/\{\{FINDINGS_SUMMARY\}\}/g, data.findingsSummaryHtml)
-  result = result.replace(/\{\{SPARKLINE_DATA\}\}/g, data.sparklineData)
-  result = result.replace(/\{\{SPARKLINE_LABELS\}\}/g, data.sparklineLabels)
-  result = result.replace(/\{\{RUN_ID\}\}/g, escapeHtml(ctx.swarm.runId))
-  result = result.replace(/\{\{DURATION\}\}/g, `${(ctx.swarm.durationMs / 1000).toFixed(1)}s`)
-  result = result.replace(/\{\{TOTAL_CHUNKS\}\}/g, String(ctx.swarm.totalChunks))
-  result = result.replace(/\{\{TOTAL_TOKENS\}\}/g, ctx.swarm.totalTokensEstimated.toLocaleString())
+      : '',
+    CROSS_AGENT_FINDINGS: data.crossAgentFindingsHtml,
+    AGENT_TIMINGS: data.agentTimingsHtml,
+    FINDINGS_SUMMARY: data.findingsSummaryHtml,
+    SPARKLINE_DATA: data.sparklineData,
+    SPARKLINE_LABELS: data.sparklineLabels,
+    RUN_ID: escapeHtml(ctx.swarm.runId),
+    DURATION: `${(ctx.swarm.durationMs / 1000).toFixed(1)}s`,
+    TOTAL_CHUNKS: String(ctx.swarm.totalChunks),
+    TOTAL_TOKENS: ctx.swarm.totalTokensEstimated.toLocaleString(),
+  }
 
-  return result
+  // Single pass over the TEMPLATE only. Sequential .replace calls re-scan
+  // already-substituted content, so a literal "{{RUN_ID}}" inside LLM-provided
+  // text would get overwritten by a later replacement. The callback form also
+  // avoids String.replace's `$&`/`$'` replacement-pattern expansion mangling
+  // values that contain dollar signs.
+  return template.replace(/\{\{([A-Z_]+)\}\}/g, (match, key: string) =>
+    key in values ? values[key] : match
+  )
 }
 
 let htmlServer: Server | null = null

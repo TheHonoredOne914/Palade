@@ -66,9 +66,12 @@ export async function fetchWithRetry(
       if (res.status === 429 && attempt < retries) {
         const retryAfter = res.headers.get('retry-after')
         const parsed = retryAfter != null ? parseInt(retryAfter, 10) * 1000 : NaN
+        // Honor an explicit server Retry-After up to 60s — clamping it to the
+        // 8s backoff ceiling would retry inside the server's window and burn
+        // every attempt on guaranteed 429s.
         const delayMs = isNaN(parsed)
           ? Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS)
-          : Math.min(parsed, MAX_DELAY_MS)
+          : Math.min(parsed, 60_000)
         await sleep(delayMs, externalSignal)
         continue
       }

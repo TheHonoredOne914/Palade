@@ -72,10 +72,16 @@ export interface SwarmOptions {
   /**
    * Exhaustive mode: bypass the triage filter phase and review all files in the project.
    */
+  exhaustive?: boolean
   /**
    * Strict Triage mode: Throw an error if any file is dropped due to maxReviewTokens limit.
    */
   strictTriage?: boolean
+  /**
+   * Absolute path to the project root, used for writing ADR decision files.
+   * Falls back to process.cwd() when omitted.
+   */
+  projectRoot?: string
   noVerdict?: boolean
   signal?: AbortSignal
   specPath?: string

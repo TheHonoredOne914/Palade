@@ -56,7 +56,9 @@ export function appendEntry(historyPath: string, entry: ScoreHistoryEntry): Scor
   const existing = readHistory(historyPath)
   existing.push(entry)
   writeHistory(historyPath, existing)
-  return existing
+  // Return what was actually persisted — the untrimmed array would diverge
+  // from the next readHistory() once the retention cap kicks in.
+  return existing.slice(-MAX_HISTORY_ENTRIES)
 }
 
 export function getLatestEntry(historyPath: string): ScoreHistoryEntry | null {

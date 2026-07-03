@@ -9,20 +9,25 @@ const SEVERITY_RANK: Record<Severity, number> = {
 }
 
 function jaccardSimilarity(a: string, b: string): number {
-  const getWords = (str: string) => 
-    new Set(str.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 0))
-  
+  const getWords = (str: string) =>
+    new Set(
+      str
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 0)
+    )
+
   const aSet = getWords(a)
   const bSet = getWords(b)
-  
+
   if (aSet.size === 0 && bSet.size === 0) return 1
   if (aSet.size === 0 || bSet.size === 0) return 0
-  
+
   let overlap = 0
   for (const word of aSet) {
     if (bSet.has(word)) overlap++
   }
-  
+
   const union = aSet.size + bSet.size - overlap
   return union === 0 ? 0 : overlap / union
 }
@@ -40,14 +45,17 @@ function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
     const similarTitle = jaccardSimilarity(a.title, b.title) > 0.4
 
     if (a.lineStart !== undefined && b.lineStart !== undefined) {
-      if (a.lineStart === b.lineStart && similarTitle) return true
-      if (a.agentName === b.agentName && Math.abs(a.lineStart - b.lineStart) <= 5) return true
-    } else if (a.lineStart === undefined && b.lineStart === undefined) {
-      // Both are file-level findings
-      if (a.agentName === b.agentName && similarTitle) return true
-    } else {
-      // One has a line, one doesn't. If they are the same agent and similar title, merge them.
-      if (a.agentName === b.agentName && similarTitle) return true
+      if (a.lineStart === b.lineStart) {
+        if (jaccardSimilarity(a.title, b.title) > 0.4) return true
+      }
+      // Same agent, nearby lines: only merge when the titles actually describe
+      // the same issue — proximity alone collapses unrelated findings and loses
+      // one of them. The 60-line window (not 5) covers duplicates produced by
+      // the chunk splitter, whose halves overlap by up to 50 lines
+      // (scheduler.ts), so the same defect can be reported from both halves.
+      if (a.agentName === b.agentName && Math.abs(a.lineStart - b.lineStart) <= 60) {
+        if (jaccardSimilarity(a.title, b.title) > 0.5) return true
+      }
     }
   }
   return false

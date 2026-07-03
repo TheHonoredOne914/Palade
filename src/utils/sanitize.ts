@@ -14,6 +14,7 @@ export function sanitizeForLog(obj: Record<string, unknown>): Record<string, unk
 }
 
 export function maskKey(key: string): string {
-  if (key.length < 8) return '[REDACTED]'
+  // At 8 chars, first-4 + last-4 would reveal the entire key
+  if (key.length <= 8) return '[REDACTED]'
   return key.slice(0, 4) + '...' + key.slice(-4)
 }

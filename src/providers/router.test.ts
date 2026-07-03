@@ -215,8 +215,6 @@ describe('FallbackProvider', () => {
     expect(res.provider).toBe('fallback1')
   })
 
-
-
   it('works with multiple fallbacks and skips failing ones', async () => {
     primary = mockProvider('primary', 'model-a', 'fail-retryable')
     fallback1 = mockProvider('fallback1', 'model-b', 'fail-retryable')

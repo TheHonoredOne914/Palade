@@ -25,8 +25,19 @@ export const PROVIDERS = [
 
 export type ProviderId = (typeof PROVIDERS)[number]['id']
 
+/**
+ * Same precedence as config/loader.ts loadConfig(): `.palade/palade.config.ts`
+ * first, then the root-level file. Writing to a different file than the one
+ * loadConfig reads would save keys that are never picked up.
+ */
+function resolveConfigPath(projectRoot: string): string {
+  const nested = join(projectRoot, '.palade', 'palade.config.ts')
+  if (existsSync(nested)) return nested
+  return join(projectRoot, 'palade.config.ts')
+}
+
 export async function readCurrentKeys(projectRoot: string): Promise<Record<string, string>> {
-  const configPath = join(projectRoot, 'palade.config.ts')
+  const configPath = resolveConfigPath(projectRoot)
   const result: Record<string, string> = {}
   if (!existsSync(configPath)) return result
   try {
@@ -47,7 +58,7 @@ async function saveApiKey(
   providerId: ProviderId,
   apiKey: string
 ): Promise<void> {
-  const configPath = join(projectRoot, 'palade.config.ts')
+  const configPath = resolveConfigPath(projectRoot)
   const paladeDir = join(projectRoot, '.palade')
   if (!existsSync(paladeDir)) await mkdir(paladeDir, { recursive: true })
 

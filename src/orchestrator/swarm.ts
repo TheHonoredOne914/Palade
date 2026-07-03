@@ -45,6 +45,11 @@ export async function runSwarm(
 
   const agentTimings: Partial<Record<AgentName, number>> = {}
 
+  // Aborted when any agent hits a fatal auth error, so the other agents'
+  // in-flight provider calls are cancelled instead of running to completion
+  // and burning quota on a review that is about to throw anyway.
+  const runAbort = new AbortController()
+
   // Run agents concurrently — rate-limit handling is done at the provider
   // layer (fetchWithRetry + FallbackProvider), not serialized here.
   const agentPromises = agents.map(async (agent) => {
@@ -65,10 +70,10 @@ export async function runSwarm(
           // IAgent.analyze → provider.complete → fetchWithRetry) instead of
           // running to completion and burning provider quota after we've given up.
           const controller = new AbortController()
-          if (options.signal) {
-            options.signal.addEventListener('abort', () => controller.abort())
-            if (options.signal.aborted) controller.abort()
-          }
+          const onAbort = () => controller.abort()
+          options.signal?.addEventListener('abort', onAbort)
+          runAbort.signal.addEventListener('abort', onAbort)
+          if (options.signal?.aborted || runAbort.signal.aborted) controller.abort()
 
           let timeoutHandle: ReturnType<typeof setTimeout> | undefined
           const timeoutPromise = new Promise<AgentFinding[]>((_, reject) => {
@@ -81,11 +86,18 @@ export async function runSwarm(
           let batchFindings: AgentFinding[] = []
           try {
             const analyzePromise = agent.analyze(batch, context, controller.signal)
-            batchFindings = await Promise.race([analyzePromise, timeoutPromise])
+            // Attach the rejection guard BEFORE racing: if the timeout wins the
+            // race, the await throws and a later .catch() would never run,
+            // leaving the aborted analyze promise unhandled.
             analyzePromise.catch(() => {})
+            batchFindings = await Promise.race([analyzePromise, timeoutPromise])
             return batchFindings
           } finally {
             if (timeoutHandle) clearTimeout(timeoutHandle)
+            // Remove per-batch listeners — leaving them accumulates one closure
+            // per batch on the shared signals (MaxListenersExceededWarning).
+            options.signal?.removeEventListener('abort', onAbort)
+            runAbort.signal.removeEventListener('abort', onAbort)
             options.onAgentBatchComplete?.(
               agent.name,
               batchIdx + 1,
@@ -96,8 +108,37 @@ export async function runSwarm(
         })
       )
 
-      const results = await Promise.all(batchPromises)
-      allFindings = results.flat()
+      // allSettled, not all: one failed/timed-out batch must not throw away
+      // the findings from batches that already succeeded.
+      const results = await Promise.allSettled(batchPromises)
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          allFindings.push(...result.value)
+        } else {
+          const err = result.reason
+          agentError = err instanceof Error ? err : new Error(String(err))
+
+          const msg = agentError.message.toLowerCase()
+          const isFatalAuth =
+            msg.includes('401') ||
+            msg.includes('403') ||
+            msg.includes('unauthorized') ||
+            msg.includes('invalid api key') ||
+            msg.includes('authentication')
+          if (isFatalAuth) {
+            runAbort.abort()
+            throw agentError
+          }
+        }
+      }
+
+      if (agentError) {
+        console.warn(
+          chalk.yellow(
+            `\n⚠ ${agent.name}: ${agentError.message} (keeping ${allFindings.length} partial findings)`
+          )
+        )
+      }
     } catch (err: unknown) {
       agentError = err instanceof Error ? err : new Error(String(err))
 
@@ -109,6 +150,7 @@ export async function runSwarm(
         msg.includes('invalid api key') ||
         msg.includes('authentication')
       if (isFatalAuth) {
+        runAbort.abort()
         throw agentError
       }
 
@@ -150,10 +192,8 @@ export async function runSwarm(
   }
 
   // Phase: Verdict Mode (Conflict Arbitration)
-  const projectRoot = manifests?.[0]?.absolutePath
-    ? manifests[0].absolutePath.split('.palade')[0]
-    : process.cwd()
-  let finalFindings = mergedFindings
+  const projectRoot = options.projectRoot ?? process.cwd()
+  const finalFindings = mergedFindings
 
   if (!options.noVerdict) {
     const conflicts = detectConflicts(memory.getAll())
@@ -168,15 +208,25 @@ export async function runSwarm(
       if (verdict) {
         options.onVerdictDecided?.(verdict.decision, verdict.confidence)
 
-        // Save to ADR
-        const slug = await saveDecision(projectRoot, conflict, verdict)
+        // Save to ADR — a failed disk write must not abort the review
+        let savedNote = ''
+        try {
+          const slug = await saveDecision(projectRoot, conflict, verdict)
+          savedNote = `\nSaved as: ${slug}.md`
+        } catch (err) {
+          console.warn(
+            chalk.yellow(
+              `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+            )
+          )
+        }
 
         // Inject into findings for synthesis
         finalFindings.push({
           id: crypto.randomUUID(),
           agentName: 'Architect',
           title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
-          description: `Decision: ${verdict.decision}\\nTradeoff: ${verdict.tradeoff_accepted}\\nSaved as: ${slug}.md`,
+          description: `Decision: ${verdict.decision}\nTradeoff: ${verdict.tradeoff_accepted}${savedNote}`,
           filePath: conflict.filePath,
           lineStart: conflict.lineStart,
           lineEnd: conflict.lineEnd,
@@ -191,8 +241,10 @@ export async function runSwarm(
   // Handle Economy Mode internal verdicts
   for (const finding of finalFindings) {
     if (finding.agentName === 'Architect' && finding.title.startsWith('[VERDICT]')) {
-      // Parse tradeoff out of description
-      const lines = finding.description.split('\\n')
+      // Parse tradeoff out of description. Models sometimes emit a literal
+      // backslash-n instead of a real newline inside the JSON string, so
+      // split on both.
+      const lines = finding.description.split(/\r?\n|\\n/)
       const decisionStr =
         lines
           .find((l) => l.startsWith('Decision:'))
@@ -242,8 +294,16 @@ export async function runSwarm(
           confidence: parseInt(confidenceStr, 10),
           losing_side: losingStr,
         }
-        const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
-        finding.description += `\\nSaved as: ${slug}.md`
+        try {
+          const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
+          finding.description += `\nSaved as: ${slug}.md`
+        } catch (err) {
+          console.warn(
+            chalk.yellow(
+              `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+            )
+          )
+        }
       }
     }
   }
