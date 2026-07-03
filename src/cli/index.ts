@@ -108,7 +108,10 @@ async function runClassicCLI(): Promise<void> {
       '-e, --exhaustive',
       'Exhaustive mode: skip triage and analyze the entire project (maximum issues)'
     )
-    .option('--strict-triage', 'Strict triage mode: halt if triage drops any files due to token limits')
+    .option(
+      '--strict-triage',
+      'Strict triage mode: halt if triage drops any files due to token limits'
+    )
     .option('--no-verdict', 'Disable Verdict Mode (no conflict resolution)')
     .action(async (pathArg: string | undefined, opts: Record<string, unknown>): Promise<void> => {
       try {

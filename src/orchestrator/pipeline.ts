@@ -152,11 +152,11 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       ])
     )
     console.log('\nEstimated Cost (USD):')
-    
+
     const costEntries = Object.entries(estimate.estimatedCostUsd)
       .filter(([_, cost]) => cost !== null)
       .map(([provider, cost]) => [provider + ':', `$${cost?.toFixed(2)}`])
-      
+
     if (costEntries.length > 0) {
       console.log(kvTable(costEntries as [string, string][]))
     } else {
@@ -167,5 +167,10 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     throw new CliExitError(0)
   }
 
-  return runSwarm(activeChunks, context, opts.swarmOptions, manifests)
+  return runSwarm(
+    activeChunks,
+    context,
+    { ...opts.swarmOptions, projectRoot: opts.projectRoot },
+    manifests
+  )
 }

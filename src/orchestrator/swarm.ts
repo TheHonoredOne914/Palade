@@ -96,8 +96,36 @@ export async function runSwarm(
         })
       )
 
-      const results = await Promise.all(batchPromises)
-      allFindings = results.flat()
+      // allSettled, not all: one failed/timed-out batch must not throw away
+      // the findings from batches that already succeeded.
+      const results = await Promise.allSettled(batchPromises)
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          allFindings.push(...result.value)
+        } else {
+          const err = result.reason
+          agentError = err instanceof Error ? err : new Error(String(err))
+
+          const msg = agentError.message.toLowerCase()
+          const isFatalAuth =
+            msg.includes('401') ||
+            msg.includes('403') ||
+            msg.includes('unauthorized') ||
+            msg.includes('invalid api key') ||
+            msg.includes('authentication')
+          if (isFatalAuth) {
+            throw agentError
+          }
+        }
+      }
+
+      if (agentError) {
+        console.warn(
+          chalk.yellow(
+            `\n⚠ ${agent.name}: ${agentError.message} (keeping ${allFindings.length} partial findings)`
+          )
+        )
+      }
     } catch (err: unknown) {
       agentError = err instanceof Error ? err : new Error(String(err))
 
@@ -150,10 +178,8 @@ export async function runSwarm(
   }
 
   // Phase: Verdict Mode (Conflict Arbitration)
-  const projectRoot = manifests?.[0]?.absolutePath
-    ? manifests[0].absolutePath.split('.palade')[0]
-    : process.cwd()
-  let finalFindings = mergedFindings
+  const projectRoot = options.projectRoot ?? process.cwd()
+  const finalFindings = mergedFindings
 
   if (!options.noVerdict) {
     const conflicts = detectConflicts(memory.getAll())
@@ -168,15 +194,25 @@ export async function runSwarm(
       if (verdict) {
         options.onVerdictDecided?.(verdict.decision, verdict.confidence)
 
-        // Save to ADR
-        const slug = await saveDecision(projectRoot, conflict, verdict)
+        // Save to ADR — a failed disk write must not abort the review
+        let savedNote = ''
+        try {
+          const slug = await saveDecision(projectRoot, conflict, verdict)
+          savedNote = `\nSaved as: ${slug}.md`
+        } catch (err) {
+          console.warn(
+            chalk.yellow(
+              `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+            )
+          )
+        }
 
         // Inject into findings for synthesis
         finalFindings.push({
           id: crypto.randomUUID(),
           agentName: 'Architect',
           title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
-          description: `Decision: ${verdict.decision}\\nTradeoff: ${verdict.tradeoff_accepted}\\nSaved as: ${slug}.md`,
+          description: `Decision: ${verdict.decision}\nTradeoff: ${verdict.tradeoff_accepted}${savedNote}`,
           filePath: conflict.filePath,
           lineStart: conflict.lineStart,
           lineEnd: conflict.lineEnd,
@@ -191,8 +227,10 @@ export async function runSwarm(
   // Handle Economy Mode internal verdicts
   for (const finding of finalFindings) {
     if (finding.agentName === 'Architect' && finding.title.startsWith('[VERDICT]')) {
-      // Parse tradeoff out of description
-      const lines = finding.description.split('\\n')
+      // Parse tradeoff out of description. Models sometimes emit a literal
+      // backslash-n instead of a real newline inside the JSON string, so
+      // split on both.
+      const lines = finding.description.split(/\r?\n|\\n/)
       const decisionStr =
         lines
           .find((l) => l.startsWith('Decision:'))
@@ -242,8 +280,16 @@ export async function runSwarm(
           confidence: parseInt(confidenceStr, 10),
           losing_side: losingStr,
         }
-        const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
-        finding.description += `\\nSaved as: ${slug}.md`
+        try {
+          const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
+          finding.description += `\nSaved as: ${slug}.md`
+        } catch (err) {
+          console.warn(
+            chalk.yellow(
+              `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+            )
+          )
+        }
       }
     }
   }

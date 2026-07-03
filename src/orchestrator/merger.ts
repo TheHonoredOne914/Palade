@@ -9,20 +9,25 @@ const SEVERITY_RANK: Record<Severity, number> = {
 }
 
 function jaccardSimilarity(a: string, b: string): number {
-  const getWords = (str: string) => 
-    new Set(str.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 0))
-  
+  const getWords = (str: string) =>
+    new Set(
+      str
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 0)
+    )
+
   const aSet = getWords(a)
   const bSet = getWords(b)
-  
+
   if (aSet.size === 0 && bSet.size === 0) return 1
   if (aSet.size === 0 || bSet.size === 0) return 0
-  
+
   let overlap = 0
   for (const word of aSet) {
     if (bSet.has(word)) overlap++
   }
-  
+
   const union = aSet.size + bSet.size - overlap
   return union === 0 ? 0 : overlap / union
 }
