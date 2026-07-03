@@ -167,5 +167,10 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     throw new CliExitError(0)
   }
 
-  return runSwarm(activeChunks, context, opts.swarmOptions, manifests)
+  return runSwarm(
+    activeChunks,
+    context,
+    { ...opts.swarmOptions, projectRoot: opts.projectRoot },
+    manifests
+  )
 }

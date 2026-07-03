@@ -5,7 +5,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import chalk from 'chalk'
 import { z } from 'zod'
-import { getRouter } from '../providers/router.js'
+import { getProvider } from '../providers/router.js'
 import type { AgentFinding, AgentContext } from '../agents/base.js'
 import type { ChangedFile } from '../diff/types.js'
 
@@ -104,17 +104,17 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
 const VerdictSchema = z.object({
   decision: z.string().describe('What to actually do'),
   tradeoff_accepted: z.string().describe('The explicit cost being accepted'),
-  confidence: z.number().describe('0-100 score of how confident you are in this tradeoff'),
+  confidence: z.coerce
+    .number()
+    .describe('0-100 score of how confident you are in this tradeoff'),
   losing_side: z.string().describe('Which agent recommendation was NOT taken, and why')
 })
 
 export async function arbitrateConflict(
   conflict: Conflict,
-  context: AgentContext,
+  _context: AgentContext,
   signal?: AbortSignal
 ): Promise<Verdict | null> {
-  const router = getRouter()
-
   const systemPrompt = `You are the Lead Architect. Two specialized agents disagree on a piece of code.
 Your job is to resolve the conflict by making a definitive architectural decision. Accept a tradeoff explicitly.
 
@@ -122,7 +122,7 @@ Respond ONLY with JSON matching this schema:
 {
   "decision": "string (what to actually do)",
   "tradeoff_accepted": "string (the explicit cost being accepted)",
-  "confidence": "number (0-100)",
+  "confidence": 85,
   "losing_side": "string (which agent's recommendation was NOT taken, and why)"
 }`
 
@@ -139,17 +139,15 @@ Reasoning: ${conflict.sideB.description}
 Please provide your verdict.`
 
   try {
-    const rawOutput = await router.complete(
-      {
-        model: context.modeConfig?.agentOverrides?.[0]?.model || 'groq:llama3-70b-8192',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.1,
-      },
-      signal
-    )
+    const provider = getProvider('synthesis')
+    const response = await provider.complete({
+      systemPrompt,
+      userPrompt,
+      maxTokens: 1024,
+      temperature: 0.1,
+      signal,
+    })
+    const rawOutput = response.content ?? ''
 
     const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
     const jsonStr = jsonMatch ? jsonMatch[0] : rawOutput
@@ -220,9 +218,9 @@ export async function checkDecisionDrift(
     if (cf.diff && cf.status !== 'deleted') {
       const lines: number[] = []
       let headLine = 0
-      for (const line of cf.diff.split('\\n')) {
+      for (const line of cf.diff.split('\n')) {
         if (line.startsWith('@@')) {
-          const match = line.match(/\\+(\\d+)/)
+          const match = line.match(/\+(\d+)/)
           if (match) headLine = parseInt(match[1], 10)
           continue
         }
@@ -239,11 +237,10 @@ export async function checkDecisionDrift(
   }
 
   const warnings: string[] = []
-  const router = getRouter()
 
   for (const file of mdFiles) {
     const content = await readFile(join(dir, file), 'utf-8')
-    const match = content.match(/\\*\\*File:\\*\\*\\s+(.+):(\\d+)-(\\d+)/)
+    const match = content.match(/\*\*File:\*\*\s+(.+):(\d+)-(\d+)/)
     if (!match) continue
 
     const decisionPath = match[1]
@@ -272,19 +269,17 @@ GIT DIFF:
 ${cf.diff}`
 
     try {
-      const result = await router.complete({
-        model: 'groq:llama3-70b-8192',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.1
+      const result = await getProvider('primary').complete({
+        systemPrompt,
+        userPrompt,
+        maxTokens: 8,
+        temperature: 0.1,
       })
 
-      if (result.trim().toUpperCase().includes('YES')) {
+      if ((result.content ?? '').trim().toUpperCase().includes('YES')) {
         warnings.push(`You're editing logic that contradicts a documented decision (${file}).`)
       }
-    } catch (e) {
+    } catch {
       // ignore LLM failure in watch mode
     }
   }
