@@ -43,7 +43,7 @@ export function getAgentsForMode(
       const agent = allAgents.get(name)
       if (agent) agents.push(agent)
     }
-    return agents.length > 0 ? agents : AGENT_REGISTRY
+    return agents.length > 0 ? agents : [...AGENT_REGISTRY, ...customAgents.values()]
   }
   if (mode === 'ghost') return [allAgents.get('deadCode') ?? BUILTIN_AGENTS.get('deadCode')!]
   return [...AGENT_REGISTRY, ...customAgents.values()]

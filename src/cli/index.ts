@@ -43,6 +43,17 @@ if (hasCommand) {
 }
 
 async function launchTUI(): Promise<void> {
+  const { default: chalk } = await import('chalk')
+  if (!process.stdout.isTTY || !process.stdin.isTTY) {
+    console.log(chalk.dim('Interactive TUI requires a terminal. Showing available commands instead:\n'))
+    console.log('  palade review [path]     Review codebase with AI swarm')
+    console.log('  palade diff               Review changes since a branch')
+    console.log('  palade watch              Continuous background review')
+    console.log('  palade score              Show current health score')
+    console.log('  palade init               Set up Palade in this project')
+    console.log(chalk.dim('\nRun `palade --help` for the full command list.'))
+    return
+  }
   const { launchTUI: startTUI } = await import('../tui/launch.js')
   await startTUI()
 }
@@ -216,15 +227,8 @@ async function runClassicCLI(): Promise<void> {
 
   program
     .command('tui')
-    .description('Launch experimental Terminal UI')
-    .option('--unstable-tui', 'Acknowledge this feature is unstable')
-    .action(async (opts: { unstableTui?: boolean }): Promise<void> => {
-      if (!opts.unstableTui) {
-        console.error(
-          chalk.red('The TUI is highly experimental. You must pass --unstable-tui to run it.')
-        )
-        process.exit(1)
-      }
+    .description('Launch the interactive Terminal UI')
+    .action(async (): Promise<void> => {
       try {
         const { launchTUI } = await import('../tui/launch.js')
         await launchTUI()

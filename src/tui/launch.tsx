@@ -14,6 +14,12 @@ const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf-
 
 export async function launchTUI(): Promise<void> {
   process.env.PALADE_TUI = '1'
+
+  const { existsSync } = await import('node:fs')
+  const hasConfig = existsSync(join(process.cwd(), 'palade.config.ts')) || existsSync(join(process.cwd(), '.palade', 'palade.config.ts'))
+  const hasAnyEnvKey = ['GROQ_API_KEY', 'OPENROUTER_API_KEY', 'CEREBRAS_API_KEY', 'NVIDIA_API_KEY', 'OLLAMA_MODEL']
+    .some((k) => !!process.env[k])
+
   let config
   const providerStatus: Record<string, boolean> = {}
   let configError: string | undefined
@@ -22,6 +28,25 @@ export async function launchTUI(): Promise<void> {
     config = await loadConfig()
   } catch (err: unknown) {
     configError = err instanceof Error ? err.message : String(err)
+  }
+
+  const hasConfigProviderKey = config
+    ? Object.values(config.providers ?? {}).some((p) => !!p?.apiKey)
+    : false
+
+  if (!hasAnyEnvKey && !hasConfigProviderKey) {
+    const { default: chalk } = await import('chalk')
+    console.log(chalk.bold.red('\n⚠ No AI provider configured.'))
+    console.log(chalk.gray('Palade needs access to an LLM to review your code.'))
+    console.log('\nTo get started immediately, set an API key. For example:')
+    console.log(chalk.cyan('  export GROQ_API_KEY=your_key_here'))
+    console.log('\nSupported env vars: GROQ_API_KEY, OPENROUTER_API_KEY, CEREBRAS_API_KEY, NVIDIA_API_KEY, OLLAMA_MODEL\n')
+    return
+  }
+
+  if (!hasConfig) {
+    const { default: chalk } = await import('chalk')
+    console.log(chalk.dim('Using auto-detected settings. Run `palade init` anytime to customize.\n'))
   }
 
   // Router init is separate from config loading: a config can be valid while

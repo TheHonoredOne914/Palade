@@ -70,11 +70,16 @@ async function saveApiKey(
   }
 
   const prov = PROVIDERS.find((p) => p.id === providerId)!
+  const escapedApiKey = apiKey
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
   const updateRe = new RegExp(`(${providerId}[\\s\\S]{0,200}?apiKey:\\s*)(['"])([^'"]*)(\\2)`)
   if (updateRe.test(content)) {
-    content = content.replace(updateRe, `$1$2${apiKey}$4`)
+    content = content.replace(updateRe, (_match, p1, p2, _p3, p4) => `${p1}${p2}${escapedApiKey}${p4}`)
   } else {
-    const provBlock = `    '${providerId}': {\n      apiKey: '${apiKey}',\n      model: '${prov.model}'\n    },\n`
+    const provBlock = `    '${providerId}': {\n      apiKey: '${escapedApiKey}',\n      model: '${prov.model}'\n    },\n`
     content = content.replace(/(providers\s*:\s*\{)/, `$1\n${provBlock}`)
   }
 

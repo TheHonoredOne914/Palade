@@ -58,9 +58,17 @@ export async function writeOnboardDocs(
     const start = synthesisText.indexOf(sections[i].marker)
     if (start === -1) continue
 
-    const nextMarker = sections[i + 1]?.marker
-    const end = nextMarker ? synthesisText.indexOf(nextMarker, start + 1) : synthesisText.length
-    const content = synthesisText.slice(start, end === -1 ? undefined : end).trim()
+    // Find the next marker that actually occurs in the text, skipping any
+    // sections the LLM omitted, so a missing marker can't swallow later sections.
+    let end = synthesisText.length
+    for (let j = i + 1; j < sections.length; j++) {
+      const idx = synthesisText.indexOf(sections[j].marker, start + 1)
+      if (idx !== -1) {
+        end = idx
+        break
+      }
+    }
+    const content = synthesisText.slice(start, end).trim()
 
     const filePath = join(outputDir, sections[i].file)
     writeFileSync(filePath, content, 'utf-8')

@@ -116,6 +116,17 @@ export async function triageFiles(
           const distinctFiles = new Set(suffixMatches.map((c) => c.filePath))
           if (distinctFiles.size === 1) matching = suffixMatches
         }
+        if (matching.length === 0) {
+          // The LLM's ranked-path output isn't guaranteed byte-exact — fall
+          // back to a case-insensitive exact match, single-file only, before
+          // dropping this ranked path from the review entirely.
+          const cleanLower = clean.toLowerCase()
+          const ciMatches = allChunks.filter(
+            (c) => c.filePath.replace(/^\.?\/+/, '').toLowerCase() === cleanLower
+          )
+          const distinctFiles = new Set(ciMatches.map((c) => c.filePath))
+          if (distinctFiles.size === 1) matching = ciMatches
+        }
         for (const chunk of matching) {
           if (seenChunkIds.has(chunk.id)) continue
           if (tokensUsed + chunk.tokenCount > budget) break
@@ -129,13 +140,13 @@ export async function triageFiles(
         // Automatically append imported sibling files (blast radius expansion)
         const selectedPaths = new Set(selected.map(c => c.filePath))
         for (const m of manifests) {
-          if (m.importers && m.importers.length > 0 && !selectedPaths.has(m.absolutePath)) {
+          if (m.importers && m.importers.length > 0 && !selectedPaths.has(m.path)) {
             // Check if any of its importers were selected
             const hasSelectedImporter = m.importers.some(imp => {
                return selected.some(c => c.filePath === imp || c.filePath.endsWith('/' + imp))
             })
             if (hasSelectedImporter) {
-               const matchingChunks = allChunks.filter(c => c.filePath === m.absolutePath)
+               const matchingChunks = allChunks.filter(c => c.filePath === m.path)
                for (const chunk of matchingChunks) {
                  if (seenChunkIds.has(chunk.id)) continue
                  if (tokensUsed + chunk.tokenCount > budget) break

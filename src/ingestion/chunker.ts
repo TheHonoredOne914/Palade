@@ -142,20 +142,44 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
   while (startIdx < lines.length) {
     let depth = 0
     let currentIdx = startIdx
-    let maxLines = 300
+    const maxLines = 300
 
-    // Scan forward to find a block boundary or hit maxLines
-    while (currentIdx < lines.length && currentIdx - startIdx < maxLines) {
+    // Scanner state, persists across lines within this chunk scan
+    let inString: '"' | "'" | '`' | null = null
+    let inBlockComment = false
+
+    while (currentIdx < lines.length && (currentIdx - startIdx) < maxLines) {
       const line = lines[currentIdx]
-      // Basic bracket counting ignoring strings/comments for simplicity
+      let inLineComment = false
+
       for (let i = 0; i < line.length; i++) {
-        if (line[i] === '{') depth++
-        else if (line[i] === '}') depth--
+        const ch = line[i]
+        const next = line[i + 1]
+
+        if (inLineComment) continue
+
+        if (inBlockComment) {
+          if (ch === '*' && next === '/') { inBlockComment = false; i++ }
+          continue
+        }
+
+        if (inString) {
+          if (ch === '\\') { i++; continue } // skip escaped char
+          if (ch === inString) inString = null
+          continue
+        }
+
+        if (ch === '/' && next === '/') { inLineComment = true; continue }
+        if (ch === '/' && next === '*') { inBlockComment = true; i++; continue }
+        if (ch === '"' || ch === "'" || ch === '`') { inString = ch; continue }
+
+        if (ch === '{') depth++
+        else if (ch === '}') depth--
       }
 
       currentIdx++
-      // If we've closed all blocks and have at least some lines, end chunk here
-      if (depth <= 0 && currentIdx - startIdx > 5) {
+      // If we've closed all blocks, have at least some lines, and aren't mid-string/comment, end chunk here
+      if (depth <= 0 && (currentIdx - startIdx) >= 5 && !inString && !inBlockComment) {
         break
       }
     }

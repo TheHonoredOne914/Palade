@@ -58,7 +58,6 @@ export interface SwarmOptions {
   onVerdictDetected?: (filePath: string, sideA: string, sideB: string) => void
   onVerdictDecided?: (decision: string, confidence: number) => void
   timeoutMs?: number
-  exhaustive?: boolean
   maxReviewTokens?: number
   /** User-defined custom agents loaded from palade.agents.ts. */
   customAgents?: CustomAgentDefinition[]

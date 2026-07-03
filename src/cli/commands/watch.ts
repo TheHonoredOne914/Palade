@@ -202,18 +202,21 @@ export async function watchCommand(opts: {
         }
       } else if (isContinuous && sweepQueue.length > 0) {
         nextFile = sweepQueue.shift()
-        if (nextFile) sweepQueue.push(nextFile) // rotating queue
         currentSweepController = new AbortController()
       }
 
       if (nextFile) {
+        const sweepFile = !isUrgent ? nextFile : undefined
         try {
           await analyzeFile(nextFile, currentSweepController?.signal)
+          if (sweepFile) sweepQueue.push(sweepFile) // rotate to back after successful scan
         } catch (err: unknown) {
           if (err instanceof Error && err.name === 'AbortError' && !isUrgent) {
             // If background sweep was aborted, it means an urgent task came in.
             // Push the aborted file back to the front of the sweep queue so we try again later.
             sweepQueue.unshift(nextFile)
+          } else if (sweepFile) {
+            sweepQueue.push(sweepFile) // non-abort failure: still rotate, don't lose the file
           }
         }
       }

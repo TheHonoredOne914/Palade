@@ -317,11 +317,26 @@ export abstract class BaseSpecialistAgent implements IAgent {
       const validatedFindings: AgentFinding[] = []
       for (const f of findings) {
          if (f.severity === 'critical' || f.severity === 'high') {
+             const codeChunk = f.filePath
+               ? chunks.find(c => c.filePath === f.filePath &&
+                   (typeof f.lineStart !== 'number' || (c.startLine <= f.lineStart && c.endLine >= f.lineStart)))
+               : undefined
+             if (!codeChunk) {
+               // No matching chunk to verify against — keep the finding rather
+               // than running a self-consistency check with no code to look at.
+               validatedFindings.push(f)
+               continue
+             }
              try {
                const verifyResponse = await provider.complete({
                   systemPrompt: 'You are an expert verifier. Reply strictly YES or NO.',
-                  userPrompt: `Does this code snippet ACTUALLY contain the following vulnerability/issue? 
+                  userPrompt: `Does the following code ACTUALLY contain this vulnerability/issue?
 Issue: ${f.title} - ${f.description}
+
+Code:
+\`\`\`
+${codeChunk.content}
+\`\`\`
 
 Reply strictly YES or NO.`,
                   maxTokens: 10,
@@ -334,6 +349,7 @@ Reply strictly YES or NO.`,
                    console.log(chalk.yellow(`  [${this.name}] Dropped false positive during self-consistency check: ${f.title}`))
                }
              } catch (err) {
+               if (err instanceof Error && err.name === 'AbortError') throw err
                // If validation fails (e.g. timeout), err on the side of caution and keep it
                validatedFindings.push(f)
              }
