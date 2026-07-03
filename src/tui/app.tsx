@@ -99,7 +99,7 @@ export function App({
   const [settingsProviderIdx, setSettingsProviderIdx] = useState(0)
   const [settingsKeys, setSettingsKeys] = useState<Record<string, string>>({})
 
-  const { lines, appendLine, appendLines, clearOutput } = useOutputStream()
+  const { lines, appendLine, appendLines, clearOutput, clearNonce } = useOutputStream()
   const { pushToHistory, navigateHistory } = useCommandHistory()
   const abortRef = useRef<AbortController | null>(null)
 
@@ -242,7 +242,7 @@ export function App({
           />
         </Box>
       ) : (
-        <Static items={lines}>
+        <Static key={clearNonce} items={lines}>
           {(line, i) => {
             if (line.type === 'header') {
               return (

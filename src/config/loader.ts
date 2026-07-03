@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { config as dotenvConfig } from 'dotenv'
 import { pathToFileURL } from 'node:url'
 import { PaladeConfigSchema, type PaladeConfig } from './schema.js'
@@ -117,7 +117,7 @@ export async function loadConfig(): Promise<PaladeConfig> {
       }
 
       const absolutePath = join(process.cwd(), rawPath)
-      if (!absolutePath.startsWith(process.cwd())) {
+      if (absolutePath !== process.cwd() && !absolutePath.startsWith(process.cwd() + sep)) {
         throw new PaladeConfigError('Config file must be within the working directory', '--config')
       }
       configPath = absolutePath
@@ -135,7 +135,7 @@ export async function loadConfig(): Promise<PaladeConfig> {
     // Non-object exports (functions, primitives) are silently ignored.
   } catch (e) {
     const code = (e as NodeJS.ErrnoException)?.code
-    if (code && code !== 'ERR_MODULE_NOT_FOUND' && code !== 'ERR_LOAD_ESM') {
+    if (code !== 'ERR_MODULE_NOT_FOUND' && code !== 'ERR_LOAD_ESM') {
       console.error(`Warning: Failed to load palade.config.ts: ${(e as Error).message}`)
     }
   }
@@ -150,10 +150,18 @@ export async function loadConfig(): Promise<PaladeConfig> {
     if (typeof val === 'object' && val !== null) {
       const existing = (mergedProviders[key] as Record<string, unknown>) ?? {}
       const mergedVal = { ...existing }
-      for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      const valObj = val as Record<string, unknown>
+      for (const [k, v] of Object.entries(valObj)) {
         if (v !== '' || !existing[k]) {
           mergedVal[k] = v
         }
+      }
+      // An explicit config apiKey must win over env-derived credentials. The
+      // router resolves apiKeys ?? [apiKey], so a stale inherited apiKeys array
+      // would silently shadow the override — drop it when config sets apiKey
+      // alone.
+      if (typeof valObj.apiKey === 'string' && valObj.apiKey !== '' && !('apiKeys' in valObj)) {
+        delete mergedVal.apiKeys
       }
       mergedProviders[key] = mergedVal
     } else {

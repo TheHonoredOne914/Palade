@@ -238,8 +238,10 @@ export async function runSwarm(
     }
   }
 
-  // Handle Economy Mode internal verdicts
-  for (const finding of finalFindings) {
+  // Handle Economy Mode internal verdicts. Respect --no-verdict: it must
+  // suppress ADR persistence and description mutation here just as it gates the
+  // arbitration block above.
+  for (const finding of options.noVerdict ? [] : finalFindings) {
     if (finding.agentName === 'Architect' && finding.title.startsWith('[VERDICT]')) {
       // Parse tradeoff out of description. Models sometimes emit a literal
       // backslash-n instead of a real newline inside the JSON string, so

@@ -57,7 +57,12 @@ export async function triageFiles(
 
   console.log(chalk.cyan(`  [triage] Selecting high-value files from ${manifests.length} total...`))
 
-  const compactManifest = manifests.map((m) => `${m.path} (${m.linesOfCode} lines, Churn: ${m.churnCount || 0}, Imports: ${m.importCount || 0})`).join('\n')
+  const compactManifest = manifests
+    .map(
+      (m) =>
+        `${m.path} (${m.linesOfCode} lines, Churn: ${m.churnCount || 0}, Imports: ${m.importCount || 0})`
+    )
+    .join('\n')
 
   try {
     const provider = getProvider('primary')
@@ -88,10 +93,16 @@ export async function triageFiles(
 
       rankedPaths = JSON.parse(cleaned)
     } catch (err) {
-      console.warn(chalk.yellow(`  [triage] Failed to parse LLM array JSON: ${err instanceof Error ? err.message : String(err)}`))
+      console.warn(
+        chalk.yellow(
+          `  [triage] Failed to parse LLM array JSON: ${err instanceof Error ? err.message : String(err)}`
+        )
+      )
     }
 
-    const validPaths = Array.isArray(rankedPaths) ? rankedPaths.filter(p => typeof p === 'string') : []
+    const validPaths = Array.isArray(rankedPaths)
+      ? rankedPaths.filter((p) => typeof p === 'string')
+      : []
 
     if (validPaths.length > 0) {
       const selected: CodeChunk[] = []
@@ -138,26 +149,26 @@ export async function triageFiles(
 
       if (selected.length > 0) {
         // Automatically append imported sibling files (blast radius expansion)
-        const selectedPaths = new Set(selected.map(c => c.filePath))
+        const selectedPaths = new Set(selected.map((c) => c.filePath))
         for (const m of manifests) {
           if (m.importers && m.importers.length > 0 && !selectedPaths.has(m.path)) {
             // Check if any of its importers were selected
-            const hasSelectedImporter = m.importers.some(imp => {
-               return selected.some(c => c.filePath === imp || c.filePath.endsWith('/' + imp))
+            const hasSelectedImporter = m.importers.some((imp) => {
+              return selected.some((c) => c.filePath === imp || c.filePath.endsWith('/' + imp))
             })
             if (hasSelectedImporter) {
-               const matchingChunks = allChunks.filter(c => c.filePath === m.path)
-               for (const chunk of matchingChunks) {
-                 if (seenChunkIds.has(chunk.id)) continue
-                 if (tokensUsed + chunk.tokenCount > budget) break
-                 selected.push(chunk)
-                 seenChunkIds.add(chunk.id)
-                 tokensUsed += chunk.tokenCount
-               }
+              const matchingChunks = allChunks.filter((c) => c.filePath === m.path)
+              for (const chunk of matchingChunks) {
+                if (seenChunkIds.has(chunk.id)) continue
+                if (tokensUsed + chunk.tokenCount > budget) break
+                selected.push(chunk)
+                seenChunkIds.add(chunk.id)
+                tokensUsed += chunk.tokenCount
+              }
             }
           }
         }
-        
+
         console.log(
           chalk.cyan(
             `  [triage] Selected ${selected.length} chunks (${tokensUsed.toLocaleString()} tokens) from ${selected.length > 0 ? new Set(selected.map((c) => c.filePath)).size : 0} files`

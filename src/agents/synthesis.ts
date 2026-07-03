@@ -102,7 +102,7 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
 
   const priorityFixes: PriorityFix[] = Array.isArray(obj.priorityFixes)
     ? (obj.priorityFixes as Record<string, unknown>[])
-        .filter((f) => typeof f.title === 'string' && typeof f.rationale === 'string')
+        .filter((f) => f != null && typeof f.title === 'string' && typeof f.rationale === 'string')
         .map((f) => {
           const rank = typeof f.rank === 'number' ? f.rank : parseInt(String(f.rank)) || 0
           const hours =

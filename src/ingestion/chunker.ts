@@ -49,7 +49,6 @@ function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
   return chunks
 }
 
-
 function calculateComplexity(node: ts.Node): number {
   let complexity = 1
   ts.forEachChild(node, function visit(n) {
@@ -81,54 +80,54 @@ function chunkByAST(content: string, filePath: string, language: string): CodeCh
   let currentStartNode: ts.Node | null = null
   let currentEndNode: ts.Node | null = null
   let currentTokenCount = 0
-  
+
   const finishChunk = () => {
-     if (!currentStartNode || !currentEndNode) return;
-     const start = sourceFile.getLineAndCharacterOfPosition(currentStartNode.getStart())
-     const end = sourceFile.getLineAndCharacterOfPosition(currentEndNode.getEnd())
-     const chunkContent = content.substring(currentStartNode.getStart(), currentEndNode.getEnd())
-     
-     const tempFile = ts.createSourceFile('temp.ts', chunkContent, ts.ScriptTarget.Latest, true)
-     const complexity = calculateComplexity(tempFile)
-     
-     chunks.push({
-       id: makeChunkId(filePath, start.line + 1, end.line + 1),
-       filePath,
-       startLine: start.line + 1,
-       endLine: end.line + 1,
-       content: chunkContent,
-       tokenCount: estimateTokens(chunkContent),
-       language: language as any,
-       complexity
-     })
-     
-     currentStartNode = null
-     currentEndNode = null
-     currentTokenCount = 0
+    if (!currentStartNode || !currentEndNode) return
+    const start = sourceFile.getLineAndCharacterOfPosition(currentStartNode.getStart())
+    const end = sourceFile.getLineAndCharacterOfPosition(currentEndNode.getEnd())
+    const chunkContent = content.substring(currentStartNode.getStart(), currentEndNode.getEnd())
+
+    const tempFile = ts.createSourceFile('temp.ts', chunkContent, ts.ScriptTarget.Latest, true)
+    const complexity = calculateComplexity(tempFile)
+
+    chunks.push({
+      id: makeChunkId(filePath, start.line + 1, end.line + 1),
+      filePath,
+      startLine: start.line + 1,
+      endLine: end.line + 1,
+      content: chunkContent,
+      tokenCount: estimateTokens(chunkContent),
+      language: language as any,
+      complexity,
+    })
+
+    currentStartNode = null
+    currentEndNode = null
+    currentTokenCount = 0
   }
-  
+
   ts.forEachChild(sourceFile, (node) => {
     const nodeTokens = estimateTokens(node.getText(sourceFile))
-    
+
     if (nodeTokens > 2000) {
-       finishChunk()
-       currentStartNode = node
-       currentEndNode = node
-       finishChunk()
-       return
+      finishChunk()
+      currentStartNode = node
+      currentEndNode = node
+      finishChunk()
+      return
     }
-    
+
     if (currentTokenCount + nodeTokens > 3000) {
-       finishChunk()
+      finishChunk()
     }
-    
+
     if (!currentStartNode) currentStartNode = node
     currentEndNode = node
     currentTokenCount += nodeTokens
   })
-  
+
   finishChunk()
-  
+
   return chunks.flatMap(splitLargeChunk)
 }
 
@@ -148,7 +147,7 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
     let inString: '"' | "'" | '`' | null = null
     let inBlockComment = false
 
-    while (currentIdx < lines.length && (currentIdx - startIdx) < maxLines) {
+    while (currentIdx < lines.length && currentIdx - startIdx < maxLines) {
       const line = lines[currentIdx]
       let inLineComment = false
 
@@ -159,19 +158,35 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
         if (inLineComment) continue
 
         if (inBlockComment) {
-          if (ch === '*' && next === '/') { inBlockComment = false; i++ }
+          if (ch === '*' && next === '/') {
+            inBlockComment = false
+            i++
+          }
           continue
         }
 
         if (inString) {
-          if (ch === '\\') { i++; continue } // skip escaped char
+          if (ch === '\\') {
+            i++
+            continue
+          } // skip escaped char
           if (ch === inString) inString = null
           continue
         }
 
-        if (ch === '/' && next === '/') { inLineComment = true; continue }
-        if (ch === '/' && next === '*') { inBlockComment = true; i++; continue }
-        if (ch === '"' || ch === "'" || ch === '`') { inString = ch; continue }
+        if (ch === '/' && next === '/') {
+          inLineComment = true
+          continue
+        }
+        if (ch === '/' && next === '*') {
+          inBlockComment = true
+          i++
+          continue
+        }
+        if (ch === '"' || ch === "'" || ch === '`') {
+          inString = ch
+          continue
+        }
 
         if (ch === '{') depth++
         else if (ch === '}') depth--
@@ -179,7 +194,7 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
 
       currentIdx++
       // If we've closed all blocks, have at least some lines, and aren't mid-string/comment, end chunk here
-      if (depth <= 0 && (currentIdx - startIdx) >= 5 && !inString && !inBlockComment) {
+      if (depth <= 0 && currentIdx - startIdx >= 5 && !inString && !inBlockComment) {
         break
       }
     }
@@ -215,10 +230,14 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
     try {
       content = await readFile(manifest.absolutePath, 'utf-8')
       if (content.includes('\uFFFD')) {
-        console.warn(`[chunker] Warning: File ${manifest.path} contains invalid UTF-8 characters and may degrade analysis.`)
+        console.warn(
+          `[chunker] Warning: File ${manifest.path} contains invalid UTF-8 characters and may degrade analysis.`
+        )
       }
     } catch (err) {
-      console.warn(`[chunker] Failed to read ${manifest.path}: ${err instanceof Error ? err.message : String(err)}`)
+      console.warn(
+        `[chunker] Failed to read ${manifest.path}: ${err instanceof Error ? err.message : String(err)}`
+      )
       continue
     }
 

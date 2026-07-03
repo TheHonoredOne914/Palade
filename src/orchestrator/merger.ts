@@ -68,9 +68,10 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
   const discard = sevA <= sevB ? b : a
 
   const tagSet = new Set([...keep.tags, ...discard.tags])
-  const mergedDescription = keep.description === discard.description 
-    ? keep.description 
-    : `${keep.description}\n\nAdditional context: ${discard.description}`
+  const mergedDescription =
+    keep.description === discard.description
+      ? keep.description
+      : `${keep.description}\n\nAdditional context: ${discard.description}`
 
   return {
     ...keep,
