@@ -62,11 +62,13 @@ function getValence(text: string): 'harden' | 'relax' | 'neutral' {
   const t = text.toLowerCase()
   let hardenHits = 0
   let relaxHits = 0
+  // Whole-word matches only — substring matching miscounts common fragments
+  // ('add' in "address", 'key' in "monkey") and skews the harden/relax tally.
   for (const w of HARDEN_KEYWORDS) {
-    if (t.includes(w)) hardenHits++
+    if (new RegExp(`\\b${w}\\b`).test(t)) hardenHits++
   }
   for (const w of RELAX_KEYWORDS) {
-    if (t.includes(w)) relaxHits++
+    if (new RegExp(`\\b${w}\\b`).test(t)) relaxHits++
   }
   if (hardenHits > relaxHits) return 'harden'
   if (relaxHits > hardenHits) return 'relax'

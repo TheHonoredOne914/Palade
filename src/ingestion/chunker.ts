@@ -110,7 +110,11 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
       continue
     }
 
-    const chunks = chunkByBrackets(content, manifest.path, manifest.language)
+    // chunkByBrackets caps blocks at 300 lines, but very long lines can still
+    // push a chunk past MAX_TOKENS — enforce the token cap explicitly.
+    const chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap(
+      splitLargeChunk
+    )
 
     if (chunks.length > MAX_CHUNKS_PER_FILE) {
       chunks.length = MAX_CHUNKS_PER_FILE

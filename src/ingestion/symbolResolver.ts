@@ -48,9 +48,12 @@ export async function resolveSymbol(
       ) {
         nodeName = node.name?.text ?? ''
       } else if (ts.isVariableStatement(node)) {
-        const decl = node.declarationList.declarations[0]
-        if (decl && ts.isIdentifier(decl.name)) {
-          nodeName = decl.name.text
+        // Check every declarator — `const a = 1, target = 2` declares both
+        for (const decl of node.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name) && decl.name.text === symbolName) {
+            nodeName = decl.name.text
+            break
+          }
         }
       }
 

@@ -45,6 +45,11 @@ export async function runSwarm(
 
   const agentTimings: Partial<Record<AgentName, number>> = {}
 
+  // Aborted when any agent hits a fatal auth error, so the other agents'
+  // in-flight provider calls are cancelled instead of running to completion
+  // and burning quota on a review that is about to throw anyway.
+  const runAbort = new AbortController()
+
   // Run agents concurrently — rate-limit handling is done at the provider
   // layer (fetchWithRetry + FallbackProvider), not serialized here.
   const agentPromises = agents.map(async (agent) => {
@@ -65,10 +70,10 @@ export async function runSwarm(
           // IAgent.analyze → provider.complete → fetchWithRetry) instead of
           // running to completion and burning provider quota after we've given up.
           const controller = new AbortController()
-          if (options.signal) {
-            options.signal.addEventListener('abort', () => controller.abort())
-            if (options.signal.aborted) controller.abort()
-          }
+          const onAbort = () => controller.abort()
+          options.signal?.addEventListener('abort', onAbort)
+          runAbort.signal.addEventListener('abort', onAbort)
+          if (options.signal?.aborted || runAbort.signal.aborted) controller.abort()
 
           let timeoutHandle: ReturnType<typeof setTimeout> | undefined
           const timeoutPromise = new Promise<AgentFinding[]>((_, reject) => {
@@ -81,11 +86,18 @@ export async function runSwarm(
           let batchFindings: AgentFinding[] = []
           try {
             const analyzePromise = agent.analyze(batch, context, controller.signal)
-            batchFindings = await Promise.race([analyzePromise, timeoutPromise])
+            // Attach the rejection guard BEFORE racing: if the timeout wins the
+            // race, the await throws and a later .catch() would never run,
+            // leaving the aborted analyze promise unhandled.
             analyzePromise.catch(() => {})
+            batchFindings = await Promise.race([analyzePromise, timeoutPromise])
             return batchFindings
           } finally {
             if (timeoutHandle) clearTimeout(timeoutHandle)
+            // Remove per-batch listeners — leaving them accumulates one closure
+            // per batch on the shared signals (MaxListenersExceededWarning).
+            options.signal?.removeEventListener('abort', onAbort)
+            runAbort.signal.removeEventListener('abort', onAbort)
             options.onAgentBatchComplete?.(
               agent.name,
               batchIdx + 1,
@@ -114,6 +126,7 @@ export async function runSwarm(
             msg.includes('invalid api key') ||
             msg.includes('authentication')
           if (isFatalAuth) {
+            runAbort.abort()
             throw agentError
           }
         }
@@ -137,6 +150,7 @@ export async function runSwarm(
         msg.includes('invalid api key') ||
         msg.includes('authentication')
       if (isFatalAuth) {
+        runAbort.abort()
         throw agentError
       }
 

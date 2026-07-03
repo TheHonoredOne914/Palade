@@ -20,8 +20,22 @@ export class ProviderPool implements IProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    const provider = this.providers[this.index % this.providers.length]
-    this.index = (this.index + 1) % this.providers.length
+    // Round-robin, but skip members that report unavailable (e.g. a key whose
+    // daily quota is exhausted). Otherwise one dead key throws a fatal-looking
+    // error that gets the whole pool marked dead while healthy keys remain.
+    const n = this.providers.length
+    let candidate: IProvider | undefined
+    for (let i = 0; i < n; i++) {
+      const provider = this.providers[this.index % n]
+      this.index = (this.index + 1) % n
+      if (await provider.isAvailable()) {
+        candidate = provider
+        break
+      }
+    }
+    // All members unavailable — let one produce the real error so the caller
+    // can classify it (at this point the pool genuinely is exhausted).
+    const provider = candidate ?? this.providers[this.index % n]
     return provider.complete(req)
   }
 

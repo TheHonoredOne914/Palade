@@ -159,8 +159,18 @@ export function appendTargetToFile(projectRoot: string, target: TargetDefinition
     return
   }
 
-  // Ensure the last entry before the closing bracket has a trailing comma
-  const beforeClose = content.slice(0, closingIndex).trimEnd()
+  // Ensure the last entry before the closing bracket has a trailing comma.
+  // Trailing //-comment lines (e.g. the scaffold template's commented-out
+  // examples) must be ignored — a comma after a comment-only body creates an
+  // array hole (`[, {...}]`).
+  const beforeCloseLines = content.slice(0, closingIndex).trimEnd().split('\n')
+  while (
+    beforeCloseLines.length > 0 &&
+    beforeCloseLines[beforeCloseLines.length - 1].trim().startsWith('//')
+  ) {
+    beforeCloseLines.pop()
+  }
+  const beforeClose = beforeCloseLines.join('\n').trimEnd()
   const needsComma =
     beforeClose.length > 0 &&
     !beforeClose.endsWith(',') &&

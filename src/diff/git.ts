@@ -96,12 +96,19 @@ export async function getBaseScore(
   historyFile: string,
   cwd: string
 ): Promise<number | null> {
-  // Read the history file as it exists on the base branch. historyFile is
-  // typically gitignored (.palade/), so this returns null unless the file was
-  // committed — in which case we get the real base score.
+  // Read the history file as it exists at the MERGE-BASE with the base branch,
+  // matching getChangedFiles' triple-dot semantics. Reading the base branch's
+  // current tip would attribute score movement from commits that landed on the
+  // base after this branch diverged. historyFile is typically gitignored
+  // (.palade/), so this returns null unless the file was committed.
   const relPath = relative(cwd, historyFile).split(sep).join('/')
   try {
-    const content = execFileSync('git', ['show', `${baseBranch}:${relPath}`], {
+    const mergeBase = execFileSync('git', ['merge-base', baseBranch, 'HEAD'], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim()
+    const content = execFileSync('git', ['show', `${mergeBase}:${relPath}`], {
       cwd,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],

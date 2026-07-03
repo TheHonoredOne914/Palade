@@ -91,9 +91,21 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
       function hasFlag(name: string): boolean {
         return rest.includes(`--${name}`)
       }
-      const positional = rest.filter(
-        (r, i) => !r.startsWith('--') && (i === 0 || !rest[i - 1]?.startsWith('--'))
-      )
+      // Only these flags consume a value. Excluding the token after ANY `--`
+      // flag would swallow positionals following boolean flags (e.g.
+      // `/review --pick src/foo.ts` losing its path).
+      const VALUE_FLAGS = new Set(['target', 'dir', 'glob', 'mode', 'depth', 'format', 'base'])
+      const positional = rest.filter((r, i) => {
+        if (r.startsWith('--')) return false
+        const prev = rest[i - 1]
+        return !(prev?.startsWith('--') && VALUE_FLAGS.has(prev.slice(2)))
+      })
+
+      // Capture this dispatch's abort signal so the finally block can tell
+      // whether it is still the active command (a newer dispatch replaces the
+      // controller) — otherwise an aborted command's late rejection resets the
+      // status to idle while the NEXT command is still running.
+      const runSignal = opts.getAbortSignal?.()
 
       opts.setStatus('running')
 
@@ -114,7 +126,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               format: flag('format'),
               open: hasFlag('no-open') ? false : hasFlag('open') ? true : undefined,
               quiet: false,
-              signal: opts.getAbortSignal?.(),
+              signal: runSignal,
             })
             break
           }
@@ -197,7 +209,10 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
         const msg = err instanceof Error ? err.message : String(err)
         opts.appendLine({ type: 'error', text: msg })
       } finally {
-        opts.setStatus('idle')
+        const current = opts.getAbortSignal?.()
+        if (runSignal === undefined || current === undefined || current === runSignal) {
+          opts.setStatus('idle')
+        }
       }
     },
     [opts]

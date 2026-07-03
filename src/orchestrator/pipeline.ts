@@ -77,14 +77,10 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   const ignoredSet = new Set(annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, '')))
   let activeChunks = chunks.filter((c) => !ignoredSet.has(c.filePath.replace(/^\.?\/+/, '')))
 
-  // Filter out ignored lines
-  activeChunks = activeChunks.filter(
-    (c) =>
-      !annotationSummary.ignoredLines.some(
-        (il) =>
-          il.filePath === c.filePath && il.startLine >= c.startLine && il.startLine <= c.endLine
-      )
-  )
+  // Line-level ignores are applied to FINDINGS after the swarm runs (see
+  // below), not by dropping chunks here — removing a whole chunk because one
+  // line inside it carries `@palade ignore` would silently hide up to a few
+  // hundred unrelated lines from review.
 
   // If --annotations flag: scope to only annotated chunks
   if (scope.annotationsOnly) {
@@ -167,10 +163,28 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     throw new CliExitError(0)
   }
 
-  return runSwarm(
+  const result = await runSwarm(
     activeChunks,
     context,
     { ...opts.swarmOptions, projectRoot: opts.projectRoot },
     manifests
   )
+
+  // Apply line-level `@palade ignore` annotations: suppress findings anchored
+  // on the annotated line or the line directly below it (the comment usually
+  // sits above the code it excuses).
+  if (annotationSummary.ignoredLines.length > 0) {
+    const norm = (p: string) => p.replace(/^\.?\/+/, '')
+    result.findings = result.findings.filter((f) => {
+      if (!f.filePath || f.lineStart === undefined) return true
+      return !annotationSummary.ignoredLines.some(
+        (il) =>
+          norm(il.filePath) === norm(f.filePath!) &&
+          f.lineStart! >= il.startLine &&
+          f.lineStart! <= il.startLine + 1
+      )
+    })
+  }
+
+  return result
 }

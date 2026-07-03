@@ -88,12 +88,19 @@ function renderPriorityFixes(
 ): string {
   if (fixes.length === 0) return '*No priority fixes identified.*'
 
+  // LLM-provided text goes into headings/prose — collapse newlines in the
+  // title and neutralise leading markdown structure markers in the rationale
+  // so a stray "\n## ..." can't inject rogue sections into the report.
+  const proseSafe = (s: string): string =>
+    s.replace(/^[ \t]*(#{1,6}[ \t])/gm, '\\$1').replace(/^[ \t]*(```)/gm, '\\$1')
+
   return fixes
     .map((f) => {
       const files = f.affectedFiles.length > 0 ? f.affectedFiles.join(', ') : 'N/A'
-      return `### ${f.rank}. ${f.title}
+      const title = f.title.replace(/\s*\n\s*/g, ' ')
+      return `### ${f.rank}. ${title}
 
-${f.rationale}
+${proseSafe(f.rationale)}
 
 - **Estimated Hours:** ~${f.estimatedHours}h
 - **Affected Files:** ${files}`
@@ -199,18 +206,19 @@ export function buildMarkdownReport(ctx: ReporterContext): string {
   lines.push(`## Debt Estimate`)
   lines.push('')
   const debt = ctx.synthesis.debtEstimate
-  const debtCounts = { critical: 0, high: 0, medium: 0, low: 0, total: 0 }
+  const debtCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 }
   for (const f of ctx.findings) {
     if (f.severity === 'critical') debtCounts.critical++
     if (f.severity === 'high') debtCounts.high++
     if (f.severity === 'medium') debtCounts.medium++
     if (f.severity === 'low') debtCounts.low++
+    if (f.severity === 'info') debtCounts.info++
     debtCounts.total++
   }
-  lines.push(`| Critical | High | Medium | Low | Total |`)
-  lines.push(`| --- | --- | --- | --- | --- |`)
+  lines.push(`| Critical | High | Medium | Low | Info | Total |`)
+  lines.push(`| --- | --- | --- | --- | --- | --- |`)
   lines.push(
-    `| ${debtCounts.critical} | ${debtCounts.high} | ${debtCounts.medium} | ${debtCounts.low} | ${debtCounts.total} |`
+    `| ${debtCounts.critical} | ${debtCounts.high} | ${debtCounts.medium} | ${debtCounts.low} | ${debtCounts.info} | ${debtCounts.total} |`
   )
   lines.push('')
   if (debt.highestROIFix) {

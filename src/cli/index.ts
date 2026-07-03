@@ -80,6 +80,10 @@ async function runClassicCLI(): Promise<void> {
 
   program.name('palade').description('AI-powered codebase intelligence engine').version(pkg.version)
 
+  // Consumed by loadConfig() via process.argv — registered here so Commander
+  // doesn't reject it as an unknown option.
+  program.option('--config <path>', 'Path to an alternate palade config .ts file')
+
   function collect(val: string, prev: string[]): string[] {
     return prev.concat([val])
   }
@@ -96,7 +100,7 @@ async function runClassicCLI(): Promise<void> {
     .option('--annotations', 'Only review @palade-annotated items')
     .option('--pick', 'Interactive file picker')
     .option('--depth <n>', 'Symbol dependency trace depth', parseInt, 1)
-    .option('--format <formats>', 'Output formats: html,json,md', 'html,json')
+    .option('--format <formats>', 'Output formats: html,json,md (default: from config)')
     .option('--no-open', 'Do not open browser after review')
     .option('--quiet', 'Minimal terminal output (no spinners)')
     .option('--dry-run', 'Estimate token usage and cost without running the swarm')

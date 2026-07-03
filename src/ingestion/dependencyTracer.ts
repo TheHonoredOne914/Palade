@@ -12,13 +12,29 @@ function resolveImport(fromFile: string, importPath: string, projectRoot: string
   const normalizedDir = normalizePath(fileDir)
   const normalizedImport = normalizePath(importPath)
 
+  // Python-style relative import: dots with NO slash (".sibling", "..pkg.mod").
+  // Leading-dot count minus one = directories to climb; the dotted remainder
+  // maps to path segments, resolved against the importing file's directory.
+  const pyRel = /^(\.+)([\w.]*)$/.exec(normalizedImport)
+
   let resolved: string
-  if (normalizedImport.startsWith('./') || normalizedImport.startsWith('../')) {
+  if (pyRel && !normalizedImport.includes('/')) {
+    const up = pyRel[1].length - 1
+    const dirParts = normalizedDir.split('/').filter((p) => p !== '' && p !== '.')
+    if (up > dirParts.length) return projectRoot // refuse traversal above root
+    dirParts.length -= up
+    const segs = pyRel[2].split('.').filter(Boolean)
+    resolved = [...dirParts, ...segs].join('/')
+  } else if (normalizedImport.startsWith('./') || normalizedImport.startsWith('../')) {
     const parts = [...normalizedDir.split('/'), ...normalizedImport.split('/')]
     const resolvedParts: string[] = []
     for (const part of parts) {
-      if (part === '..') resolvedParts.pop()
-      else if (part !== '.' && part !== '') resolvedParts.push(part)
+      if (part === '..') {
+        // Popping past the root means the target is outside the project —
+        // silently clamping would resolve to an unrelated in-root path.
+        if (resolvedParts.length === 0) return projectRoot // refuse traversal
+        resolvedParts.pop()
+      } else if (part !== '.' && part !== '') resolvedParts.push(part)
     }
     resolved = resolvedParts.join('/')
   } else {
@@ -40,15 +56,19 @@ export async function traceDependencies(
   projectRoot: string,
   depth: number = 1
 ): Promise<string[]> {
-  const visited = new Set<string>()
+  // Track the shallowest depth each file was visited at: a file first reached
+  // deep in the tree (where recursion stops early) must be re-expanded if a
+  // shorter path to it is found later, or its transitive deps get dropped
+  // depending on unrelated import ordering.
+  const visited = new Map<string, number>()
   const results: string[] = []
 
   async function trace(currentPath: string, currentDepth: number): Promise<void> {
     if (currentDepth > depth) return
 
     const normalizedCurrent = normalizePath(currentPath)
-    if (visited.has(normalizedCurrent)) return
-    visited.add(normalizedCurrent)
+    if ((visited.get(normalizedCurrent) ?? Infinity) <= currentDepth) return
+    visited.set(normalizedCurrent, currentDepth)
 
     const absolutePath = resolve(projectRoot, currentPath)
 
@@ -101,9 +121,20 @@ function extractLocalImports(content: string, filePath: string): string[] {
     // python fallback
     const lines = content.split('\n')
     for (const line of lines) {
-      const pyRelativeMatch = line.match(/from\s+(\.\S+)\s+import/)
-      if (pyRelativeMatch && !imports.includes(pyRelativeMatch[1])) {
-        imports.push(pyRelativeMatch[1])
+      const pyRelativeMatch = line.match(/from\s+(\.+[\w.]*)\s+import\s+([\w*, ]+)/)
+      if (pyRelativeMatch) {
+        const modulePart = pyRelativeMatch[1]
+        if (/^\.+$/.test(modulePart)) {
+          // Bare `from . import x, y` — the imported names are the modules
+          for (const name of pyRelativeMatch[2].split(',')) {
+            const trimmed = name.trim()
+            if (trimmed && trimmed !== '*' && !imports.includes(modulePart + trimmed)) {
+              imports.push(modulePart + trimmed)
+            }
+          }
+        } else if (!imports.includes(modulePart)) {
+          imports.push(modulePart)
+        }
       }
     }
     return imports

@@ -75,7 +75,10 @@ function instantiateProviders(providers: PaladeConfig['providers']): Map<string,
     'ollama',
   ] as const) {
     const cfg = providers[name as keyof PaladeConfig['providers']]
-    if (cfg && 'apiKey' in cfg && cfg.apiKey) {
+    // Ollama is keyless — a configured entry is enough. All other providers
+    // need a non-empty apiKey.
+    const usable = name === 'ollama' ? Boolean(cfg) : cfg && 'apiKey' in cfg && cfg.apiKey
+    if (cfg && usable) {
       const instances = createProviderInstances(name, cfg as ProviderConfig)
       if (instances.length === 1) {
         map.set(name, instances[0])
@@ -134,6 +137,10 @@ export class FallbackProvider implements IProvider {
       const provider = this.chain[i]
 
       if (this.deadProviders.has(provider.name)) {
+        attempts.push({
+          provider: provider.name,
+          finalError: 'skipped — marked dead earlier this session (hard quota limit)',
+        })
         continue
       }
 
