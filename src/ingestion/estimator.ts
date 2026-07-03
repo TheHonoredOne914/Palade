@@ -16,8 +16,8 @@ const PRICING_TABLE: Record<string, { input: number; output: number }> = {
   'opencode-zen:deepseek-v4-flash-free': { input: 0, output: 0 },
   'groq:llama-3.3-70b-versatile': { input: 0.59, output: 0.79 }, // assuming default groq model
   'groq:llama-3.1-8b-instant': { input: 0.05, output: 0.08 },
-  'cerebras:llama3.1-8b': { input: 0.10, output: 0.10 },
-  'cerebras:llama-3.3-70b': { input: 0.60, output: 0.60 },
+  'cerebras:llama3.1-8b': { input: 0.1, output: 0.1 },
+  'cerebras:llama-3.3-70b': { input: 0.6, output: 0.6 },
   'openrouter:deepseek/deepseek-r1': { input: 0.55, output: 2.19 },
   'nvidia:minimaxai/minimax-m3': { input: 0.0, output: 0.0 }, // free tier example
   'ollama:': { input: 0, output: 0 },
@@ -25,10 +25,12 @@ const PRICING_TABLE: Record<string, { input: number; output: number }> = {
 
 function getProviderModelKey(providerName: string, providerConfig?: { model?: string }): string {
   if (providerName === 'ollama') return 'ollama:'
-  if (providerName === 'opencode-zen') return `opencode-zen:${providerConfig?.model || 'deepseek-v4-flash-free'}`
+  if (providerName === 'opencode-zen')
+    return `opencode-zen:${providerConfig?.model || 'deepseek-v4-flash-free'}`
   if (providerName === 'groq') return `groq:${providerConfig?.model || 'llama-3.3-70b-versatile'}`
   if (providerName === 'cerebras') return `cerebras:${providerConfig?.model || 'llama-3.3-70b'}`
-  if (providerName === 'openrouter') return `openrouter:${providerConfig?.model || 'deepseek/deepseek-r1'}`
+  if (providerName === 'openrouter')
+    return `openrouter:${providerConfig?.model || 'deepseek/deepseek-r1'}`
   if (providerName === 'nvidia') return `nvidia:${providerConfig?.model || 'minimaxai/minimax-m3'}`
   return `${providerName}:${providerConfig?.model || 'unknown'}`
 }
@@ -61,9 +63,10 @@ export function estimateRunCost(chunks: CodeChunk[], config: PaladeConfig): Esti
   const synthesisPrice = PRICING_TABLE[synthesisKey]
 
   const costMap: Record<string, number | null> = {}
-  
+
   if (primaryPrice) {
-    const cost = ((totalInputTokens * agentCount) / 1_000_000) * primaryPrice.input +
+    const cost =
+      ((totalInputTokens * agentCount) / 1_000_000) * primaryPrice.input +
       (estimatedOutputTokens / 1_000_000) * primaryPrice.output
     costMap[primaryName] = (costMap[primaryName] || 0) + cost
   } else {
@@ -74,7 +77,8 @@ export function estimateRunCost(chunks: CodeChunk[], config: PaladeConfig): Esti
   const synthesisInput = 2000
   const synthesisOutput = 1000
   if (synthesisPrice) {
-    const cost = (synthesisInput / 1_000_000) * synthesisPrice.input +
+    const cost =
+      (synthesisInput / 1_000_000) * synthesisPrice.input +
       (synthesisOutput / 1_000_000) * synthesisPrice.output
     if (costMap[synthesisName] !== null) {
       costMap[synthesisName] = (costMap[synthesisName] || 0) + cost

@@ -35,12 +35,7 @@ export async function resolveSymbol(
   let endLine = -1
 
   if (language === 'typescript' || language === 'javascript') {
-    const sourceFile = ts.createSourceFile(
-      filePath,
-      content,
-      ts.ScriptTarget.Latest,
-      true
-    )
+    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
 
     function visit(node: ts.Node): ts.Node | undefined {
       let nodeName = ''

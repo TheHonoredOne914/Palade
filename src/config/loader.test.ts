@@ -27,12 +27,12 @@ describe('loader cost-awareness', () => {
   it('defaultSynthesis resolves to opencode-zen when both opencode-zen and groq keys are present', async () => {
     process.env.OPENCODE_ZEN_API_KEY = 'test-key'
     process.env.GROQ_API_KEY = 'test-key-2'
-    
+
     // Hide .ts config files
     vi.mocked(fs.existsSync).mockReturnValue(false)
 
     const config = await loadConfig()
-    
+
     expect(config.swarm.primary).toBe('opencode-zen')
     expect(config.swarm.synthesis).toBe('opencode-zen')
   })

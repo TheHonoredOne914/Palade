@@ -174,11 +174,12 @@ export async function loadConfig(): Promise<PaladeConfig> {
   const paidProviders = allConfiguredProviders.filter((p) => p !== 'opencode-zen' && p !== 'ollama')
 
   const defaultPrimary = freeProviders[0] ?? paidProviders[0] ?? 'opencode-zen'
-  
+
   // Choose synthesis: prefer another free provider if available, otherwise the same free provider, otherwise a paid provider
-  const defaultSynthesis = freeProviders.length > 1 
-    ? freeProviders.find(p => p !== defaultPrimary) ?? defaultPrimary 
-    : (freeProviders[0] ?? paidProviders[0] ?? defaultPrimary)
+  const defaultSynthesis =
+    freeProviders.length > 1
+      ? (freeProviders.find((p) => p !== defaultPrimary) ?? defaultPrimary)
+      : (freeProviders[0] ?? paidProviders[0] ?? defaultPrimary)
 
   const rawSwarm = (rawObj.swarm as Record<string, unknown>) ?? {}
 

@@ -39,9 +39,9 @@ export function getKeywordContext(
       // Extract words from chunk content
       const chunkWords = contentLower.match(/\b[a-z]{4,}\b/g) || []
       const chunkWordCount = chunkWords.length
-      
+
       let queryWordCount = 0
-      
+
       // Calculate how many times each search term appears as a distinct word
       for (const term of searchTerms) {
         // Use a simple word frequency count instead of includes
@@ -51,7 +51,7 @@ export function getKeywordContext(
         }
         queryWordCount += termMatches
       }
-      
+
       // Term-frequency score
       const score = queryWordCount / (chunkWordCount + 1)
       return { chunk: c, score }

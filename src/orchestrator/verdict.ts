@@ -25,13 +25,37 @@ export interface Verdict {
 }
 
 const HARDEN_KEYWORDS = [
-  'add', 'throttle', 'encrypt', 'validate', 'lock', 'strict', 'check',
-  'boundary', 'limit', 'ensure', 'harden', 'guard', 'require', 'prevent'
+  'add',
+  'throttle',
+  'encrypt',
+  'validate',
+  'lock',
+  'strict',
+  'check',
+  'boundary',
+  'limit',
+  'ensure',
+  'harden',
+  'guard',
+  'require',
+  'prevent',
 ]
 
 const RELAX_KEYWORDS = [
-  'remove', 'skip', 'fast-path', 'relax', 'bypass', 'inline', 'delete',
-  'cache', 'memoize', 'omit', 'drop', 'ignore', 'simplify', 'fast'
+  'remove',
+  'skip',
+  'fast-path',
+  'relax',
+  'bypass',
+  'inline',
+  'delete',
+  'cache',
+  'memoize',
+  'omit',
+  'drop',
+  'ignore',
+  'simplify',
+  'fast',
 ]
 
 function getValence(text: string): 'harden' | 'relax' | 'neutral' {
@@ -72,8 +96,7 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
         if (a.agentName === b.agentName) continue
 
         // Check line overlap (or adjacent within 5 lines)
-        const overlap =
-          (a.lineStart! <= b.lineEnd! + 5) && (b.lineStart! <= a.lineEnd! + 5)
+        const overlap = a.lineStart! <= b.lineEnd! + 5 && b.lineStart! <= a.lineEnd! + 5
 
         if (!overlap) continue
 
@@ -104,10 +127,8 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
 const VerdictSchema = z.object({
   decision: z.string().describe('What to actually do'),
   tradeoff_accepted: z.string().describe('The explicit cost being accepted'),
-  confidence: z.coerce
-    .number()
-    .describe('0-100 score of how confident you are in this tradeoff'),
-  losing_side: z.string().describe('Which agent recommendation was NOT taken, and why')
+  confidence: z.coerce.number().describe('0-100 score of how confident you are in this tradeoff'),
+  losing_side: z.string().describe('Which agent recommendation was NOT taken, and why'),
 })
 
 export async function arbitrateConflict(
@@ -155,7 +176,11 @@ Please provide your verdict.`
     const parsed = JSON.parse(jsonStr)
     return VerdictSchema.parse(parsed)
   } catch (err) {
-    console.error(chalk.yellow(`\n[verdict] Arbitration failed for ${conflict.filePath}: ${err instanceof Error ? err.message : String(err)}`))
+    console.error(
+      chalk.yellow(
+        `\n[verdict] Arbitration failed for ${conflict.filePath}: ${err instanceof Error ? err.message : String(err)}`
+      )
+    )
     return null
   }
 }
@@ -165,8 +190,16 @@ export async function saveDecision(
   conflict: Conflict,
   verdict: Verdict
 ): Promise<string> {
-  const slugBase = conflict.filePath.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'decision'
-  const hash = crypto.createHash('md5').update(conflict.filePath + conflict.lineStart + verdict.decision).digest('hex').slice(0, 6)
+  const slugBase =
+    conflict.filePath
+      .split('/')
+      .pop()
+      ?.replace(/\.[^/.]+$/, '') || 'decision'
+  const hash = crypto
+    .createHash('md5')
+    .update(conflict.filePath + conflict.lineStart + verdict.decision)
+    .digest('hex')
+    .slice(0, 6)
   const slug = `${slugBase}-${hash}`
   const dateStr = new Date().toISOString().split('T')[0]
 
@@ -209,7 +242,7 @@ export async function checkDecisionDrift(
   if (!existsSync(dir)) return []
 
   const files = await readdir(dir)
-  const mdFiles = files.filter(f => f.endsWith('.md'))
+  const mdFiles = files.filter((f) => f.endsWith('.md'))
   if (mdFiles.length === 0) return []
 
   // Build map of diff additions by file
@@ -250,11 +283,11 @@ export async function checkDecisionDrift(
     const editedLines = addedByPath.get(decisionPath)
     if (!editedLines) continue
 
-    const overlaps = editedLines.some(l => l >= start && l <= end)
+    const overlaps = editedLines.some((l) => l >= start && l <= end)
     if (!overlaps) continue
 
     // There is an overlap! Trigger LLM check to see if it violates
-    const cf = changedFiles.find(c => c.path === decisionPath)
+    const cf = changedFiles.find((c) => c.path === decisionPath)
     if (!cf || !cf.diff) continue
 
     const systemPrompt = `You are Drift Watcher.

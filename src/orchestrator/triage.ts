@@ -45,15 +45,15 @@ export async function triageFiles(
   )
 
   if (options?.strictTriage) {
-    console.log(chalk.red(`  [!] Strict triage is enabled. Halting review. Please narrow your scope using --include or increase token budget.`))
+    console.log(
+      chalk.red(
+        `  [!] Strict triage is enabled. Halting review. Please narrow your scope using --include or increase token budget.`
+      )
+    )
     throw new CliExitError(1)
   }
 
-  console.log(
-    chalk.cyan(
-      `  [triage] Selecting high-value files from ${manifests.length} total...`
-    )
-  )
+  console.log(chalk.cyan(`  [triage] Selecting high-value files from ${manifests.length} total...`))
 
   const compactManifest = manifests.map((m) => `${m.path} (${m.linesOfCode} lines)`).join('\n')
 

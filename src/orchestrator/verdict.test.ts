@@ -13,7 +13,7 @@ describe('Conflict Detector', () => {
         lineStart: 10,
         lineEnd: 15,
         severity: 'high',
-        tags: []
+        tags: [],
       },
       {
         agentName: 'Performance',
@@ -23,8 +23,8 @@ describe('Conflict Detector', () => {
         lineStart: 12,
         lineEnd: 12,
         severity: 'medium',
-        tags: []
-      }
+        tags: [],
+      },
     ]
 
     const conflicts = detectConflicts(findings)
@@ -44,7 +44,7 @@ describe('Conflict Detector', () => {
         lineStart: 10,
         lineEnd: 15,
         severity: 'high',
-        tags: []
+        tags: [],
       },
       {
         agentName: 'Reliability',
@@ -54,8 +54,8 @@ describe('Conflict Detector', () => {
         lineStart: 12,
         lineEnd: 12,
         severity: 'medium',
-        tags: []
-      }
+        tags: [],
+      },
     ]
 
     const conflicts = detectConflicts(findings)
@@ -72,7 +72,7 @@ describe('Conflict Detector', () => {
         lineStart: 10,
         lineEnd: 15,
         severity: 'high',
-        tags: []
+        tags: [],
       },
       {
         agentName: 'Security',
@@ -82,8 +82,8 @@ describe('Conflict Detector', () => {
         lineStart: 12,
         lineEnd: 12,
         severity: 'medium',
-        tags: []
-      }
+        tags: [],
+      },
     ]
 
     const conflicts = detectConflicts(findings)
@@ -100,7 +100,7 @@ describe('Conflict Detector', () => {
         lineStart: 10,
         lineEnd: 15,
         severity: 'high',
-        tags: []
+        tags: [],
       },
       {
         agentName: 'Performance',
@@ -110,8 +110,8 @@ describe('Conflict Detector', () => {
         lineStart: 12,
         lineEnd: 12,
         severity: 'medium',
-        tags: []
-      }
+        tags: [],
+      },
     ]
 
     const conflicts = detectConflicts(findings)
@@ -128,7 +128,7 @@ describe('Conflict Detector', () => {
         lineStart: 10,
         lineEnd: 15,
         severity: 'high',
-        tags: []
+        tags: [],
       },
       {
         agentName: 'Performance',
@@ -138,8 +138,8 @@ describe('Conflict Detector', () => {
         lineStart: 18,
         lineEnd: 20,
         severity: 'medium',
-        tags: []
-      }
+        tags: [],
+      },
     ]
 
     const conflicts = detectConflicts(findings)

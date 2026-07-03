@@ -29,7 +29,9 @@ export function handleFatalError(err: unknown): undefined {
   if (err instanceof WorkspaceTooLargeError) {
     console.error(chalk.red(`\n${err.message}`))
     console.error(chalk.dim(`  To prevent memory exhaustion, Palade aborted the scan.`))
-    console.error(chalk.dim(`  Please narrow the scope using --dir, --file, or .paladeignore rules.`))
+    console.error(
+      chalk.dim(`  Please narrow the scope using --dir, --file, or .paladeignore rules.`)
+    )
     process.exit(1)
   }
 

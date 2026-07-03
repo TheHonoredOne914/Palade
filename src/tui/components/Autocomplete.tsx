@@ -69,10 +69,10 @@ export function Autocomplete({
       if (!isTargetFlag && cmd === 'review' && '.'.includes(query)) {
         return [
           { text: '/review .', display: '/review .', desc: 'Full codebase review' },
-          ...targetMatches
+          ...targetMatches,
         ]
       }
-      
+
       return targetMatches
     }
 

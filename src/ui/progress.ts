@@ -18,7 +18,9 @@ export function createLiveProgress(): LiveProgress {
       console.log(`  ${theme.dim(name.padEnd(22))} ${theme.dim('running...')}`)
     },
     agentBatchDone(name, current, total, findings) {
-      console.log(`  ${theme.dim(name.padEnd(22))} ${theme.dim(`batch ${current}/${total} complete (${findings} findings)`)}`)
+      console.log(
+        `  ${theme.dim(name.padEnd(22))} ${theme.dim(`batch ${current}/${total} complete (${findings} findings)`)}`
+      )
     },
     agentDone(name, findings, ms, err) {
       const time = `${(ms / 1000).toFixed(1)}s`
@@ -42,7 +44,9 @@ export function createLiveProgress(): LiveProgress {
       console.log(`  ${theme.dim('⚖ Arbitrating...')}`)
     },
     verdictDecided(decision, confidence) {
-      console.log(`  ${theme.primary('[VERDICT]')}   ${decision} ${theme.dim(`(Confidence: ${confidence}%)`)}\n`)
+      console.log(
+        `  ${theme.primary('[VERDICT]')}   ${decision} ${theme.dim(`(Confidence: ${confidence}%)`)}\n`
+      )
     },
     synthesisStart(providerName) {
       console.log(`  ${theme.dim('Synthesis'.padEnd(22))} ${theme.dim(`${providerName}...`)}`)
