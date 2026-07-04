@@ -110,7 +110,9 @@ export class OpenRouterProvider implements IProvider {
             this.dailyLimitExhausted = true
             throw new Error(`OpenRouter daily limit exceeded. ${retryMsg}`)
           }
-          throw new Error(`OpenRouter error 429: ${retryMsg.slice(0, 200) || 'rate limited on retry'}`)
+          throw new Error(
+            `OpenRouter error 429: ${retryMsg.slice(0, 200) || 'rate limited on retry'}`
+          )
         }
 
         if (!retryRes.ok) {

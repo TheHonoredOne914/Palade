@@ -184,7 +184,11 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               await targetsCommand.parseAsync(['targets', 'add', positional[1] ?? ''])
             } else if (sub === 'generate') {
               // The TUI tokenizer splits on whitespace, so re-join the query words
-              await targetsCommand.parseAsync(['targets', 'generate', positional.slice(1).join(' ')])
+              await targetsCommand.parseAsync([
+                'targets',
+                'generate',
+                positional.slice(1).join(' '),
+              ])
             } else {
               await targetsCommand.parseAsync(['targets', 'list'])
             }
