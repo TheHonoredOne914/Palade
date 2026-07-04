@@ -76,7 +76,10 @@ export class AgentMemory {
         .map((f) => f.title)
         .slice(0, 3)
 
-      const filePath = locKey.split(':')[0]
+      // locKey is `${filePath}:${bucket}` — split on the *last* colon only,
+      // since filePath itself (LLM-sourced, unvalidated) may legitimately
+      // contain colons (e.g. an echoed "path:line" string).
+      const filePath = locKey.slice(0, locKey.lastIndexOf(':'))
       crossFindings.push({
         title: `Multi-domain issues near ${locKey}`,
         description: titles.join('; '),

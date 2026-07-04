@@ -38,7 +38,7 @@ export function Autocomplete({
 
       if (isTargetFlag) {
         const parts = rest.split('--target')
-        before = parts[0] + '--target '
+        before = `/${cmd}` + parts[0] + '--target '
         query = (parts[1] ?? '').trim().toLowerCase()
       }
 
