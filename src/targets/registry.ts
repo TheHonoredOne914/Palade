@@ -167,22 +167,29 @@ export function appendTargetToFile(projectRoot: string, target: TargetDefinition
   }
 
   // Ensure the last entry before the closing bracket has a trailing comma.
-  // Trailing //-comment lines (e.g. the scaffold template's commented-out
-  // examples) must be ignored — a comma after a comment-only body creates an
-  // array hole (`[, {...}]`).
+  // Trailing //-comment lines and blank lines (e.g. the scaffold template's
+  // commented-out examples) must be ignored, and an inline trailing comment
+  // on the last code line (e.g. `},  // note`) must be stripped before
+  // checking — otherwise a comma gets inserted after comment/blank text
+  // instead of after the real last token, creating an array hole (`[, {...}]`).
   const beforeCloseLines = content.slice(0, closingIndex).trimEnd().split('\n')
-  while (
-    beforeCloseLines.length > 0 &&
-    beforeCloseLines[beforeCloseLines.length - 1].trim().startsWith('//')
-  ) {
-    beforeCloseLines.pop()
+  let lastContentLine: string | null = null
+  while (beforeCloseLines.length > 0) {
+    const withoutComment = beforeCloseLines[beforeCloseLines.length - 1]
+      .replace(/\/\/.*$/, '')
+      .trim()
+    if (withoutComment === '') {
+      beforeCloseLines.pop()
+      continue
+    }
+    lastContentLine = withoutComment
+    break
   }
-  const beforeClose = beforeCloseLines.join('\n').trimEnd()
   const needsComma =
-    beforeClose.length > 0 &&
-    !beforeClose.endsWith(',') &&
-    !beforeClose.endsWith('[') &&
-    !beforeClose.endsWith('{')
+    lastContentLine !== null &&
+    !lastContentLine.endsWith(',') &&
+    !lastContentLine.endsWith('[') &&
+    !lastContentLine.endsWith('{')
 
   const commaPrefix = needsComma ? ',' : ''
   const updated =

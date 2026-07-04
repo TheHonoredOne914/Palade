@@ -119,66 +119,59 @@ export function compareFindings(
 
   const baseInScope = baseFindings.filter((f) => f.filePath && changedPaths.has(f.filePath))
 
-  const headFingerprints = new Set(headInScope.map(buildFingerprint))
-  const baseFingerprints = new Set(baseInScope.map(buildFingerprint))
+  // Each base finding may only be consumed by (matched to) one head finding
+  // and vice versa, otherwise a single base finding could be loose-matched by
+  // several head findings (or several base findings by one head finding),
+  // corrupting the introduced/resolved counts.
+  const matchedHead = new Set<AgentFinding>()
+  const matchedBase = new Set<AgentFinding>()
 
-  // Build loose fingerprint map for line-shift tolerance
+  // Pass 1: exact fingerprint matches (same file + line + title prefix), 1:1.
+  const baseByFingerprint = new Map<string, AgentFinding[]>()
+  for (const f of baseInScope) {
+    const fp = buildFingerprint(f)
+    if (!baseByFingerprint.has(fp)) baseByFingerprint.set(fp, [])
+    baseByFingerprint.get(fp)!.push(f)
+  }
+  for (const f of headInScope) {
+    const bf = baseByFingerprint.get(buildFingerprint(f))?.find((c) => !matchedBase.has(c))
+    if (bf) {
+      matchedHead.add(f)
+      matchedBase.add(bf)
+    }
+  }
+
+  // Pass 2: loose matches (same file + title, line within tolerance). Collect
+  // every candidate pair still unmatched, then greedily consume the closest
+  // pairs first so each finding is matched at most once.
   const baseByLoose = new Map<string, AgentFinding[]>()
   for (const f of baseInScope) {
+    if (matchedBase.has(f)) continue
     const loose = buildLooseFingerprint(f)
     if (!baseByLoose.has(loose)) baseByLoose.set(loose, [])
     baseByLoose.get(loose)!.push(f)
   }
 
-  const introduced: AgentFinding[] = []
-  const unchanged: AgentFinding[] = []
-
+  const candidatePairs: Array<{ head: AgentFinding; base: AgentFinding; dist: number }> = []
   for (const f of headInScope) {
-    const fp = buildFingerprint(f)
-    if (baseFingerprints.has(fp)) {
-      unchanged.push(f)
-      continue
+    if (matchedHead.has(f)) continue
+    const baseMatches = baseByLoose.get(buildLooseFingerprint(f))
+    if (!baseMatches) continue
+    for (const bf of baseMatches) {
+      const dist = Math.abs((bf.lineStart ?? 0) - (f.lineStart ?? 0))
+      if (dist <= LINE_TOLERANCE) candidatePairs.push({ head: f, base: bf, dist })
     }
-
-    // Check line-shift tolerance
-    const loose = buildLooseFingerprint(f)
-    const baseMatches = baseByLoose.get(loose)
-    if (baseMatches) {
-      const nearbyMatch = baseMatches.some(
-        (bf) => Math.abs((bf.lineStart ?? 0) - (f.lineStart ?? 0)) <= LINE_TOLERANCE
-      )
-      if (nearbyMatch) {
-        unchanged.push(f)
-        continue
-      }
-    }
-
-    introduced.push(f)
+  }
+  candidatePairs.sort((a, b) => a.dist - b.dist)
+  for (const { head, base } of candidatePairs) {
+    if (matchedHead.has(head) || matchedBase.has(base)) continue
+    matchedHead.add(head)
+    matchedBase.add(base)
   }
 
-  const resolved: AgentFinding[] = []
-  const headByLoose = new Map<string, AgentFinding[]>()
-  for (const f of headInScope) {
-    const loose = buildLooseFingerprint(f)
-    if (!headByLoose.has(loose)) headByLoose.set(loose, [])
-    headByLoose.get(loose)!.push(f)
-  }
-
-  for (const f of baseInScope) {
-    const fp = buildFingerprint(f)
-    if (headFingerprints.has(fp)) continue
-
-    const loose = buildLooseFingerprint(f)
-    const headMatches = headByLoose.get(loose)
-    if (headMatches) {
-      const nearbyMatch = headMatches.some(
-        (hf) => Math.abs((hf.lineStart ?? 0) - (f.lineStart ?? 0)) <= LINE_TOLERANCE
-      )
-      if (nearbyMatch) continue
-    }
-
-    resolved.push(f)
-  }
+  const introduced = headInScope.filter((f) => !matchedHead.has(f))
+  const unchanged = headInScope.filter((f) => matchedHead.has(f))
+  const resolved = baseInScope.filter((f) => !matchedBase.has(f))
 
   return { introduced, resolved, unchanged }
 }

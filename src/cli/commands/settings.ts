@@ -334,40 +334,55 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
   // Re-scan to find the closing brace of the deepest existing section along
   // the path so we can insert just before it.
   const targetPath = parentParts
-  let pathStack2: string[] = []
-  let openIndents2: number[] = []
   let insertAt = -1
   let insertIndent = 2
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const trimmed = line.trimStart()
-    if (!trimmed || trimmed.startsWith('//')) continue
-
-    if (trimmed.startsWith('}')) {
-      const indent = line.length - trimmed.length
-      while (openIndents2.length > 0 && openIndents2[openIndents2.length - 1] >= indent) {
-        // If the section we are closing IS the target parent, insert here.
-        if (
-          pathStack2.length === targetPath.length &&
-          targetPath.every((p, idx) => pathStack2[idx] === p)
-        ) {
-          insertAt = i
-          insertIndent = indent + 2
-          break
-        }
-        pathStack2.pop()
-        openIndents2.pop()
+  if (targetPath.length === 0) {
+    // Top-level key (dotPath has no '.'): the section-tracking loop below
+    // never pushes the root `export default {` itself (it only matches
+    // `key: {` lines), so it can never "close" the root and would leave a
+    // top-level --set silently no-op. Insert directly before the file's
+    // final closing brace instead.
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].trim() === '}') {
+        insertAt = i
+        break
       }
-      if (insertAt !== -1) break
-      continue
     }
+  } else {
+    let pathStack2: string[] = []
+    let openIndents2: number[] = []
 
-    const openMatch = /^(\s*)(?:['"]?([A-Za-z_$][\w$-]*)['"]?)\s*:\s*\{/.exec(line)
-    if (openMatch) {
-      pathStack2.push(openMatch[2])
-      openIndents2.push(openMatch[1].length)
-      continue
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const trimmed = line.trimStart()
+      if (!trimmed || trimmed.startsWith('//')) continue
+
+      if (trimmed.startsWith('}')) {
+        const indent = line.length - trimmed.length
+        while (openIndents2.length > 0 && openIndents2[openIndents2.length - 1] >= indent) {
+          // If the section we are closing IS the target parent, insert here.
+          if (
+            pathStack2.length === targetPath.length &&
+            targetPath.every((p, idx) => pathStack2[idx] === p)
+          ) {
+            insertAt = i
+            insertIndent = indent + 2
+            break
+          }
+          pathStack2.pop()
+          openIndents2.pop()
+        }
+        if (insertAt !== -1) break
+        continue
+      }
+
+      const openMatch = /^(\s*)(?:['"]?([A-Za-z_$][\w$-]*)['"]?)\s*:\s*\{/.exec(line)
+      if (openMatch) {
+        pathStack2.push(openMatch[2])
+        openIndents2.push(openMatch[1].length)
+        continue
+      }
     }
   }
 

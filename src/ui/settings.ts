@@ -41,9 +41,17 @@ async function writeConfigPatch(
       // existing empty and rewrite the file from the patch alone rather than
       // risking silent corruption of hand-written configs.
       const jsonStr = match[1]
-        .replace(/"(?:[^"\\]|\\.)*"/g, (m) => m.replace(/'/g, '\u2018')) // protect double-quoted strings
-        .replace(/'/g, '"') // now single quotes are safe to replace
-        .replace(/\u2018/g, "'") // restore single quotes inside strings
+        // Convert each single-quoted TS string to a properly-escaped JSON
+        // string: un-escape `\'` back to a literal apostrophe (it was only
+        // escaped to satisfy the single-quote delimiter), then escape any
+        // literal `"` for the double-quote delimiter JSON requires. A
+        // blanket '->" replace instead turns `\'` into `\"`, which
+        // JSON.parse silently decodes as a literal `"` \u2014 corrupting the
+        // value instead of failing loudly.
+        .replace(/'((?:\\.|[^'\\])*)'/g, (_, inner: string) => {
+          const unescaped = inner.replace(/\\'/g, "'")
+          return `"${unescaped.replace(/"/g, '\\"')}"`
+        })
         .replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3')
         .replace(/,\s*([}\]])/g, '$1')
       try {
