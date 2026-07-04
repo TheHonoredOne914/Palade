@@ -49,16 +49,13 @@ After your <thinking> block, return ONLY valid JSON matching this exact schema:
     "Observation string about patterns that span multiple domains"
   ],
   "debtEstimate": {
-    "critical": 12,
-    "high": 34,
-    "medium": 67,
-    "low": 20,
-    "total": 133,
     "highestROIFix": "Centralise auth validation — fixes 3 critical and 5 high findings"
   }
 }
 
-Be direct. Be specific. Do not repeat individual findings — synthesize patterns.`
+Be direct. Be specific. Do not repeat individual findings — synthesize patterns.
+
+Note: the numeric critical/high/medium/low/total counts in debtEstimate are computed separately from the actual finding set — do NOT try to compute them yourself. Only provide "highestROIFix" in debtEstimate.`
 
 function parseSynthesisResponse(raw: string): SynthesisResult | null {
   let cleaned = raw.trim()
@@ -102,7 +99,7 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
 
   const priorityFixes: PriorityFix[] = Array.isArray(obj.priorityFixes)
     ? (obj.priorityFixes as Record<string, unknown>[])
-        .filter((f) => typeof f.title === 'string' && typeof f.rationale === 'string')
+        .filter((f) => f != null && typeof f.title === 'string' && typeof f.rationale === 'string')
         .map((f) => {
           const rank = typeof f.rank === 'number' ? f.rank : parseInt(String(f.rank)) || 0
           const hours =
@@ -123,13 +120,17 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
     ? (obj.crossCuttingObservations as unknown[]).filter((o): o is string => typeof o === 'string')
     : []
 
+  // The critical/high/medium/low/total counts are computed directly from
+  // allFindings in synthesize() (not trusted from the LLM, which only sees a
+  // capped subset of findings) — only the qualitative highestROIFix is parsed
+  // here. The numeric fields are filled in by the caller.
   const rawDebt = obj.debtEstimate as Record<string, unknown> | undefined
   const debtEstimate: DebtEstimate = {
-    critical: typeof rawDebt?.critical === 'number' ? rawDebt.critical : 0,
-    high: typeof rawDebt?.high === 'number' ? rawDebt.high : 0,
-    medium: typeof rawDebt?.medium === 'number' ? rawDebt.medium : 0,
-    low: typeof rawDebt?.low === 'number' ? rawDebt.low : 0,
-    total: typeof rawDebt?.total === 'number' ? rawDebt.total : 0,
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0,
     highestROIFix: typeof rawDebt?.highestROIFix === 'string' ? rawDebt.highestROIFix : '',
   }
 
@@ -141,17 +142,41 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
   }
 }
 
+/** Computes exact severity counts from the full finding set (not an LLM estimate). */
+function computeDebtCounts(
+  findings: AgentFinding[]
+): Pick<DebtEstimate, 'critical' | 'high' | 'medium' | 'low' | 'total'> {
+  const counts = { critical: 0, high: 0, medium: 0, low: 0, total: findings.length }
+  for (const f of findings) {
+    if (f.severity === 'critical') counts.critical++
+    else if (f.severity === 'high') counts.high++
+    else if (f.severity === 'medium') counts.medium++
+    else if (f.severity === 'low') counts.low++
+  }
+  return counts
+}
+
+export interface SynthesizeOptions {
+  /** Max findings (by severity) sent to the LLM for synthesis. Default 50. */
+  maxSynthesisFindings?: number
+  /** Timeout in ms for the synthesis provider call. Default 180_000 (180s). */
+  synthesisTimeoutMs?: number
+}
+
 export async function synthesize(
   allFindings: AgentFinding[],
   crossAgentFindings: CrossAgentFinding[],
-  context: AgentContext
+  context: AgentContext,
+  options: SynthesizeOptions = {}
 ): Promise<SynthesisResult> {
+  const { maxSynthesisFindings = 50, synthesisTimeoutMs = 180_000 } = options
+  const debtCounts = computeDebtCounts(allFindings)
   try {
     const provider: IProvider = getProvider('synthesis')
 
     const sorted = [...allFindings].sort((a, b) => b.scorePenalty - a.scorePenalty)
-    const cappedFindings = sorted.slice(0, 50)
-    const droppedFindings = sorted.slice(50)
+    const cappedFindings = sorted.slice(0, maxSynthesisFindings)
+    const droppedFindings = sorted.slice(maxSynthesisFindings)
 
     let droppedSummary = ''
     if (droppedFindings.length > 0) {
@@ -184,7 +209,7 @@ export async function synthesize(
         const err = new Error('Synthesis timed out')
         err.name = 'AbortError'
         reject(err)
-      }, 180_000)
+      }, synthesisTimeoutMs)
       timeoutHandle!.unref?.()
     })
 
@@ -214,7 +239,7 @@ export async function synthesize(
         executiveSummary: 'Synthesis provider returned no response.',
         priorityFixes: [],
         crossCuttingObservations: [],
-        debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
+        debtEstimate: { ...debtCounts, highestROIFix: '' },
       }
     }
 
@@ -224,9 +249,10 @@ export async function synthesize(
         executiveSummary: 'Synthesis failed to produce a valid response.',
         priorityFixes: [],
         crossCuttingObservations: [],
-        debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
+        debtEstimate: { ...debtCounts, highestROIFix: '' },
       }
     }
+    result.debtEstimate = { ...debtCounts, highestROIFix: result.debtEstimate.highestROIFix }
     return result
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
@@ -234,7 +260,7 @@ export async function synthesize(
         executiveSummary: 'Synthesis was aborted.',
         priorityFixes: [],
         crossCuttingObservations: [],
-        debtEstimate: { critical: 0, high: 0, medium: 0, low: 0, total: 0, highestROIFix: '' },
+        debtEstimate: { ...debtCounts, highestROIFix: '' },
       }
     }
     throw err

@@ -1,8 +1,22 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { OutputLine } from '../components/OutputPane.js'
+
+// Ink's <Static> only ever renders items appended since the last render (it
+// tracks progress purely via items.length), so the backing array must grow
+// append-only during normal operation — see the note on appendLine below.
+// To keep long-running TUI sessions from accumulating unbounded memory, once
+// the buffer crosses MAX_LINES we trim it down to the last WINDOW_LINES and
+// force <Static> to remount (via clearNonce) so its internal render cursor
+// resets to the now-shorter array instead of freezing on the old length.
+const MAX_LINES = 2000
+const WINDOW_LINES = 500
 
 export function useOutputStream() {
   const idRef = useRef(0)
+  // Bumped by clearOutput to force Ink's <Static> to remount. Static commits
+  // output permanently and only advances its render cursor when items.length
+  // grows, so a remount is the only way a clear can re-render from scratch.
+  const [clearNonce, setClearNonce] = useState(0)
   const assignId = useCallback((line: OutputLine): OutputLine => {
     if (line.id === undefined) {
       line.id = ++idRef.current
@@ -28,9 +42,12 @@ export function useOutputStream() {
     ).map((l) => assignId(l))
   )
 
+  // NOTE: lines must stay append-only (no front truncation). Ink's <Static>
+  // only renders new items when items.length increases; capping the length
+  // would freeze its render cursor and permanently stop new output.
   const appendLine = useCallback(
     (line: OutputLine) => {
-      setLines((prev) => [...prev, assignId(line)].slice(-500))
+      setLines((prev) => [...prev, assignId(line)])
     },
     [assignId]
   )
@@ -38,7 +55,7 @@ export function useOutputStream() {
   const appendLines = useCallback(
     (newLines: OutputLine[]) => {
       const withIds = newLines.map((l) => assignId(l))
-      setLines((prev) => [...prev, ...withIds].slice(-500))
+      setLines((prev) => [...prev, ...withIds])
     },
     [assignId]
   )
@@ -46,7 +63,18 @@ export function useOutputStream() {
   const clearOutput = useCallback(() => {
     const cleared: OutputLine = { type: 'dim', text: '  Output cleared.' }
     setLines([assignId(cleared)])
+    setClearNonce((n) => n + 1)
   }, [assignId])
 
-  return { lines, appendLine, appendLines, clearOutput }
+  // Bound memory growth: once the buffer gets too large, window it down and
+  // force <Static> to remount so its render cursor doesn't freeze on a
+  // length it will never see again.
+  useEffect(() => {
+    if (lines.length > MAX_LINES) {
+      setLines((prev) => prev.slice(-WINDOW_LINES))
+      setClearNonce((n) => n + 1)
+    }
+  }, [lines.length])
+
+  return { lines, appendLine, appendLines, clearOutput, clearNonce }
 }

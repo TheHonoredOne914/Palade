@@ -45,7 +45,9 @@ if (hasCommand) {
 async function launchTUI(): Promise<void> {
   const { default: chalk } = await import('chalk')
   if (!process.stdout.isTTY || !process.stdin.isTTY) {
-    console.log(chalk.dim('Interactive TUI requires a terminal. Showing available commands instead:\n'))
+    console.log(
+      chalk.dim('Interactive TUI requires a terminal. Showing available commands instead:\n')
+    )
     console.log('  palade review [path]     Review codebase with AI swarm')
     console.log('  palade diff               Review changes since a branch')
     console.log('  palade watch              Continuous background review')
@@ -203,7 +205,7 @@ async function runClassicCLI(): Promise<void> {
       (val: string, prev: string[]) => prev.concat([val]),
       []
     )
-    .option('--init', 'Create default palade.config.ts and .paladeignore')
+    .option('--init', 'Create default palade.config.ts and .palade/ignore')
     .option('--list', 'Show current config (default)')
     .action(async (opts: { set?: string[]; init?: boolean; list?: boolean }): Promise<void> => {
       try {

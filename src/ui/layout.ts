@@ -28,36 +28,6 @@ function drawBox(text: string, title?: string): string {
   return [top, middle, bottom].join('\n')
 }
 
-export function createPanel(content: string, title?: string): string {
-  if (!process.stdout.isTTY) return content
-  return drawBox(content, title)
-}
-
-export function createStatsTable(stats: Record<string, string | number>): string {
-  if (!process.stdout.isTTY) {
-    return Object.entries(stats)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join('\n')
-  }
-
-  const lines = Object.entries(stats).map(
-    ([k, v]) => `${theme.dim(k.padEnd(20))} ${theme.primary(v)}`
-  )
-  return drawBox(lines.join('\n'), 'Results')
-}
-
-export function createErrorBox(error: Error | string): string {
-  const message = error instanceof Error ? error.message : error
-
-  if (!process.stdout.isTTY) {
-    return `ERROR: ${message}`
-  }
-
-  const lines = [theme.error('✖ Analysis Failed'), '', theme.dim(message)]
-
-  return drawBox(lines.join('\n'))
-}
-
 export function sectionBox(title: string, content: string): string {
   return drawBox(content, title)
 }

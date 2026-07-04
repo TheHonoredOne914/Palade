@@ -67,6 +67,14 @@ export async function reviewCommand(
   pathArg: string | undefined,
   opts: ReviewOptions
 ): Promise<void> {
+  if (opts.target && opts.allTargets) {
+    console.error(
+      chalk.red(
+        "  Cannot use --target and --all-targets together — --all-targets would silently override --target's scope. Pick one."
+      )
+    )
+    throw new CliExitError(1)
+  }
   if (
     !pathArg &&
     !opts.allTargets &&
@@ -290,7 +298,7 @@ export async function reviewCommand(
   // 8. Run pipeline with progress
   const agentCount = config.swarm.agentCount
   let completedAgents = 0
-  const progress = (opts.quiet || opts.tui) ? undefined : createLiveProgress()
+  const progress = opts.quiet || opts.tui ? undefined : createLiveProgress()
   let swarmResult: any
   try {
     swarmResult = await runPipeline({
@@ -334,19 +342,19 @@ export async function reviewCommand(
         onSynthesisComplete: (durationMs: number): void => {
           if (opts.tui) {
             console.log(
-              theme.success(
-                `  ✓ Synthesis complete in ${(durationMs / 1000).toFixed(1)}s`
-              )
+              theme.success(`  ✓ Synthesis complete in ${(durationMs / 1000).toFixed(1)}s`)
             )
           }
           progress?.synthesisDone(durationMs)
         },
         onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
-          if (opts.tui) console.log(theme.dim(`  Conflict detected: ${sideA} vs ${sideB} in ${filePath}`))
+          if (opts.tui)
+            console.log(theme.dim(`  Conflict detected: ${sideA} vs ${sideB} in ${filePath}`))
           progress?.conflictDetected(filePath, sideA, sideB)
         },
         onVerdictDecided: (decision: string, confidence: number): void => {
-          if (opts.tui) console.log(theme.success(`  ✓ Verdict decided (${confidence}% confidence)`))
+          if (opts.tui)
+            console.log(theme.success(`  ✓ Verdict decided (${confidence}% confidence)`))
           progress?.verdictDecided(decision, confidence)
         },
         timeoutMs: config.swarm.timeoutMs,

@@ -22,9 +22,9 @@ function makeFinding(agentName: string, severity: AgentFinding['severity']): Age
 }
 
 describe('agents/combined — buildCombinedSystemPrompt (via class)', () => {
-  it('exposes all six default domains and tags them with agentName', () => {
+  it('exposes all default domains and tags them with agentName', () => {
     const analyzer = new CombinedAnalyzer()
-    // The default domain set must cover the six built-in agent names so economy
+    // The default domain set must cover the built-in agent names so economy
     // mode produces findings attributable to every category the scorer expects.
     expect(DEFAULT_DOMAINS.map((d) => d.name).sort()).toEqual([
       'architecture',
@@ -32,6 +32,7 @@ describe('agents/combined — buildCombinedSystemPrompt (via class)', () => {
       'logic',
       'maintainability',
       'performance',
+      'pragmatism',
       'security',
       'testIntelligence',
     ])

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { askConfirm } from '../../ui/prompt.js'
 import chalk from 'chalk'
 
-const CONFIG_TEMPLATE = `// palade.config.ts
+export const CONFIG_TEMPLATE = `// palade.config.ts
 export default {
   // AI providers are auto-detected from environment variables
   // e.g., GROQ_API_KEY, OPENROUTER_API_KEY, etc.
@@ -44,7 +44,7 @@ export default [
 ]
 `
 
-const IGNORE_TEMPLATE = `node_modules/
+export const IGNORE_TEMPLATE = `node_modules/
 dist/
 build/
 .git/
@@ -71,7 +71,8 @@ const GITIGNORE_APPEND = `
 .palade/
 `
 
-export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
+export async function initCommand(opts?: { yes?: boolean; signal?: AbortSignal }): Promise<void> {
+  if (opts?.signal?.aborted) return
   const cwd = process.cwd()
 
   const configExists = existsSync(join(cwd, '.palade', 'palade.config.ts'))
@@ -98,6 +99,8 @@ export async function initCommand(opts?: { yes?: boolean }): Promise<void> {
       }
     }
   }
+
+  if (opts?.signal?.aborted) return
 
   const results: string[] = []
 

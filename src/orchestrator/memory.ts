@@ -1,8 +1,13 @@
 import type { AgentFinding, AgentName, Severity } from '../agents/base.js'
 import { SEVERITY_PENALTY } from '../agents/base.js'
 import type { CrossAgentFinding } from './types.js'
+import { SEVERITY_RANK } from './merger.js'
 
-const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low', 'info']
+// Derived from merger.ts's SEVERITY_RANK (rather than a separately maintained
+// array) so the two orderings can't drift apart.
+const SEVERITY_ORDER: Severity[] = (Object.keys(SEVERITY_RANK) as Severity[]).sort(
+  (a, b) => SEVERITY_RANK[a] - SEVERITY_RANK[b]
+)
 
 function highestSeverity(findings: AgentFinding[]): Severity {
   for (const sev of SEVERITY_ORDER) {
@@ -76,7 +81,10 @@ export class AgentMemory {
         .map((f) => f.title)
         .slice(0, 3)
 
-      const filePath = locKey.split(':')[0]
+      // locKey is `${filePath}:${bucket}` — split on the *last* colon only,
+      // since filePath itself (LLM-sourced, unvalidated) may legitimately
+      // contain colons (e.g. an echoed "path:line" string).
+      const filePath = locKey.slice(0, locKey.lastIndexOf(':'))
       crossFindings.push({
         title: `Multi-domain issues near ${locKey}`,
         description: titles.join('; '),

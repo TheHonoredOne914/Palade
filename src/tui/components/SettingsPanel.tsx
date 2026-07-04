@@ -77,10 +77,22 @@ async function saveApiKey(
     .replace(/\r/g, '\\r')
   const updateRe = new RegExp(`(${providerId}[\\s\\S]{0,200}?apiKey:\\s*)(['"])([^'"]*)(\\2)`)
   if (updateRe.test(content)) {
-    content = content.replace(updateRe, (_match, p1, p2, _p3, p4) => `${p1}${p2}${escapedApiKey}${p4}`)
+    content = content.replace(
+      updateRe,
+      (_match, p1, p2, _p3, p4) => `${p1}${p2}${escapedApiKey}${p4}`
+    )
   } else {
     const provBlock = `    '${providerId}': {\n      apiKey: '${escapedApiKey}',\n      model: '${prov.model}'\n    },\n`
-    content = content.replace(/(providers\s*:\s*\{)/, `$1\n${provBlock}`)
+    const providersRe = /(providers\s*:\s*\{)/
+    if (providersRe.test(content)) {
+      content = content.replace(providersRe, `$1\n${provBlock}`)
+    } else {
+      const exportRe = /(export default\s*\{)/
+      if (!exportRe.test(content)) {
+        throw new Error(`Could not find an insertion point in ${configPath}`)
+      }
+      content = content.replace(exportRe, `$1\n  providers: {\n${provBlock}  },`)
+    }
   }
 
   await writeFile(configPath, content, 'utf-8')

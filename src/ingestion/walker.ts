@@ -149,7 +149,7 @@ async function walkDir(
     }
 
     const linesOfCode = content.split('\n').length
-    
+
     const importRegex = /(?:import(?:[\s\S]*?from\s+)?|require\()\s*['"]([^'"]+)['"]/g
     let match
     const importedPaths = []
@@ -169,7 +169,7 @@ async function walkDir(
       annotations,
       lastModified: fileStat.mtime,
       importCount,
-      _rawImports: importedPaths
+      _rawImports: importedPaths,
     } as any)
   }
 
@@ -273,19 +273,21 @@ export async function walkProject(
   // Sort by path
   manifests.sort((a, b) => a.path.localeCompare(b.path))
 
-  
   try {
-    const { execSync } = require('child_process')
-    const gitLog = execSync('git log --name-only --pretty=format:', { cwd: projectRoot, encoding: 'utf-8' })
+    const { execSync } = await import('node:child_process')
+    const gitLog = execSync('git log --name-only --pretty=format:', {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+    })
     const churnMap = new Map<string, number>()
     for (const line of gitLog.split('\n')) {
-       const trimmed = line.trim()
-       if (trimmed) {
-          churnMap.set(trimmed, (churnMap.get(trimmed) || 0) + 1)
-       }
+      const trimmed = line.trim()
+      if (trimmed) {
+        churnMap.set(trimmed, (churnMap.get(trimmed) || 0) + 1)
+      }
     }
     for (const m of manifests) {
-       m.churnCount = churnMap.get(m.path) || 0
+      m.churnCount = churnMap.get(m.path) || 0
     }
   } catch {
     // Ignored
@@ -299,7 +301,7 @@ export async function walkProject(
   }
 
   for (const m of manifests) {
-    const rawImports = (m as any)._rawImports as string[] || []
+    const rawImports = ((m as any)._rawImports as string[]) || []
     for (const raw of rawImports) {
       if (raw.startsWith('.')) {
         // relative import
@@ -309,7 +311,7 @@ export async function walkProject(
         if (!target) target = pathMap.get(resolved + '.ts')
         if (!target) target = pathMap.get(resolved + '.js')
         if (!target) target = pathMap.get(resolved + '/index.ts')
-        
+
         if (target && target.importers) {
           if (!target.importers.includes(m.path)) {
             target.importers.push(m.path)

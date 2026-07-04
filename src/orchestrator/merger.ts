@@ -1,6 +1,6 @@
 import type { AgentFinding, Severity } from '../agents/base.js'
 
-const SEVERITY_RANK: Record<Severity, number> = {
+export const SEVERITY_RANK: Record<Severity, number> = {
   critical: 0,
   high: 1,
   medium: 2,
@@ -68,9 +68,10 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
   const discard = sevA <= sevB ? b : a
 
   const tagSet = new Set([...keep.tags, ...discard.tags])
-  const mergedDescription = keep.description === discard.description 
-    ? keep.description 
-    : `${keep.description}\n\nAdditional context: ${discard.description}`
+  const mergedDescription =
+    keep.description === discard.description
+      ? keep.description
+      : `${keep.description}\n\nAdditional context: ${discard.description}`
 
   return {
     ...keep,

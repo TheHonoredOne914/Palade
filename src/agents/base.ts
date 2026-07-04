@@ -187,10 +187,11 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
         filePath = undefined
       }
 
-      let lineStart = typeof obj.lineStart === 'number' && !isNaN(obj.lineStart) ? obj.lineStart : undefined
+      let lineStart =
+        typeof obj.lineStart === 'number' && !isNaN(obj.lineStart) ? obj.lineStart : undefined
       let lineEnd = typeof obj.lineEnd === 'number' && !isNaN(obj.lineEnd) ? obj.lineEnd : undefined
 
-      const tags = Array.isArray(obj.tags) ? obj.tags.filter(t => typeof t === 'string') : []
+      const tags = Array.isArray(obj.tags) ? obj.tags.filter((t) => typeof t === 'string') : []
 
       findings.push({
         id: crypto.randomUUID(),
@@ -271,6 +272,75 @@ export function buildSystemPrompt(
 }
 
 import { getProvider, type ProviderRole } from '../providers/router.js'
+import type { IProvider } from '../providers/base.js'
+
+/**
+ * Re-asks the model a strict YES/NO question to confirm each critical/high
+ * finding against the actual code chunk it references, dropping any it can't
+ * confirm. Shared so every analyze() path (per-domain specialists AND the
+ * combined economy-mode analyzer) verifies critical/high findings the same
+ * way instead of only some paths guarding against false positives.
+ */
+export async function verifyCriticalHighFindings(
+  findings: AgentFinding[],
+  chunks: CodeChunk[],
+  provider: IProvider,
+  agentName: AgentName,
+  signal?: AbortSignal
+): Promise<AgentFinding[]> {
+  const validatedFindings: AgentFinding[] = []
+  for (const f of findings) {
+    if (f.severity === 'critical' || f.severity === 'high') {
+      const codeChunk = f.filePath
+        ? chunks.find(
+            (c) =>
+              c.filePath === f.filePath &&
+              (typeof f.lineStart !== 'number' ||
+                (c.startLine <= f.lineStart && c.endLine >= f.lineStart))
+          )
+        : undefined
+      if (!codeChunk) {
+        // No matching chunk to verify against — keep the finding rather
+        // than running a self-consistency check with no code to look at.
+        validatedFindings.push(f)
+        continue
+      }
+      try {
+        const verifyResponse = await provider.complete({
+          systemPrompt: 'You are an expert verifier. Reply strictly YES or NO.',
+          userPrompt: `Does the following code ACTUALLY contain this vulnerability/issue?
+Issue: ${f.title} - ${f.description}
+
+Code:
+\`\`\`
+${codeChunk.content}
+\`\`\`
+
+Reply strictly YES or NO.`,
+          maxTokens: 10,
+          temperature: 0,
+          signal,
+        })
+        if (/^\s*yes\b/i.test(verifyResponse.content)) {
+          validatedFindings.push(f)
+        } else {
+          console.log(
+            chalk.yellow(
+              `  [${agentName}] Dropped false positive during self-consistency check: ${f.title}`
+            )
+          )
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') throw err
+        // If validation fails (e.g. timeout), err on the side of caution and keep it
+        validatedFindings.push(f)
+      }
+    } else {
+      validatedFindings.push(f)
+    }
+  }
+  return validatedFindings
+}
 
 export abstract class BaseSpecialistAgent implements IAgent {
   abstract name: AgentName
@@ -305,60 +375,19 @@ export abstract class BaseSpecialistAgent implements IAgent {
       for (const f of findings) {
         f.provider = response.provider
         f.model = response.model
-        
+
         if (f.filePath && typeof f.lineStart === 'number') {
-           const match = chunks.find(c => c.filePath === f.filePath && c.startLine <= f.lineStart! && c.endLine >= f.lineStart!)
-           if (match && match.complexity !== undefined) {
-              f.complexity = match.complexity
-           }
+          const match = chunks.find(
+            (c) =>
+              c.filePath === f.filePath && c.startLine <= f.lineStart! && c.endLine >= f.lineStart!
+          )
+          if (match && match.complexity !== undefined) {
+            f.complexity = match.complexity
+          }
         }
       }
 
-      const validatedFindings: AgentFinding[] = []
-      for (const f of findings) {
-         if (f.severity === 'critical' || f.severity === 'high') {
-             const codeChunk = f.filePath
-               ? chunks.find(c => c.filePath === f.filePath &&
-                   (typeof f.lineStart !== 'number' || (c.startLine <= f.lineStart && c.endLine >= f.lineStart)))
-               : undefined
-             if (!codeChunk) {
-               // No matching chunk to verify against — keep the finding rather
-               // than running a self-consistency check with no code to look at.
-               validatedFindings.push(f)
-               continue
-             }
-             try {
-               const verifyResponse = await provider.complete({
-                  systemPrompt: 'You are an expert verifier. Reply strictly YES or NO.',
-                  userPrompt: `Does the following code ACTUALLY contain this vulnerability/issue?
-Issue: ${f.title} - ${f.description}
-
-Code:
-\`\`\`
-${codeChunk.content}
-\`\`\`
-
-Reply strictly YES or NO.`,
-                  maxTokens: 10,
-                  temperature: 0,
-                  signal
-               })
-               if (verifyResponse.content.includes('YES')) {
-                   validatedFindings.push(f)
-               } else {
-                   console.log(chalk.yellow(`  [${this.name}] Dropped false positive during self-consistency check: ${f.title}`))
-               }
-             } catch (err) {
-               if (err instanceof Error && err.name === 'AbortError') throw err
-               // If validation fails (e.g. timeout), err on the side of caution and keep it
-               validatedFindings.push(f)
-             }
-         } else {
-             validatedFindings.push(f)
-         }
-      }
-
-      return validatedFindings
+      return verifyCriticalHighFindings(findings, chunks, provider, this.name, signal)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err

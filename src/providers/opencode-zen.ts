@@ -1,21 +1,25 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { fetchWithRetry } from './base.js'
+import { fetchWithRetry, sleep } from './base.js'
 import chalk from 'chalk'
 
-const AVAILABILITY_CACHE_MS = 60_000
+const DEFAULT_DEADLINE_MS = 180_000
 
 export class OpenCodeZenProvider implements IProvider {
   readonly name = 'opencode-zen'
   readonly model: string
   private readonly apiKey: string
   private readonly baseUrl = 'https://opencode.ai/zen/v1'
-  private availabilityCache: { result: boolean; timestamp: number } | null = null
+  private readonly deadlineMs: number
   private dailyLimitExhausted = false
-  private static readonly MAX_429_RETRIES = 3
 
-  constructor(apiKey: string, model = 'deepseek-v4-flash-free') {
+  constructor(
+    apiKey: string,
+    model = 'deepseek-v4-flash-free',
+    deadlineMs: number = DEFAULT_DEADLINE_MS
+  ) {
     this.apiKey = apiKey
     this.model = model
+    this.deadlineMs = deadlineMs
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
@@ -29,38 +33,67 @@ export class OpenCodeZenProvider implements IProvider {
     // tokens and slow down the request.
     const maxTokens = req.maxTokens ?? 16384
 
-    return this.doComplete(req, maxTokens, 0)
+    // One deadline for the whole logical call: internal 500/empty-content
+    // retries share it, so the ceiling holds across attempts instead of
+    // resetting per attempt.
+    return this.doComplete(
+      req,
+      maxTokens,
+      { serverError: 0, emptyContent: 0 },
+      Date.now() + this.deadlineMs
+    )
   }
 
   private async doComplete(
     req: CompletionRequest,
     maxTokens: number,
-    attempt: number
+    // Separate counters per error class — a 5xx or empty-content retry must
+    // not consume budget from the unrelated allowance (or vice versa) when
+    // both occur across the same logical call.
+    attempts: { serverError: number; emptyContent: number },
+    deadline: number
   ): Promise<CompletionResponse> {
     const start = Date.now()
-    // Combine the caller's cancellation signal with this provider's own 3-min
-    // hard ceiling so a swarm-level abort cancels the in-flight request without
+    // Combine the caller's cancellation signal with this provider's own hard
+    // ceiling so a swarm-level abort cancels the in-flight request without
     // losing the provider timeout.
-    const timeoutSignal = AbortSignal.timeout(180_000)
+    const timeoutSignal = AbortSignal.timeout(Math.max(deadline - Date.now(), 1))
     const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
 
-    const res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          { role: 'system', content: req.systemPrompt },
-          { role: 'user', content: req.userPrompt },
-        ],
-        max_tokens: maxTokens,
-        temperature: req.temperature ?? 0.1,
-      }),
-      signal,
-    })
+    let res: Response
+    try {
+      res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            { role: 'system', content: req.systemPrompt },
+            { role: 'user', content: req.userPrompt },
+          ],
+          max_tokens: maxTokens,
+          temperature: req.temperature ?? 0.1,
+        }),
+        signal,
+      })
+    } catch (err) {
+      // Our own deadline firing surfaces as a generic AbortError with no
+      // 'timeout' text, which router.ts's keyword classification can't
+      // recognize as retryable — rethrow with a matching keyword, but only
+      // when the deadline (not the caller's own signal) is what fired.
+      if (
+        err instanceof Error &&
+        err.name === 'AbortError' &&
+        timeoutSignal.aborted &&
+        !req.signal?.aborted
+      ) {
+        throw new Error('OpenCode Zen provider timeout — request exceeded deadline')
+      }
+      throw err
+    }
 
     if (res.status === 429) {
       const body = await res.json().catch(() => ({}))
@@ -73,27 +106,22 @@ export class OpenCodeZenProvider implements IProvider {
         throw new Error(`OpenCode Zen daily limit exceeded. ${msg}`)
       }
 
-      if (attempt >= OpenCodeZenProvider.MAX_429_RETRIES) {
-        // Exhausting the retry budget means the rate limit outlasted ~3 min,
-        // not that the daily quota is gone — that case is the explicit
-        // 'daily'/'per-day' branch above. Keep the provider alive so later
-        // calls can succeed once the window clears.
-        throw new Error(`OpenCode Zen rate limited — 429 retries exhausted`)
-      }
-
-      console.warn(
-        chalk.yellow(
-          `  OpenCode Zen rate limited. Waiting 60s... (${attempt + 1}/${OpenCodeZenProvider.MAX_429_RETRIES})`
-        )
-      )
-      await new Promise((r) => setTimeout(r, 60_000))
-      return this.doComplete(req, maxTokens, attempt + 1)
+      // fetchWithRetry already retried this request internally using the
+      // server's Retry-After header — layering another manual wait-and-retry
+      // loop on top just doubles the delay. Surface a retryable error and let
+      // the router's fallback chain / backoff handle anything further.
+      throw new Error(`OpenCode Zen rate limited — retries exhausted. ${msg.slice(0, 200)}`)
     }
 
-    if (res.status >= 500 && attempt < 2) {
+    if (res.status >= 500 && attempts.serverError < 2) {
       console.warn(chalk.yellow(`  OpenCode Zen ${res.status} — retrying in 5s...`))
-      await new Promise((r) => setTimeout(r, 5_000))
-      return this.doComplete(req, maxTokens, attempt + 1)
+      await sleep(5_000, req.signal)
+      return this.doComplete(
+        req,
+        maxTokens,
+        { ...attempts, serverError: attempts.serverError + 1 },
+        deadline
+      )
     }
 
     if (!res.ok) {
@@ -111,10 +139,19 @@ export class OpenCodeZenProvider implements IProvider {
     // If content is empty but tokens were used, reasoning model consumed all tokens
     // Retry with double the tokens (cap at 32768 to avoid runaway — the cap must
     // exceed the 16384 default or the retry re-sends an identical request)
-    if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
+    if (
+      content.trim().length === 0 &&
+      (usage?.completion_tokens ?? 0) > 0 &&
+      attempts.emptyContent < 2
+    ) {
       const newMax = Math.min(maxTokens * 2, 32768)
 
-      return this.doComplete(req, newMax, attempt + 1)
+      return this.doComplete(
+        req,
+        newMax,
+        { ...attempts, emptyContent: attempts.emptyContent + 1 },
+        deadline
+      )
     }
 
     return {

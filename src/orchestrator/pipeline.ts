@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
-import type { ScopeOptions, CodeChunk } from '../ingestion/types.js'
+import type { ScopeOptions, CodeChunk, FileManifest } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
 import { chunkFiles, estimateTokens } from '../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
@@ -35,15 +35,34 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   }
 
   // If symbol chunks are provided (from :: syntax), skip walking and use them directly
-  let manifests = await walkProject(opts.projectRoot, scope)
+  let manifests: FileManifest[]
   let chunks: CodeChunk[]
 
   if (scope.symbolChunks && scope.symbolChunks.length > 0) {
     chunks = scope.symbolChunks
+    // Build a minimal manifest stub per touched file so downstream code
+    // (annotation summary, triage, cross-referencing) still has something to
+    // work with, without paying for a full project walk we don't need here.
+    const seenPaths = new Set<string>()
+    manifests = []
+    for (const chunk of chunks) {
+      if (seenPaths.has(chunk.filePath)) continue
+      seenPaths.add(chunk.filePath)
+      manifests.push({
+        path: chunk.filePath,
+        absolutePath: join(opts.projectRoot, chunk.filePath),
+        language: chunk.language,
+        sizeBytes: 0,
+        linesOfCode: chunk.endLine - chunk.startLine + 1,
+        annotations: [],
+        lastModified: new Date(),
+      })
+    }
     console.log(
       `[pipeline] Symbol-scoped: 1 symbol → 1 chunk (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
     )
   } else {
+    manifests = await walkProject(opts.projectRoot, scope)
     if (manifests.length === 0) {
       console.log(chalk.yellow('\n  No files found to review.'))
       console.log(chalk.dim('  Check your scope flags or .paladeignore rules.'))
@@ -99,16 +118,20 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   // Build Keyword Index over ALL chunks (even unannotated/unscoped) so we have a global knowledge base
   const keywordIndex = buildKeywordIndex(chunks)
 
-  // Inject KEYWORD context into active chunks
-  for (const chunk of activeChunks) {
-    const retrievedContext = buildRetrievedContext(chunk, chunks)
-    const keywordContext = getKeywordContext(chunk, keywordIndex)
-    const contextPrefix = retrievedContext + keywordContext
+  // Inject KEYWORD context into active chunks. Compute every prefix against the
+  // pristine chunk corpus BEFORE mutating any chunk.content — otherwise an
+  // earlier chunk's injected foreign-code block would leak into the retrieved
+  // context of later chunks, making the result order-dependent.
+  const contextPrefixes = activeChunks.map(
+    (chunk) => buildRetrievedContext(chunk, chunks) + getKeywordContext(chunk, keywordIndex)
+  )
+  activeChunks.forEach((chunk, i) => {
+    const contextPrefix = contextPrefixes[i]
     if (contextPrefix) {
       chunk.content = contextPrefix + chunk.content
       chunk.tokenCount = estimateTokens(chunk.content)
     }
-  }
+  })
 
   const context = { ...opts.context }
   context.annotations = annotationSummary

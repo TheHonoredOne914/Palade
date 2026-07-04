@@ -28,7 +28,7 @@ export function Autocomplete({
 
   const matches = useMemo<Suggestion[]>(() => {
     // Target autocomplete
-    const cmdMatch = input.match(/^\/(review|score)(.*)$/)
+    const cmdMatch = input.match(/^\/(review)(.*)$/)
     if (cmdMatch) {
       const [, cmd, rest] = cmdMatch
       const isTargetFlag = rest.includes('--target')
@@ -38,7 +38,7 @@ export function Autocomplete({
 
       if (isTargetFlag) {
         const parts = rest.split('--target')
-        before = parts[0] + '--target '
+        before = `/${cmd}` + parts[0] + '--target '
         query = (parts[1] ?? '').trim().toLowerCase()
       }
 
@@ -92,6 +92,12 @@ export function Autocomplete({
   useEffect(() => {
     setSelectedIdx(0)
   }, [matches])
+
+  // When nothing matches, hide the (empty) autocomplete so the parent's Enter
+  // handler can submit the raw input instead of both handlers swallowing it.
+  useEffect(() => {
+    if (matches.length === 0) onSelect('')
+  }, [matches, onSelect])
 
   useInput((keyInput, key) => {
     if (key.tab || key.downArrow) {
