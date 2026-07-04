@@ -170,17 +170,19 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     if (annotationSummary.ignoredFiles.length > 0 || annotationSummary.ignoredLines.length > 0) {
       const norm = (p: string) => p.replace(/^\.?\/+/, '')
       const ignoredFileSet = new Set(annotationSummary.ignoredFiles.map(norm))
-      swarmResult.findings = swarmResult.findings.filter((f: { filePath?: string; lineStart?: number }) => {
-        if (!f.filePath) return true
-        if (ignoredFileSet.has(norm(f.filePath))) return false
-        if (f.lineStart === undefined) return true
-        return !annotationSummary.ignoredLines.some(
-          (il) =>
-            norm(il.filePath) === norm(f.filePath!) &&
-            f.lineStart! >= il.startLine &&
-            f.lineStart! <= il.startLine + 1
-        )
-      })
+      swarmResult.findings = swarmResult.findings.filter(
+        (f: { filePath?: string; lineStart?: number }) => {
+          if (!f.filePath) return true
+          if (ignoredFileSet.has(norm(f.filePath))) return false
+          if (f.lineStart === undefined) return true
+          return !annotationSummary.ignoredLines.some(
+            (il) =>
+              norm(il.filePath) === norm(f.filePath!) &&
+              f.lineStart! >= il.startLine &&
+              f.lineStart! <= il.startLine + 1
+          )
+        }
+      )
     }
 
     if (swarmResult.fallbackStats) {

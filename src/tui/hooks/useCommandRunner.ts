@@ -111,7 +111,16 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
       // Only these flags consume a value. Excluding the token after ANY `--`
       // flag would swallow positionals following boolean flags (e.g.
       // `/review --pick src/foo.ts` losing its path).
-      const VALUE_FLAGS = new Set(['target', 'dir', 'glob', 'mode', 'depth', 'format', 'base', 'file'])
+      const VALUE_FLAGS = new Set([
+        'target',
+        'dir',
+        'glob',
+        'mode',
+        'depth',
+        'format',
+        'base',
+        'file',
+      ])
       const positional = rest.filter((r, i) => {
         if (r.startsWith('--')) return false
         const prev = rest[i - 1]

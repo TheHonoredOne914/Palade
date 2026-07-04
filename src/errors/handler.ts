@@ -68,10 +68,7 @@ export function handleFatalError(err: unknown): undefined {
     // Errors bubbled up from HTTP-based provider clients often carry extra
     // properties (e.g. request/response objects with Authorization headers
     // or API keys) beyond `message`/`stack`. Redact those before printing.
-    const { message: _message, stack: _stack, ...extra } = err as unknown as Record<
-      string,
-      unknown
-    >
+    const { message: _message, stack: _stack, ...extra } = err as unknown as Record<string, unknown>
     if (Object.keys(extra).length > 0) {
       console.error(chalk.dim(JSON.stringify(sanitizeForLog(extra), null, 2)))
     }

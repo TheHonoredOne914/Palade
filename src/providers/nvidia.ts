@@ -72,7 +72,12 @@ export class NvidiaProvider implements IProvider {
       // 'timeout' text, which router.ts's keyword classification can't
       // recognize as retryable — rethrow with a matching keyword, but only
       // when the deadline (not the caller's own signal) is what fired.
-      if (err instanceof Error && err.name === 'AbortError' && timeoutSignal.aborted && !req.signal?.aborted) {
+      if (
+        err instanceof Error &&
+        err.name === 'AbortError' &&
+        timeoutSignal.aborted &&
+        !req.signal?.aborted
+      ) {
         throw new Error('NVIDIA provider timeout — request exceeded deadline')
       }
       throw err

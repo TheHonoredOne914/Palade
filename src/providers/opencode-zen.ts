@@ -36,7 +36,12 @@ export class OpenCodeZenProvider implements IProvider {
     // One deadline for the whole logical call: internal 500/empty-content
     // retries share it, so the ceiling holds across attempts instead of
     // resetting per attempt.
-    return this.doComplete(req, maxTokens, { serverError: 0, emptyContent: 0 }, Date.now() + this.deadlineMs)
+    return this.doComplete(
+      req,
+      maxTokens,
+      { serverError: 0, emptyContent: 0 },
+      Date.now() + this.deadlineMs
+    )
   }
 
   private async doComplete(

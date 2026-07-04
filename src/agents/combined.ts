@@ -84,8 +84,7 @@ export const DEFAULT_DOMAINS: DomainSpec[] = [
   {
     name: 'pragmatism',
     label: 'Pragmatism',
-    focus:
-      'over-engineering, premature abstractions, unneeded configurability, YAGNI violations',
+    focus: 'over-engineering, premature abstractions, unneeded configurability, YAGNI violations',
   },
 ]
 
