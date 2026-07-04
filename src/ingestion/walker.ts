@@ -1,5 +1,5 @@
 import { readdir, stat, readFile, realpath } from 'node:fs/promises'
-import { join, relative, extname, sep } from 'node:path'
+import { join, relative, extname, sep, normalize, dirname } from 'node:path'
 import ignore, { Ignore } from 'ignore'
 import type { FileManifest, Language, ScopeOptions, LanguageProfile } from './types.js'
 import { parseFile } from './annotationParser.js'
@@ -298,13 +298,12 @@ export async function walkProject(
     m.importers = []
   }
 
-  const nodePath = require('path')
   for (const m of manifests) {
     const rawImports = (m as any)._rawImports as string[] || []
     for (const raw of rawImports) {
       if (raw.startsWith('.')) {
         // relative import
-        let resolved = nodePath.normalize(nodePath.join(nodePath.dirname(m.path), raw)).replace(/\\/g, '/')
+        let resolved = normalize(join(dirname(m.path), raw)).replace(/\\/g, '/')
         // Try exact match, .ts, .js, /index.ts
         let target = pathMap.get(resolved)
         if (!target) target = pathMap.get(resolved + '.ts')
