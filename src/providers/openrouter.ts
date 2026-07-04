@@ -1,22 +1,35 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { fetchWithRetry } from './base.js'
+import { fetchWithRetry, createLimiter } from './base.js'
 
 export class OpenRouterProvider implements IProvider {
   readonly name = 'openrouter'
   readonly model: string
   private readonly apiKey: string
+  private readonly limiter: ReturnType<typeof createLimiter>
   private dailyLimitExhausted = false
 
-  constructor(apiKey: string, model = 'nvidia/nemotron-3-super-120b-a12b:free') {
+  constructor(
+    apiKey: string,
+    model = 'nvidia/nemotron-3-super-120b-a12b:free',
+    maxConcurrency = 4
+  ) {
     this.apiKey = apiKey
     this.model = model
+    this.limiter = createLimiter(maxConcurrency)
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     if (this.dailyLimitExhausted) {
       throw new Error('OpenRouter daily limit exhausted for this session')
     }
+    return this.limiter(() => this.doComplete(req, req.maxTokens ?? 4096, 0))
+  }
 
+  private async doComplete(
+    req: CompletionRequest,
+    maxTokens: number,
+    attempt: number
+  ): Promise<CompletionResponse> {
     const start = Date.now()
 
     const res = await fetchWithRetry('https://openrouter.ai/api/v1/chat/completions', {
@@ -33,7 +46,7 @@ export class OpenRouterProvider implements IProvider {
           { role: 'system', content: req.systemPrompt },
           { role: 'user', content: req.userPrompt },
         ],
-        max_tokens: req.maxTokens ?? 4096,
+        max_tokens: maxTokens,
         temperature: req.temperature ?? 0.1,
       }),
       signal: req.signal,
@@ -67,11 +80,20 @@ export class OpenRouterProvider implements IProvider {
     const choices = data.choices as Array<{ message?: { content?: string } }> | undefined
     const content = choices?.[0]?.message?.content ?? ''
     const usage = data.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
+    const outputTokens = usage?.completion_tokens ?? 0
+
+    // If content is empty but tokens were used, the model consumed its whole
+    // budget thinking — retry with more tokens (cap at 32768), same pattern as
+    // NVIDIA/OpenCode Zen/Groq/Cerebras.
+    if (content.trim().length === 0 && outputTokens > 0 && attempt < 2) {
+      const newMax = Math.min(maxTokens * 2, 32768)
+      return this.doComplete(req, newMax, attempt + 1)
+    }
 
     return {
       content,
       inputTokens: usage?.prompt_tokens ?? 0,
-      outputTokens: usage?.completion_tokens ?? 0,
+      outputTokens,
       durationMs,
       provider: this.name,
       model: this.model,

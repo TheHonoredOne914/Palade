@@ -135,6 +135,44 @@ function renderFindingsSummary(findings: ReporterContext['findings']): string {
   return createMarkdownTable(headers, rows)
 }
 
+function renderFindingsDetail(
+  findings: ReporterContext['findings'],
+  options: MarkdownTableOptions = DEFAULT_OPTIONS
+): string {
+  if (findings.length === 0) return '*No individual findings.*'
+
+  const severityOrder: Record<string, number> = {
+    critical: 0,
+    high: 1,
+    medium: 2,
+    low: 3,
+    info: 4,
+  }
+
+  const sorted = [...findings].sort((a, b) => {
+    const aRank = severityOrder[a.severity] ?? 5
+    const bRank = severityOrder[b.severity] ?? 5
+    if (aRank !== bRank) return aRank - bRank
+    return (a.filePath ?? '').localeCompare(b.filePath ?? '')
+  })
+
+  const headers = ['Severity', 'File', 'Category', 'Title', 'Description']
+  const rows = sorted.map((f) => {
+    const location = f.filePath
+      ? `${f.filePath}${typeof f.lineStart === 'number' ? `:${f.lineStart}${typeof f.lineEnd === 'number' && f.lineEnd !== f.lineStart ? `-${f.lineEnd}` : ''}` : ''}`
+      : 'N/A'
+    return [
+      `${SEVERITY_EMOJI[f.severity] ?? ''} ${f.severity}`,
+      location,
+      f.agentName,
+      f.title,
+      f.description,
+    ]
+  })
+
+  return createMarkdownTable(headers, rows, options)
+}
+
 function renderCrossAgentFindings(findings: ReporterContext['crossAgentFindings']): string {
   if (findings.length === 0) return '*No cross-agent findings.*'
 
@@ -234,6 +272,11 @@ export function buildMarkdownReport(ctx: ReporterContext): string {
   lines.push(`## Findings Summary`)
   lines.push('')
   lines.push(renderFindingsSummary(ctx.findings))
+  lines.push('')
+
+  lines.push(`## Detailed Findings`)
+  lines.push('')
+  lines.push(renderFindingsDetail(ctx.findings, { maxWidth: 200, truncateChar: '…' }))
   lines.push('')
 
   lines.push(`## Agent Timings`)

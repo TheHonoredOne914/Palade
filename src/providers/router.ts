@@ -82,16 +82,18 @@ function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[]
         instances.push(new CerebrasProvider(key, cfg.model, cfg.maxConcurrency))
         break
       case 'nvidia':
-        instances.push(new NvidiaProvider(key, cfg.model, cfg.baseUrl))
+        instances.push(
+          new NvidiaProvider(key, cfg.model, cfg.baseUrl, undefined, cfg.maxConcurrency)
+        )
         break
       case 'openrouter':
-        instances.push(new OpenRouterProvider(key, cfg.model))
+        instances.push(new OpenRouterProvider(key, cfg.model, cfg.maxConcurrency))
         break
       case 'opencode-zen':
-        instances.push(new OpenCodeZenProvider(key, cfg.model))
+        instances.push(new OpenCodeZenProvider(key, cfg.model, undefined, cfg.maxConcurrency))
         break
       case 'ollama':
-        instances.push(new OllamaProvider(cfg.model, cfg.baseUrl))
+        instances.push(new OllamaProvider(cfg.model, cfg.baseUrl, cfg.maxConcurrency))
         break
     }
   }
@@ -203,10 +205,25 @@ export class FallbackProvider implements IProvider {
         const isRetryable = isRetryableMessage(lastError.message)
 
         if (isFatal) {
-          this.deadProviders.add(provider.name)
-          console.warn(
-            chalk.red(`[router] provider ${provider.name} marked as DEAD (hard quota limit)`)
-          )
+          // A chain entry may be a ProviderPool backing several keys/instances
+          // that share this same provider name. A fatal error on ONE member
+          // (e.g. that key's daily quota) must not take down its healthy
+          // siblings, so defer to the entry's own isAvailable() — which for a
+          // pool aggregates per-member state — rather than blanket-marking the
+          // shared name dead on any fatal-looking error.
+          const stillAvailable = await provider.isAvailable()
+          if (stillAvailable) {
+            console.warn(
+              chalk.yellow(
+                `[router] provider ${provider.name} hit a fatal-looking error on one instance, but other instances remain available — not marking the whole provider dead`
+              )
+            )
+          } else {
+            this.deadProviders.add(provider.name)
+            console.warn(
+              chalk.red(`[router] provider ${provider.name} marked as DEAD (hard quota limit)`)
+            )
+          }
         }
 
         // Default to trying the next provider even for errors that match

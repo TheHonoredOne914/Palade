@@ -52,6 +52,7 @@ export interface HtmlTemplateData {
   observationsHtml: string
   crossAgentFindingsHtml: string
   findingsSummaryHtml: string
+  findingsDetailHtml: string
   debtEstimateHtml: string
   sparklineData: string
   sparklineLabels: string

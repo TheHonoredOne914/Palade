@@ -1,5 +1,5 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { fetchWithRetry, sleep } from './base.js'
+import { fetchWithRetry, sleep, createLimiter } from './base.js'
 import chalk from 'chalk'
 
 const DEFAULT_DEADLINE_MS = 180_000
@@ -10,16 +10,19 @@ export class OpenCodeZenProvider implements IProvider {
   private readonly apiKey: string
   private readonly baseUrl = 'https://opencode.ai/zen/v1'
   private readonly deadlineMs: number
+  private readonly limiter: ReturnType<typeof createLimiter>
   private dailyLimitExhausted = false
 
   constructor(
     apiKey: string,
     model = 'deepseek-v4-flash-free',
-    deadlineMs: number = DEFAULT_DEADLINE_MS
+    deadlineMs: number = DEFAULT_DEADLINE_MS,
+    maxConcurrency = 4
   ) {
     this.apiKey = apiKey
     this.model = model
     this.deadlineMs = deadlineMs
+    this.limiter = createLimiter(maxConcurrency)
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
@@ -36,11 +39,9 @@ export class OpenCodeZenProvider implements IProvider {
     // One deadline for the whole logical call: internal 500/empty-content
     // retries share it, so the ceiling holds across attempts instead of
     // resetting per attempt.
-    return this.doComplete(
-      req,
-      maxTokens,
-      { serverError: 0, emptyContent: 0 },
-      Date.now() + this.deadlineMs
+    const deadline = Date.now() + this.deadlineMs
+    return this.limiter(() =>
+      this.doComplete(req, maxTokens, { serverError: 0, emptyContent: 0 }, deadline)
     )
   }
 

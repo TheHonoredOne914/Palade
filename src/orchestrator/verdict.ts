@@ -195,7 +195,10 @@ Please provide your verdict.`
     const response = await provider.complete({
       systemPrompt,
       userPrompt,
-      maxTokens: 1024,
+      // 4096 gives the model enough headroom to finish the JSON verdict
+      // without truncating mid-object — a truncated response fails JSON.parse
+      // below and the whole verdict is silently dropped.
+      maxTokens: 4096,
       temperature: 0.1,
       signal,
     })

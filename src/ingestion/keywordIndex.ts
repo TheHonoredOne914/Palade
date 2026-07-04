@@ -1,7 +1,13 @@
 import type { CodeChunk } from './types.js'
 
 export function buildKeywordIndex(chunks: CodeChunk[]): CodeChunk[] {
-  return chunks
+  // Snapshot each chunk before returning. Callers (e.g. the keyword-context
+  // injection loop in orchestrator/pipeline.ts) mutate `chunk.content` in
+  // place on the chunks used as the review corpus; if this index shared the
+  // same objects, chunks processed later in that loop would end up matching
+  // against already-inflated content from earlier iterations. Copying here
+  // decouples the index from those later mutations.
+  return chunks.map((chunk) => ({ ...chunk }))
 }
 
 export function getKeywordContext(
