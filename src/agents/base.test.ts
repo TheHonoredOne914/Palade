@@ -112,6 +112,17 @@ describe('buildSystemPrompt', () => {
     expect(res).not.toContain('AGENT CONSTITUTION')
   })
 
+  it('frames Ponytail and Karpathy as review lenses on the reviewed code, not authoring rules', () => {
+    const res = buildSystemPrompt('Base', baseContext)
+    // tag convention proving the lens is meant to produce traceable findings
+    expect(res).toContain('"ponytail"')
+    expect(res).toContain('"karpathy"')
+    expect(res).toContain('"unrelated-refactor"')
+    expect(res).toContain('"unverified-goal"')
+    // guard against regressing back to author-voiced instructions
+    expect(res).not.toContain('Mark deliberate simplifications with a `ponytail:` comment')
+  })
+
   it('appends the constitution if present', () => {
     const ctx: AgentContext = { ...baseContext, constitution: 'I AM THE LAW' }
     const res = buildSystemPrompt('Base', ctx)
