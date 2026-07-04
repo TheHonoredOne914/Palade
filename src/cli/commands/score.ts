@@ -5,9 +5,14 @@ import { theme, scoreTheme } from '../../ui/theme.js'
 import { sectionBox, kvTable, sparkline, scoreGrade, formatDelta } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
 
-export async function scoreCommand(opts: { history?: boolean }): Promise<void> {
+export async function scoreCommand(opts: {
+  history?: boolean
+  signal?: AbortSignal
+}): Promise<void> {
+  if (opts.signal?.aborted) throw new CliExitError(1)
   try {
     const config = await loadConfig()
+    if (opts.signal?.aborted) throw new CliExitError(1)
     const historyPath = join(process.cwd(), config.score.historyFile)
     const entries = readHistory(historyPath)
 
@@ -66,6 +71,7 @@ export async function scoreCommand(opts: { history?: boolean }): Promise<void> {
     console.log(lines.join('\n'))
     console.log()
   } catch (err) {
+    if (err instanceof CliExitError) throw err
     console.error(theme.error(`Score lookup failed: ${(err as Error).message}`))
     throw new CliExitError(1)
   }

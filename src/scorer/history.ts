@@ -20,16 +20,26 @@ export function readHistory(historyPath: string): ScoreHistoryEntry[] {
         typeof (item as Record<string, unknown>).score === 'number'
       ) {
         const obj = item as Record<string, unknown>
+        const rawBreakdown = obj.breakdown as Record<string, unknown> | null | undefined
+        const isValidBreakdown =
+          rawBreakdown !== null &&
+          typeof rawBreakdown === 'object' &&
+          Array.isArray(rawBreakdown.categories) &&
+          typeof rawBreakdown.findingCount === 'number' &&
+          typeof rawBreakdown.crossAgentCount === 'number'
+
         entries.push({
           timestamp: obj.timestamp as string,
           runId: (obj.runId as string) ?? '',
           score: obj.score as number,
-          breakdown: (obj.breakdown as ScoreBreakdown) ?? {
-            total: obj.score as number,
-            categories: [],
-            findingCount: 0,
-            crossAgentCount: 0,
-          },
+          breakdown: isValidBreakdown
+            ? (rawBreakdown as unknown as ScoreBreakdown)
+            : {
+                total: obj.score as number,
+                categories: [],
+                findingCount: 0,
+                crossAgentCount: 0,
+              },
           delta: typeof obj.delta === 'number' ? obj.delta : 0,
         })
       }
@@ -41,24 +51,32 @@ export function readHistory(historyPath: string): ScoreHistoryEntry[] {
   }
 }
 
-export function writeHistory(historyPath: string, entries: ScoreHistoryEntry[]): void {
+export function writeHistory(
+  historyPath: string,
+  entries: ScoreHistoryEntry[],
+  maxEntries: number = MAX_HISTORY_ENTRIES
+): void {
   try {
     const dir = dirname(historyPath)
     mkdirSync(dir, { recursive: true })
-    const trimmed = entries.slice(-MAX_HISTORY_ENTRIES)
+    const trimmed = entries.slice(-maxEntries)
     writeFileSync(historyPath, JSON.stringify(trimmed, null, 2), 'utf-8')
   } catch {
     // history write is best-effort — never throw
   }
 }
 
-export function appendEntry(historyPath: string, entry: ScoreHistoryEntry): ScoreHistoryEntry[] {
+export function appendEntry(
+  historyPath: string,
+  entry: ScoreHistoryEntry,
+  maxEntries: number = MAX_HISTORY_ENTRIES
+): ScoreHistoryEntry[] {
   const existing = readHistory(historyPath)
   existing.push(entry)
-  writeHistory(historyPath, existing)
+  writeHistory(historyPath, existing, maxEntries)
   // Return what was actually persisted — the untrimmed array would diverge
   // from the next readHistory() once the retention cap kicks in.
-  return existing.slice(-MAX_HISTORY_ENTRIES)
+  return existing.slice(-maxEntries)
 }
 
 export function getLatestEntry(historyPath: string): ScoreHistoryEntry | null {

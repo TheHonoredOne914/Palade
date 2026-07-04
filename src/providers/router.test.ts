@@ -102,13 +102,25 @@ describe('FallbackProvider', () => {
     expect(fp.totalCount).toBe(1)
   })
 
-  // --- Test 3: Primary fails with non-retryable error ---
-  it('throws immediately on non-retryable error without trying fallback', async () => {
+  // --- Test 3: Primary fails with an unclassified error (matches neither the
+  // retryable nor fatal keyword lists) ---
+  it('falls back to the next provider on an unclassified error instead of throwing immediately', async () => {
     primary = mockProvider('primary', 'model-a', 'fail-fatal')
     const fp = new FallbackProvider(primary, [fallback1])
 
-    await expect(fp.complete(dummyReq)).rejects.toThrow('invalid api key')
-    expect(fallback1.complete).not.toHaveBeenCalled()
+    const res = await fp.complete(dummyReq)
+
+    expect(res.provider).toBe('fallback1')
+    expect(fallback1.complete).toHaveBeenCalled()
+  })
+
+  // --- Test 3b: All providers fail with the same unclassified error ---
+  it('throws AllProvidersExhaustedError when every provider fails with an unclassified error', async () => {
+    primary = mockProvider('primary', 'model-a', 'fail-fatal')
+    fallback1 = mockProvider('fallback1', 'model-b', 'fail-fatal')
+    const fp = new FallbackProvider(primary, [fallback1])
+
+    await expect(fp.complete(dummyReq)).rejects.toThrow(AllProvidersExhaustedError)
   })
 
   // --- Test 4: All providers fail with retryable errors ---

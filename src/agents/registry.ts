@@ -1,4 +1,5 @@
 import type { IAgent, ReviewMode, AgentName } from './base.js'
+import { PaladeConfigError } from '../errors/types.js'
 import { SecurityAgent } from './specialist/security.js'
 import { ArchitectureAgent } from './specialist/architecture.js'
 import { PerformanceAgent } from './specialist/performance.js'
@@ -43,7 +44,14 @@ export function getAgentsForMode(
       const agent = allAgents.get(name)
       if (agent) agents.push(agent)
     }
-    return agents.length > 0 ? agents : [...AGENT_REGISTRY, ...customAgents.values()]
+    if (agents.length === 0) {
+      throw new PaladeConfigError(
+        `agentOverrides contains no recognized agent names: ${agentOverrides.join(', ')}`,
+        'agentOverrides',
+        `Available agents: ${[...allAgents.keys()].join(', ')}`
+      )
+    }
+    return agents
   }
   if (mode === 'ghost') return [allAgents.get('deadCode') ?? BUILTIN_AGENTS.get('deadCode')!]
   return [...AGENT_REGISTRY, ...customAgents.values()]

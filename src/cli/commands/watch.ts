@@ -1,6 +1,7 @@
 import chokidar from 'chokidar'
 import chalk from 'chalk'
 import { loadConfig } from '../../config/loader.js'
+import { DEFAULT_CONFIG } from '../../config/defaults.js'
 import { initRouter, getProvider } from '../../providers/router.js'
 import { walkProject } from '../../ingestion/walker.js'
 import { chunkFiles } from '../../ingestion/chunker.js'
@@ -141,7 +142,7 @@ export async function watchCommand(opts: {
 
       for (const agent of agents) {
         for (const batch of batches) {
-          const timeoutMs = (config.swarm as any)?.timeoutMs ?? 60000
+          const timeoutMs = config.swarm.timeoutMs ?? DEFAULT_CONFIG.swarm!.timeoutMs
           const ac = new AbortController()
           const timer = setTimeout(() => ac.abort(), timeoutMs)
 

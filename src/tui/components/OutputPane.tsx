@@ -21,24 +21,6 @@ export interface OutputLine {
   id?: number
 }
 
-interface OutputPaneProps {
-  lines: OutputLine[]
-}
-
-export const OutputPane = React.memo(function OutputPane({
-  lines,
-}: OutputPaneProps): React.JSX.Element {
-  const displayLines = lines.slice(-200)
-
-  return (
-    <Box flexDirection="column" borderStyle="round" borderColor="#374151" paddingX={1} flexGrow={1}>
-      {displayLines.map((line, i) => (
-        <OutputLineItem key={line.id ?? i} line={line} />
-      ))}
-    </Box>
-  )
-})
-
 export function OutputLineItem({ line }: { line: OutputLine }): React.JSX.Element {
   switch (line.type) {
     case 'input':

@@ -18,6 +18,42 @@ export class AllProvidersExhaustedError extends Error {
   }
 }
 
+// Single source of truth for error classification, shared by the inner
+// withExponentialBackoff() call and the outer catch below — previously these
+// kept two independently-maintained keyword lists that had drifted apart.
+const RETRYABLE_KEYWORDS = [
+  '429',
+  '500',
+  '502',
+  '503',
+  'timeout',
+  'timed out',
+  'econnrefused',
+  'fetch failed',
+  'rate limit',
+  'daily limit',
+  'quota exhausted',
+]
+
+const FATAL_KEYWORDS = [
+  'per day',
+  'per-day',
+  'daily',
+  'quota',
+  'insufficient_quota',
+  'monthly limit',
+]
+
+function isRetryableMessage(message: string): boolean {
+  const lower = message.toLowerCase()
+  return RETRYABLE_KEYWORDS.some((keyword) => lower.includes(keyword))
+}
+
+function isFatalMessage(message: string): boolean {
+  const lower = message.toLowerCase()
+  return FATAL_KEYWORDS.some((keyword) => lower.includes(keyword))
+}
+
 export type ProviderRole = 'primary' | 'synthesis'
 
 export interface ProviderAssignment {
@@ -149,24 +185,8 @@ export class FallbackProvider implements IProvider {
           maxRetries: 2,
           baseDelayMs: 1000,
           maxDelayMs: 15000,
-          retryableErrors: [
-            '429',
-            '500',
-            '502',
-            '503',
-            'timeout',
-            'timed out',
-            'ECONNREFUSED',
-            'fetch failed',
-          ],
-          fatalErrors: [
-            'per day',
-            'per-day',
-            'daily',
-            'quota',
-            'insufficient_quota',
-            'monthly limit',
-          ],
+          retryableErrors: RETRYABLE_KEYWORDS,
+          fatalErrors: FATAL_KEYWORDS,
           signal: req.signal,
         })
 
@@ -179,28 +199,8 @@ export class FallbackProvider implements IProvider {
         lastError = err instanceof Error ? err : new Error(String(err))
         attempts.push({ provider: provider.name, finalError: lastError.message })
 
-        const isRetryable = [
-          '429',
-          '500',
-          '502',
-          '503',
-          'timeout',
-          'timed out',
-          'econnrefused',
-          'fetch failed',
-          'rate limit',
-          'daily limit',
-          'quota exhausted',
-        ].some((msg) => lastError!.message.toLowerCase().includes(msg))
-
-        const isFatal = [
-          'per day',
-          'per-day',
-          'daily',
-          'quota',
-          'insufficient_quota',
-          'monthly limit',
-        ].some((msg) => lastError!.message.toLowerCase().includes(msg))
+        const isFatal = isFatalMessage(lastError.message)
+        const isRetryable = isRetryableMessage(lastError.message)
 
         if (isFatal) {
           this.deadProviders.add(provider.name)
@@ -209,15 +209,16 @@ export class FallbackProvider implements IProvider {
           )
         }
 
-        if (isRetryable || isFatal) {
-          if (i < this.chain.length - 1) {
-            console.warn(
-              chalk.yellow(`[router] provider ${provider.name} exhausted retries, trying next`)
-            )
-          }
-          continue
+        // Default to trying the next provider even for errors that match
+        // neither the retryable nor fatal keyword lists — an unclassified
+        // error on this provider (e.g. a bad key) doesn't mean every other
+        // provider in the chain will fail the same way, so give them a
+        // chance before giving up entirely.
+        if (i < this.chain.length - 1) {
+          const reason = isRetryable ? 'exhausted retries' : 'hit an unclassified error'
+          console.warn(chalk.yellow(`[router] provider ${provider.name} ${reason}, trying next`))
         }
-        throw lastError
+        continue
       }
     }
 

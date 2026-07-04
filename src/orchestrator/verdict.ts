@@ -15,6 +15,13 @@ export interface Conflict {
   lineEnd: number
   sideA: AgentFinding
   sideB: AgentFinding
+  /**
+   * How confident the keyword-based valence tally is in this being a real
+   * conflict. 'low' when either side's harden/relax hit count was a
+   * near-tie (margin <= 1), since the harden-vs-relax call for that side
+   * could easily have gone the other way.
+   */
+  confidence: 'low' | 'high'
 }
 
 export interface Verdict {
@@ -58,7 +65,13 @@ const RELAX_KEYWORDS = [
   'fast',
 ]
 
-function getValence(text: string): 'harden' | 'relax' | 'neutral' {
+interface ValenceResult {
+  valence: 'harden' | 'relax' | 'neutral'
+  /** abs(hardenHits - relaxHits) — how close the keyword tally was. */
+  margin: number
+}
+
+function getValence(text: string): ValenceResult {
   const t = text.toLowerCase()
   let hardenHits = 0
   let relaxHits = 0
@@ -70,10 +83,16 @@ function getValence(text: string): 'harden' | 'relax' | 'neutral' {
   for (const w of RELAX_KEYWORDS) {
     if (new RegExp(`\\b${w}\\b`).test(t)) relaxHits++
   }
-  if (hardenHits > relaxHits) return 'harden'
-  if (relaxHits > hardenHits) return 'relax'
-  return 'neutral'
+  const margin = Math.abs(hardenHits - relaxHits)
+  if (hardenHits > relaxHits) return { valence: 'harden', margin }
+  if (relaxHits > hardenHits) return { valence: 'relax', margin }
+  return { valence: 'neutral', margin }
 }
+
+// A margin of 1 (e.g. 2 harden hits vs 1 relax hit) is close enough that the
+// harden/relax call could easily flip on a slightly different wording — treat
+// conflicts built from such a near-tie as low confidence.
+const NEAR_TIE_MARGIN = 1
 
 export function detectConflicts(findings: AgentFinding[]): Conflict[] {
   const conflicts: Conflict[] = []
@@ -87,8 +106,6 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
   }
 
   for (const [filePath, fileFindings] of grouped.entries()) {
-    const matched = new Set<string>()
-
     for (let i = 0; i < fileFindings.length; i++) {
       const a = fileFindings[i]
       for (let j = i + 1; j < fileFindings.length; j++) {
@@ -106,18 +123,19 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
         const valB = getValence(b.title + ' ' + b.description)
 
         // If opposite valences, it's a conflict
-        if ((valA === 'harden' && valB === 'relax') || (valA === 'relax' && valB === 'harden')) {
-          const key = `${i}-${j}`
-          if (!matched.has(key)) {
-            matched.add(key)
-            conflicts.push({
-              filePath,
-              lineStart: Math.min(a.lineStart!, b.lineStart!),
-              lineEnd: Math.max(a.lineEnd!, b.lineEnd!),
-              sideA: a,
-              sideB: b,
-            })
-          }
+        if (
+          (valA.valence === 'harden' && valB.valence === 'relax') ||
+          (valA.valence === 'relax' && valB.valence === 'harden')
+        ) {
+          const nearTie = valA.margin <= NEAR_TIE_MARGIN || valB.margin <= NEAR_TIE_MARGIN
+          conflicts.push({
+            filePath,
+            lineStart: Math.min(a.lineStart!, b.lineStart!),
+            lineEnd: Math.max(a.lineEnd!, b.lineEnd!),
+            sideA: a,
+            sideB: b,
+            confidence: nearTie ? 'low' : 'high',
+          })
         }
       }
     }
@@ -135,10 +153,10 @@ const VerdictSchema = z.object({
 
 export async function arbitrateConflict(
   conflict: Conflict,
-  _context: AgentContext,
+  context: AgentContext,
   signal?: AbortSignal
 ): Promise<Verdict | null> {
-  const systemPrompt = `You are the Lead Architect. Two specialized agents disagree on a piece of code.
+  let systemPrompt = `You are the Lead Architect. Two specialized agents disagree on a piece of code.
 Your job is to resolve the conflict by making a definitive architectural decision. Accept a tradeoff explicitly.
 
 Respond ONLY with JSON matching this schema:
@@ -148,6 +166,19 @@ Respond ONLY with JSON matching this schema:
   "confidence": 85,
   "losing_side": "string (which agent's recommendation was NOT taken, and why)"
 }`
+
+  // Ground the arbitration in the same project context specialist agents get
+  // via buildSystemPrompt, so the verdict doesn't ignore the project's spec,
+  // constitution, or subsystem focus.
+  if (context.targetFocus?.length) {
+    systemPrompt += `\n\nFOCUS AREAS: ${context.targetFocus.join(', ')}`
+  }
+  if (context.spec) {
+    systemPrompt += `\n\nLOGIC SPEC:\n${context.spec}`
+  }
+  if (context.constitution) {
+    systemPrompt += `\n\nAGENT CONSTITUTION (BEHAVIORAL GUIDELINES):\n${context.constitution}`
+  }
 
   const userPrompt = `Agent [${conflict.sideA.agentName}] says:
 Title: ${conflict.sideA.title}

@@ -205,7 +205,7 @@ async function runClassicCLI(): Promise<void> {
       (val: string, prev: string[]) => prev.concat([val]),
       []
     )
-    .option('--init', 'Create default palade.config.ts and .paladeignore')
+    .option('--init', 'Create default palade.config.ts and .palade/ignore')
     .option('--list', 'Show current config (default)')
     .action(async (opts: { set?: string[]; init?: boolean; list?: boolean }): Promise<void> => {
       try {

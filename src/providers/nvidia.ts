@@ -1,33 +1,39 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 import { fetchWithRetry } from './base.js'
 
-const AVAILABILITY_CACHE_MS = 60_000
+const DEFAULT_DEADLINE_MS = 300_000
 
 export class NvidiaProvider implements IProvider {
   readonly name = 'nvidia'
   readonly model: string
   private readonly apiKey: string
   private readonly baseUrl: string
-  private availabilityCache: { result: boolean; timestamp: number } | null = null
+  private readonly deadlineMs: number
+  private dailyLimitExhausted = false
 
   constructor(
     apiKey: string,
     model = 'minimaxai/minimax-m3',
-    baseUrl = 'https://integrate.api.nvidia.com/v1'
+    baseUrl = 'https://integrate.api.nvidia.com/v1',
+    deadlineMs: number = DEFAULT_DEADLINE_MS
   ) {
     this.apiKey = apiKey
     this.model = model
     this.baseUrl = baseUrl
+    this.deadlineMs = deadlineMs
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
+    if (this.dailyLimitExhausted) {
+      throw new Error('NVIDIA daily limit exhausted for this session')
+    }
     // Reasoning models burn tokens on internal thinking, so when the caller
     // doesn't specify a budget we default generously. But we never override an
     // explicit caller request (e.g. triage's 512-token cheap calls).
     const maxTokens = req.maxTokens ?? 8192
     // One deadline for the whole logical call: internal empty-content retries
-    // share it, so the 5-min ceiling holds across attempts instead of per attempt.
-    return this.doComplete(req, maxTokens, 0, Date.now() + 300_000)
+    // share it, so the ceiling holds across attempts instead of per attempt.
+    return this.doComplete(req, maxTokens, 0, Date.now() + this.deadlineMs)
   }
 
   private async doComplete(
@@ -37,31 +43,47 @@ export class NvidiaProvider implements IProvider {
     deadline: number
   ): Promise<CompletionResponse> {
     const start = Date.now()
-    // Combine the caller's cancellation signal with this provider's own 5-min
-    // hard ceiling, so a swarm-level abort still cancels the in-flight request
+    // Combine the caller's cancellation signal with this provider's own hard
+    // ceiling, so a swarm-level abort still cancels the in-flight request
     // without losing the provider timeout.
     const timeoutSignal = AbortSignal.timeout(Math.max(deadline - Date.now(), 1))
     const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
-    const res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          { role: 'system', content: req.systemPrompt },
-          { role: 'user', content: req.userPrompt },
-        ],
-        max_tokens: maxTokens,
-        temperature: req.temperature ?? 0.1,
-      }),
-      signal,
-    })
+    let res: Response
+    try {
+      res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            { role: 'system', content: req.systemPrompt },
+            { role: 'user', content: req.userPrompt },
+          ],
+          max_tokens: maxTokens,
+          temperature: req.temperature ?? 0.1,
+        }),
+        signal,
+      })
+    } catch (err) {
+      // Our own deadline firing surfaces as a generic AbortError with no
+      // 'timeout' text, which router.ts's keyword classification can't
+      // recognize as retryable — rethrow with a matching keyword, but only
+      // when the deadline (not the caller's own signal) is what fired.
+      if (err instanceof Error && err.name === 'AbortError' && timeoutSignal.aborted && !req.signal?.aborted) {
+        throw new Error('NVIDIA provider timeout — request exceeded deadline')
+      }
+      throw err
+    }
 
     if (!res.ok) {
       const body = await res.text()
+      if (res.status === 429 && /daily|per-day/i.test(body)) {
+        this.dailyLimitExhausted = true
+        throw new Error(`NVIDIA daily limit exceeded. ${body.slice(0, 200)}`)
+      }
       throw new Error(`NVIDIA error ${res.status}: ${body}`)
     }
 
@@ -88,6 +110,6 @@ export class NvidiaProvider implements IProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    return true
+    return !this.dailyLimitExhausted
   }
 }

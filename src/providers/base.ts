@@ -11,13 +11,6 @@ export interface CompletionRequest {
    * to consume provider quota after the caller has given up on the result.
    */
   signal?: AbortSignal
-  /**
-   * Hint that the system-prompt prefix is identical across a set of calls and
-   * may benefit from provider-side prompt caching. Providers that support
-   * automatic prefix caching (Groq, Cerebras, OpenRouter) can dedupe the
-   * shared bytes; the hint is advisory and ignored by providers that don't.
-   */
-  cacheablePrefix?: boolean
 }
 
 export interface CompletionResponse {

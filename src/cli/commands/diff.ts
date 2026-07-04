@@ -15,27 +15,26 @@ import { checkDecisionDrift } from '../../orchestrator/verdict.js'
 import { printDiffBanner, printDiffSummary } from '../../reporters/terminal.js'
 import { theme } from '../../ui/theme.js'
 import { loadCustomAgents } from '../../agents/custom/loader.js'
+import { askConfirm } from '../../ui/prompt.js'
+import { buildAnnotationSummary } from '../../ingestion/annotationParser.js'
+import { renderBadge, getBadgeData } from '../../scorer/badge.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentContext, AgentName, DiffContext } from '../../agents/base.js'
 import { CliExitError } from '../../errors/types.js'
 import chalk from 'chalk'
-import { mkdirSync, existsSync } from 'node:fs'
-import { join, basename } from 'node:path'
-import * as readline from 'node:readline'
-
-function askOverride(prompt: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(prompt, (answer) => {
-      rl.close()
-      resolve(answer.trim().toLowerCase() === 'y')
-    })
-  })
-}
+import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
+import { join, basename, dirname } from 'node:path'
 
 interface DiffOpts {
   base?: string
   ci?: boolean
+  signal?: AbortSignal
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new CliExitError(1)
+  }
 }
 
 export async function diffCommand(opts: DiffOpts): Promise<void> {
@@ -50,6 +49,8 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
 
     const config = await loadConfig()
     await initRouter(config)
+
+    throwIfAborted(opts.signal)
 
     // Load custom agents
     const customAgentDefs = await loadCustomAgents(projectRoot)
@@ -71,7 +72,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     const driftWarnings = await checkDecisionDrift(projectRoot, changedFiles)
     for (const warning of driftWarnings) {
       console.log(chalk.red(`\n  ⚠ DRIFT  ${warning}`))
-      const override = await askOverride(chalk.yellow('  Override? [y/N] '))
+      const override = await askConfirm(chalk.yellow('  Override?'), false)
       if (!override) {
         console.error(theme.error('\n  ✗ Drift blocked by user.'))
         throw new CliExitError(1)
@@ -121,6 +122,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     const agentCount = config.swarm.agentCount
     let completedAgents = 0
 
+    throwIfAborted(opts.signal)
     console.log(theme.dim('  Starting analysis...'))
 
     let swarmResult: any
@@ -147,6 +149,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
         maxReviewTokens: config.swarm.maxReviewTokens,
         customAgents: customAgentDefs,
         economyMode: config.swarm.economyMode,
+        signal: opts.signal,
       })
       console.log(
         theme.success(
@@ -158,6 +161,26 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
         theme.error(`  Analysis failed: ${err instanceof Error ? err.message : String(err)}`)
       )
       throw err
+    }
+
+    // Apply the same @palade-ignore annotation filtering that the shared
+    // review pipeline (orchestrator/pipeline.ts) applies, so diff findings
+    // honor ignored files/lines just like `review` does.
+    const annotationSummary = buildAnnotationSummary(manifests, chunks)
+    if (annotationSummary.ignoredFiles.length > 0 || annotationSummary.ignoredLines.length > 0) {
+      const norm = (p: string) => p.replace(/^\.?\/+/, '')
+      const ignoredFileSet = new Set(annotationSummary.ignoredFiles.map(norm))
+      swarmResult.findings = swarmResult.findings.filter((f: { filePath?: string; lineStart?: number }) => {
+        if (!f.filePath) return true
+        if (ignoredFileSet.has(norm(f.filePath))) return false
+        if (f.lineStart === undefined) return true
+        return !annotationSummary.ignoredLines.some(
+          (il) =>
+            norm(il.filePath) === norm(f.filePath!) &&
+            f.lineStart! >= il.startLine &&
+            f.lineStart! <= il.startLine + 1
+        )
+      })
     }
 
     if (swarmResult.fallbackStats) {
@@ -190,6 +213,16 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       breakdown: scoreResult.breakdown,
       delta: scoreResult.delta,
     })
+
+    // Regenerate the score badge the same way `review` does, so it doesn't
+    // go stale after a `diff` run.
+    if (config.score.badge) {
+      const badgeSvg = renderBadge(getBadgeData(scoreResult.score))
+      const badgePath = join(projectRoot, config.score.badgePath)
+      const badgeDir = dirname(badgePath)
+      if (!existsSync(badgeDir)) mkdirSync(badgeDir, { recursive: true })
+      writeFileSync(badgePath, badgeSvg, 'utf-8')
+    }
 
     const findingDiff = compareFindings(swarmResult.findings, [], changedFiles)
 

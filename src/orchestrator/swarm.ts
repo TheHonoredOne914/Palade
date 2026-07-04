@@ -14,6 +14,22 @@ import { scheduleBatches } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 
+// Providers don't expose a structured status/code field on thrown errors —
+// they're plain Errors with the status baked into the message string (see
+// src/providers/*.ts, e.g. `Cerebras error 401: ...`) — so we're stuck
+// pattern-matching on the message. Word-boundary regexes avoid false
+// positives on unrelated text that merely contains these digits.
+function isFatalAuthError(message: string): boolean {
+  const msg = message.toLowerCase()
+  return (
+    /\b401\b/.test(msg) ||
+    /\b403\b/.test(msg) ||
+    msg.includes('unauthorized') ||
+    msg.includes('invalid api key') ||
+    msg.includes('authentication')
+  )
+}
+
 export async function runSwarm(
   allChunks: CodeChunk[],
   context: AgentContext,
@@ -60,7 +76,7 @@ export async function runSwarm(
     let agentError: Error | undefined = undefined
     try {
       const batches = scheduleBatches(reviewChunks)
-      const limit = pLimit(5) // Max 5 concurrent batches per agent
+      const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>
         limit(async () => {
@@ -118,14 +134,7 @@ export async function runSwarm(
           const err = result.reason
           agentError = err instanceof Error ? err : new Error(String(err))
 
-          const msg = agentError.message.toLowerCase()
-          const isFatalAuth =
-            msg.includes('401') ||
-            msg.includes('403') ||
-            msg.includes('unauthorized') ||
-            msg.includes('invalid api key') ||
-            msg.includes('authentication')
-          if (isFatalAuth) {
+          if (isFatalAuthError(agentError.message)) {
             runAbort.abort()
             throw agentError
           }
@@ -142,14 +151,7 @@ export async function runSwarm(
     } catch (err: unknown) {
       agentError = err instanceof Error ? err : new Error(String(err))
 
-      const msg = agentError.message.toLowerCase()
-      const isFatalAuth =
-        msg.includes('401') ||
-        msg.includes('403') ||
-        msg.includes('unauthorized') ||
-        msg.includes('invalid api key') ||
-        msg.includes('authentication')
-      if (isFatalAuth) {
+      if (isFatalAuthError(agentError.message)) {
         runAbort.abort()
         throw agentError
       }
@@ -317,14 +319,7 @@ export async function runSwarm(
     options.onSynthesisComplete?.(Date.now() - synthStart)
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err)
-    const msgLower = errorMsg.toLowerCase()
-    const isFatalAuth =
-      msgLower.includes('401') ||
-      msgLower.includes('403') ||
-      msgLower.includes('unauthorized') ||
-      msgLower.includes('invalid api key') ||
-      msgLower.includes('authentication')
-    if (isFatalAuth) {
+    if (isFatalAuthError(errorMsg)) {
       throw err instanceof Error ? err : new Error(errorMsg)
     }
 

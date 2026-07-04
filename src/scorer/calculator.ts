@@ -1,14 +1,7 @@
-import type { AgentFinding, Severity } from '../agents/base.js'
+import type { AgentFinding } from '../agents/base.js'
+import { SEVERITY_PENALTY } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from './types.js'
-
-const SEVERITY_WEIGHTS: Record<Severity, number> = {
-  critical: 10,
-  high: 5,
-  medium: 2,
-  low: 0.5,
-  info: 0,
-}
 
 /**
  * Per-finding penalty. Honors an explicit `scorePenalty` when the producing
@@ -20,7 +13,7 @@ const SEVERITY_WEIGHTS: Record<Severity, number> = {
  * with { critical: 50 } still got penalized at 10.
  */
 function penaltyFor(f: AgentFinding): number {
-  return typeof f.scorePenalty === 'number' ? f.scorePenalty : SEVERITY_WEIGHTS[f.severity]
+  return typeof f.scorePenalty === 'number' ? f.scorePenalty : SEVERITY_PENALTY[f.severity]
 }
 
 export function countBySeverity(
@@ -86,9 +79,15 @@ export function calculateTotalPenalty(findings: AgentFinding[]): number {
 export function calculateCrossAgentPenalty(crossFindings: CrossAgentFinding[]): number {
   let penalty = 0
   for (const cf of crossFindings) {
-    if (cf.severity === 'critical') penalty += 15
-    else if (cf.severity === 'high') penalty += 8
-    else if (cf.severity === 'medium') penalty += 4
+    let base = 0
+    if (cf.severity === 'critical') base = 15
+    else if (cf.severity === 'high') base = 8
+    else if (cf.severity === 'medium') base = 4
+    // Scale by blast radius (files/scope affected) so a conflict touching many
+    // files scores worse than one touching a single file, with diminishing
+    // returns via log2 so a huge blast radius doesn't blow up the score.
+    const blastMultiplier = Math.min(1 + Math.log2(cf.blastRadius || 1) * 0.2, 3)
+    penalty += base * blastMultiplier
   }
   return penalty
 }

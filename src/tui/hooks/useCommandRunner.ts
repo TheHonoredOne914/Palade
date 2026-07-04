@@ -7,7 +7,12 @@ import { diffCommand } from '../../cli/commands/diff.js'
 import { watchCommand } from '../../cli/commands/watch.js'
 import { scoreCommand } from '../../cli/commands/score.js'
 import { initCommand } from '../../cli/commands/init.js'
-import { targetsCommand } from '../../cli/commands/targets.js'
+import {
+  runTargetsSearch,
+  runTargetsAdd,
+  runTargetsGenerate,
+  runTargetsList,
+} from '../../cli/commands/targets.js'
 
 interface CommandRunnerOptions {
   config?: PaladeConfig
@@ -91,10 +96,22 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
       function hasFlag(name: string): boolean {
         return rest.includes(`--${name}`)
       }
+      // Collects the value of every occurrence of a repeatable `--name value`
+      // flag (e.g. multiple `--file <path>` pairs).
+      function flagAll(name: string): string[] {
+        const values: string[] = []
+        rest.forEach((r, i) => {
+          if (r === `--${name}`) {
+            const next = rest[i + 1]
+            if (next && !next.startsWith('--')) values.push(next)
+          }
+        })
+        return values
+      }
       // Only these flags consume a value. Excluding the token after ANY `--`
       // flag would swallow positionals following boolean flags (e.g.
       // `/review --pick src/foo.ts` losing its path).
-      const VALUE_FLAGS = new Set(['target', 'dir', 'glob', 'mode', 'depth', 'format', 'base'])
+      const VALUE_FLAGS = new Set(['target', 'dir', 'glob', 'mode', 'depth', 'format', 'base', 'file'])
       const positional = rest.filter((r, i) => {
         if (r.startsWith('--')) return false
         const prev = rest[i - 1]
@@ -117,7 +134,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               target: flag('target'),
               allTargets: hasFlag('all-targets'),
               dir: flag('dir'),
-              file: positional.slice(1),
+              file: flagAll('file'),
               glob: flag('glob'),
               mode: flag('mode') ?? 'standard',
               annotations: hasFlag('annotations'),
@@ -135,6 +152,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
             await diffCommand({
               base: flag('base') ?? 'main',
               ci: hasFlag('ci'),
+              signal: runSignal,
             })
             break
           }
@@ -151,7 +169,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
           }
 
           case 'score': {
-            await scoreCommand({ history: hasFlag('history') })
+            await scoreCommand({ history: hasFlag('history'), signal: runSignal })
             break
           }
 
@@ -168,7 +186,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
           }
 
           case 'init': {
-            await initCommand({ yes: hasFlag('yes') || hasFlag('y') })
+            await initCommand({ yes: hasFlag('yes') || hasFlag('y'), signal: runSignal })
             break
           }
 
@@ -179,18 +197,14 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
                 type: 'output',
                 text: `Searching for "${positional[1] ?? ''}"...`,
               })
-              await targetsCommand.parseAsync(['targets', 'search', positional[1] ?? ''])
+              await runTargetsSearch(positional[1] ?? '', runSignal)
             } else if (sub === 'add') {
-              await targetsCommand.parseAsync(['targets', 'add', positional[1] ?? ''])
+              await runTargetsAdd(positional[1] ?? '', runSignal)
             } else if (sub === 'generate') {
               // The TUI tokenizer splits on whitespace, so re-join the query words
-              await targetsCommand.parseAsync([
-                'targets',
-                'generate',
-                positional.slice(1).join(' '),
-              ])
+              await runTargetsGenerate(positional.slice(1).join(' '), runSignal)
             } else {
-              await targetsCommand.parseAsync(['targets', 'list'])
+              await runTargetsList(runSignal)
             }
             break
           }

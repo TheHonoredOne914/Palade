@@ -1,5 +1,15 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { OutputLine } from '../components/OutputPane.js'
+
+// Ink's <Static> only ever renders items appended since the last render (it
+// tracks progress purely via items.length), so the backing array must grow
+// append-only during normal operation — see the note on appendLine below.
+// To keep long-running TUI sessions from accumulating unbounded memory, once
+// the buffer crosses MAX_LINES we trim it down to the last WINDOW_LINES and
+// force <Static> to remount (via clearNonce) so its internal render cursor
+// resets to the now-shorter array instead of freezing on the old length.
+const MAX_LINES = 2000
+const WINDOW_LINES = 500
 
 export function useOutputStream() {
   const idRef = useRef(0)
@@ -55,6 +65,16 @@ export function useOutputStream() {
     setLines([assignId(cleared)])
     setClearNonce((n) => n + 1)
   }, [assignId])
+
+  // Bound memory growth: once the buffer gets too large, window it down and
+  // force <Static> to remount so its render cursor doesn't freeze on a
+  // length it will never see again.
+  useEffect(() => {
+    if (lines.length > MAX_LINES) {
+      setLines((prev) => prev.slice(-WINDOW_LINES))
+      setClearNonce((n) => n + 1)
+    }
+  }, [lines.length])
 
   return { lines, appendLine, appendLines, clearOutput, clearNonce }
 }
