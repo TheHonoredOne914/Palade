@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getAgentsForMode } from './registry.js'
+import { PaladeConfigError } from '../errors/types.js'
 
 describe('agents/registry', () => {
   describe('getAgentsForMode', () => {
@@ -38,9 +39,8 @@ describe('agents/registry', () => {
       expect(agents[0].name).toBe('architecture')
     })
 
-    it('falls back to full registry when overrides reference unknown agents', () => {
-      const agents = getAgentsForMode('standard', ['nonexistent' as any])
-      expect(agents).toHaveLength(8)
+    it('throws a config error when overrides reference only unknown agents', () => {
+      expect(() => getAgentsForMode('standard', ['nonexistent' as any])).toThrow(PaladeConfigError)
     })
 
     it('ignores an empty overrides array', () => {

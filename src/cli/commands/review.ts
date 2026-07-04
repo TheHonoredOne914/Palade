@@ -67,6 +67,14 @@ export async function reviewCommand(
   pathArg: string | undefined,
   opts: ReviewOptions
 ): Promise<void> {
+  if (opts.target && opts.allTargets) {
+    console.error(
+      chalk.red(
+        "  Cannot use --target and --all-targets together — --all-targets would silently override --target's scope. Pick one."
+      )
+    )
+    throw new CliExitError(1)
+  }
   if (
     !pathArg &&
     !opts.allTargets &&

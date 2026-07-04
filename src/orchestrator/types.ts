@@ -85,4 +85,8 @@ export interface SwarmOptions {
   signal?: AbortSignal
   specPath?: string
   constitutionPath?: string
+  /**
+   * Max number of batches processed concurrently per agent. Defaults to 5.
+   */
+  maxConcurrentBatches?: number
 }

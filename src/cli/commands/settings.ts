@@ -6,6 +6,7 @@ import { theme } from '../../ui/theme.js'
 import { loadConfig } from '../../config/loader.js'
 import { CliExitError } from '../../errors/types.js'
 import { askConfirm, askList, askQuestion } from '../../ui/prompt.js'
+import { CONFIG_TEMPLATE, IGNORE_TEMPLATE } from './init.js'
 
 interface SettingsOptions {
   set?: string[]
@@ -141,53 +142,14 @@ async function initConfig(projectRoot: string): Promise<void> {
   }
 
   if (!existsSync(configPath)) {
-    const configContent = `// palade.config.ts — managed by 'palade settings'
-// Edit manually or run 'palade settings' to update
-
-export default {
-  providers: {
-    groq: {
-      model: 'llama-3.3-70b-versatile',
-      maxConcurrency: 8
-    }
-  },
-  swarm: {
-    primary: 'groq',
-    synthesis: 'cerebras',
-    agentCount: 6,
-    timeoutMs: 120000
-  },
-  output: {
-    dir: '.palade/reports',
-    formats: ['html', 'json'],
-    openBrowser: true,
-    port: 4242
-  },
-  score: {
-    historyFile: '.palade/history.json',
-    badge: true,
-    badgePath: 'palade-badge.svg'
-  }
-}
-`
-    await writeFile(configPath, configContent, 'utf-8')
+    await writeFile(configPath, CONFIG_TEMPLATE, 'utf-8')
     console.log(theme.success('  ✓ .palade/palade.config.ts created'))
   } else {
     console.log(theme.dim('  .palade/palade.config.ts already exists, skipping'))
   }
 
   if (!existsSync(ignorePath)) {
-    const ignoreContent = `node_modules/
-dist/
-build/
-.git/
-*.lock
-*.min.js
-*.min.css
-coverage/
-.palade/
-`
-    await writeFile(ignorePath, ignoreContent, 'utf-8')
+    await writeFile(ignorePath, IGNORE_TEMPLATE, 'utf-8')
     console.log(theme.success('  ✓ .palade/ignore created'))
   } else {
     console.log(theme.dim('  .palade/ignore already exists, skipping'))
@@ -304,6 +266,18 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
     // Opening a new section: "name: {"
     const openMatch = sectionOpenPattern.exec(line)
     if (openMatch) {
+      // A single-line nested object literal (e.g. `output: { dir: 'x' }`)
+      // opens and closes its brace on the same line. Pushing a stack frame
+      // for it that never gets popped would misattribute every subsequent
+      // line as nested inside it, so only push when the brace stays open
+      // past the end of this line.
+      const openBraceIdx = line.indexOf('{', openMatch[1].length)
+      const afterOpen = line.slice(openBraceIdx + 1)
+      const opensInRest = (afterOpen.match(/\{/g) || []).length
+      const closesInRest = (afterOpen.match(/\}/g) || []).length
+      if (closesInRest > opensInRest) {
+        continue
+      }
       const indent = openMatch[1].length
       const sectionKey = openMatch[2]
       pathStack.push(sectionKey)
@@ -379,6 +353,14 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
 
       const openMatch = /^(\s*)(?:['"]?([A-Za-z_$][\w$-]*)['"]?)\s*:\s*\{/.exec(line)
       if (openMatch) {
+        // Same self-closing single-line-object guard as the modify loop above.
+        const openBraceIdx = line.indexOf('{', openMatch[1].length)
+        const afterOpen = line.slice(openBraceIdx + 1)
+        const opensInRest = (afterOpen.match(/\{/g) || []).length
+        const closesInRest = (afterOpen.match(/\}/g) || []).length
+        if (closesInRest > opensInRest) {
+          continue
+        }
         pathStack2.push(openMatch[2])
         openIndents2.push(openMatch[1].length)
         continue

@@ -9,6 +9,7 @@ import {
   buildSystemPrompt,
   parseFindingsResponse,
   SEVERITY_PENALTY,
+  verifyCriticalHighFindings,
 } from './base.js'
 import type { IAgent } from './base.js'
 import { validateAndFingerprintFindings } from '../orchestrator/findingValidation.js'
@@ -79,6 +80,11 @@ export const DEFAULT_DOMAINS: DomainSpec[] = [
     name: 'logic',
     label: 'Logic & Correctness',
     focus: 'logical flaws, state mismanagement, race conditions, invalid assumptions',
+  },
+  {
+    name: 'pragmatism',
+    label: 'Pragmatism',
+    focus: 'over-engineering, premature abstractions, unneeded configurability, YAGNI violations',
   },
 ]
 
@@ -165,7 +171,8 @@ export class CombinedAnalyzer implements IAgent {
         response.provider,
         response.model
       )
-      return validateAndFingerprintFindings(findings, chunks)
+      const validated = validateAndFingerprintFindings(findings, chunks)
+      return verifyCriticalHighFindings(validated, chunks, provider, this.name, signal)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err

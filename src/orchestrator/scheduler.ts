@@ -31,6 +31,32 @@ function splitChunk(chunk: CodeChunk): CodeChunk[] {
   const leftContent = lines.slice(0, splitIdx).join('\n')
   const rightContent = lines.slice(splitPoint).join('\n')
 
+  // Line-based splitting makes no progress on a chunk that's effectively one
+  // oversized line (e.g. a minified file): leftContent stays the full input
+  // and rightContent is empty, so recursing on the halves never shrinks
+  // anything. Fall back to a raw character split in that case.
+  if (leftContent.length === chunk.content.length && rightContent.length === 0) {
+    const charMid = Math.floor(chunk.content.length / 2)
+    const charOverlap = Math.min(200, Math.floor(chunk.content.length * 0.1))
+    const charSplitPoint = Math.max(0, charMid - charOverlap)
+    const leftChars = chunk.content.slice(0, charMid)
+    const rightChars = chunk.content.slice(charSplitPoint)
+    return [
+      {
+        ...chunk,
+        id: `${chunk.id}-left`,
+        content: leftChars,
+        tokenCount: estimateTokens(leftChars),
+      },
+      {
+        ...chunk,
+        id: `${chunk.id}-right`,
+        content: rightChars,
+        tokenCount: estimateTokens(rightChars),
+      },
+    ]
+  }
+
   return [
     {
       ...chunk,
@@ -57,15 +83,19 @@ export function estimateTotalTokens(chunks: CodeChunk[]): number {
   return chunks.reduce((sum, c) => sum + c.tokenCount, 0)
 }
 
-export function scheduleBatches(chunks: CodeChunk[]): CodeChunk[][] {
+export function scheduleBatches(
+  chunks: CodeChunk[],
+  softTokenLimit: number = SOFT_TOKEN_LIMIT,
+  hardChunkLimit: number = HARD_CHUNK_LIMIT
+): CodeChunk[][] {
   if (chunks.length === 0) return []
-  // Split oversized chunks recursively to ensure all pieces are under HARD_CHUNK_LIMIT
+  // Split oversized chunks recursively to ensure all pieces are under hardChunkLimit
   function splitToLimit(chunk: CodeChunk, depth = 0): CodeChunk[] {
     if (depth > 10) {
       // Safety guard: stop recursing if we can't split below limit
       return [chunk]
     }
-    if (chunk.tokenCount <= HARD_CHUNK_LIMIT) {
+    if (chunk.tokenCount <= hardChunkLimit) {
       return [chunk]
     }
     const halves = splitChunk(chunk)
@@ -79,7 +109,7 @@ export function scheduleBatches(chunks: CodeChunk[]): CodeChunk[][] {
 
   const totalTokens = processedChunks.reduce((sum, c) => sum + c.tokenCount, 0)
 
-  if (totalTokens <= SOFT_TOKEN_LIMIT) {
+  if (totalTokens <= softTokenLimit) {
     return [processedChunks]
   }
 
@@ -88,7 +118,7 @@ export function scheduleBatches(chunks: CodeChunk[]): CodeChunk[][] {
   let currentTokens = 0
 
   for (const chunk of processedChunks) {
-    if (currentTokens + chunk.tokenCount > SOFT_TOKEN_LIMIT && current.length > 0) {
+    if (currentTokens + chunk.tokenCount > softTokenLimit && current.length > 0) {
       batches.push(current)
       current = []
       currentTokens = 0
