@@ -101,6 +101,20 @@ export class OpenRouterProvider implements IProvider {
           signal: req.signal,
         })
 
+        if (retryRes.status === 429) {
+          const retryBodyJson = await retryRes.json().catch(() => ({}))
+          const retryErr = (retryBodyJson as Record<string, unknown>)?.error as
+            Record<string, unknown> | undefined
+          const retryMsg = typeof retryErr?.message === 'string' ? retryErr.message : ''
+          if (retryMsg.includes('per-day')) {
+            this.dailyLimitExhausted = true
+            throw new Error(`OpenRouter daily limit exceeded. ${retryMsg}`)
+          }
+          throw new Error(
+            `OpenRouter error 429: ${retryMsg.slice(0, 200) || 'rate limited on retry'}`
+          )
+        }
+
         if (!retryRes.ok) {
           const retryBody = await retryRes.text()
           throw new Error(`OpenRouter error ${retryRes.status}: ${retryBody.slice(0, 200)}`)
