@@ -150,6 +150,15 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
     // Scanner state, persists across lines within this chunk scan
     let inString: '"' | "'" | '`' | null = null
     let inBlockComment = false
+    // Whether any '{' has been seen in this chunk. Brace-less languages
+    // (Python, Ruby, etc.) never increment depth above 0, so without this the
+    // depth<=0 break below fires after every 5 lines — shredding the whole
+    // file into ~5-line chunks that then blow past MAX_CHUNKS_PER_FILE and
+    // silently truncate the file's tail. Require a full CHUNK_LINES-sized
+    // chunk before breaking when we've never seen a brace, matching the size
+    // of the line-based fallback; brace-heavy languages keep the original
+    // 5-line minimum.
+    let sawBrace = false
 
     while (currentIdx < lines.length && currentIdx - startIdx < maxLines) {
       const line = lines[currentIdx]
@@ -192,13 +201,16 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
           continue
         }
 
-        if (ch === '{') depth++
-        else if (ch === '}') depth--
+        if (ch === '{') {
+          depth++
+          sawBrace = true
+        } else if (ch === '}') depth--
       }
 
       currentIdx++
       // If we've closed all blocks, have at least some lines, and aren't mid-string/comment, end chunk here
-      if (depth <= 0 && currentIdx - startIdx >= 5 && !inString && !inBlockComment) {
+      const minLines = sawBrace ? 5 : CHUNK_LINES
+      if (depth <= 0 && currentIdx - startIdx >= minLines && !inString && !inBlockComment) {
         break
       }
     }

@@ -53,7 +53,7 @@ export class CustomAgent implements IAgent {
       const response = await provider.complete({
         systemPrompt,
         userPrompt,
-        maxTokens: 4096,
+        maxTokens: computeMaxTokens(chunks.length),
         signal,
       })
       const findings = validateAndFingerprintFindings(

@@ -1,9 +1,10 @@
 import chalk from 'chalk'
 import type { PaladeConfig } from '../config/schema.js'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
+import { FATAL_QUOTA_KEYWORDS } from './base.js'
 import { GroqProvider } from './groq.js'
 import { CerebrasProvider } from './cerebras.js'
-import { NoProvidersError } from '../errors/types.js'
+import { NoProvidersError, AuthError } from '../errors/types.js'
 import { NvidiaProvider } from './nvidia.js'
 import { OpenRouterProvider } from './openrouter.js'
 import { OpenCodeZenProvider } from './opencode-zen.js'
@@ -39,15 +40,11 @@ const RETRYABLE_KEYWORDS = [
 // adapters actually throw (see groq.ts/cerebras.ts/nvidia.ts/openrouter.ts/
 // opencode-zen.ts daily-limit messages) so a stray 'daily' or 'quota'
 // substring elsewhere in a body can't trip this.
-const FATAL_KEYWORDS = [
-  'per day',
-  'per-day',
-  'daily limit',
-  'quota exceeded',
-  'out of quota',
-  'insufficient_quota',
-  'monthly limit',
-]
+// Imported from base.ts (not redeclared here) so this stays in lockstep with
+// isDailyLimitError's body-scan — the two independently-maintained copies had
+// drifted apart before (this list had 'insufficient_quota'/'monthly limit',
+// isDailyLimitError's regex didn't).
+const FATAL_KEYWORDS = FATAL_QUOTA_KEYWORDS
 
 function isRetryableMessage(message: string): boolean {
   const lower = message.toLowerCase()
@@ -57,6 +54,21 @@ function isRetryableMessage(message: string): boolean {
 function isFatalMessage(message: string): boolean {
   const lower = message.toLowerCase()
   return FATAL_KEYWORDS.some((keyword) => lower.includes(keyword))
+}
+
+// Mirrors swarm.ts's isFatalAuthError classification. Duplicated (rather than
+// imported) because swarm.ts imports getFallbackStats from this module —
+// importing back from swarm.ts would create a cycle.
+function isAuthLikeError(err: Error): boolean {
+  if (err instanceof AuthError) return true
+  const msg = err.message.toLowerCase()
+  return (
+    /\b401\b/.test(msg) ||
+    /\b403\b/.test(msg) ||
+    msg.includes('unauthorized') ||
+    msg.includes('invalid api key') ||
+    msg.includes('authentication')
+  )
 }
 
 export type ProviderRole = 'primary' | 'synthesis'
@@ -107,7 +119,9 @@ function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[]
         )
         break
       case 'ollama':
-        instances.push(new OllamaProvider(cfg.model, cfg.baseUrl, cfg.maxConcurrency))
+        instances.push(
+          new OllamaProvider(cfg.model, cfg.baseUrl, cfg.maxConcurrency, cfg.timeoutMs)
+        )
         break
     }
   }
@@ -180,6 +194,15 @@ export class FallbackProvider implements IProvider {
     const primaryProvider = this.chain[0]
 
     const attempts: { provider: string; finalError: string }[] = []
+    // If every provider we actually invoked this call failed with an
+    // auth-classified error, the whole run is doomed regardless of which
+    // provider we try next — surface that as an AuthError so swarm.ts's
+    // isFatalAuthError can abort the run instead of exhausting retries on a
+    // dead API key. attemptedAny guards against an all-skipped chain (every
+    // member already marked dead) reporting a false auth failure.
+    let attemptedAny = false
+    let allAttemptsAuthLike = true
+    let lastAuthLikeError: Error | undefined
 
     for (let i = 0; i < this.chain.length; i++) {
       const provider = this.chain[i]
@@ -203,9 +226,15 @@ export class FallbackProvider implements IProvider {
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
         attempts.push({ provider: provider.name, finalError: lastError.message })
+        attemptedAny = true
 
         const isFatal = isFatalMessage(lastError.message)
         const isRetryable = isRetryableMessage(lastError.message)
+        if (isAuthLikeError(lastError)) {
+          lastAuthLikeError = lastError
+        } else {
+          allAttemptsAuthLike = false
+        }
 
         if (isFatal) {
           // A chain entry may be a ProviderPool backing several keys/instances
@@ -249,6 +278,20 @@ export class FallbackProvider implements IProvider {
         }
         continue
       }
+    }
+
+    if (attemptedAny && allAttemptsAuthLike) {
+      const status = lastAuthLikeError instanceof AuthError ? lastAuthLikeError.status : 401
+      const providerName =
+        lastAuthLikeError instanceof AuthError
+          ? lastAuthLikeError.providerName
+          : this.chain[this.chain.length - 1].name
+      throw new AuthError(
+        `All ${attempts.length} providers failed with auth errors. ` +
+          attempts.map((a) => `${a.provider}: ${a.finalError}`).join(' | '),
+        status,
+        providerName
+      )
     }
 
     throw new AllProvidersExhaustedError(attempts)

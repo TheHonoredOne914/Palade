@@ -1,5 +1,5 @@
 import { getProvider } from '../providers/router.js'
-import type { TargetDefinition } from './schema.js'
+import { TargetDefinitionSchema, type TargetDefinition } from './schema.js'
 import { walkProject } from '../ingestion/walker.js'
 
 const SYSTEM_PROMPT = `You are a staff engineer analyzing a codebase repository to define a "Target Definition" for an AI code reviewer.
@@ -75,9 +75,10 @@ export async function generateTarget(
   }
 
   // 4. Parse JSON
+  let built: TargetDefinition
   try {
     const parsed = JSON.parse(cleaned) as Record<string, unknown>
-    return {
+    built = {
       name: typeof parsed.name === 'string' ? parsed.name : 'generated-target',
       description:
         typeof parsed.description === 'string' ? parsed.description : 'AI generated target',
@@ -92,4 +93,18 @@ export async function generateTarget(
     console.error('[generator] Failed to parse JSON response from LLM')
     return null
   }
+
+  // 5. Validate before handing it to appendTargetToFile — an invalid target
+  // (e.g. an empty "entry" array, which the fallbacks above can produce) would
+  // otherwise get written to palade.targets.ts, report "installed" to the
+  // user, and then be silently dropped later by loadTargets' own schema parse.
+  const validated = TargetDefinitionSchema.safeParse(built)
+  if (!validated.success) {
+    console.error(
+      `[generator] Generated target failed validation: ${validated.error.issues.map((i) => i.message).join(', ')}`
+    )
+    return null
+  }
+
+  return validated.data
 }

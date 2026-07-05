@@ -19,7 +19,11 @@ describe('parseFindingsResponse', () => {
     expect(f.agentName).toBe(AGENT)
     expect(typeof f.id).toBe('string')
     expect(f.tags).toEqual([])
-    expect(f.scorePenalty).toBe(SEVERITY_PENALTY.high)
+    // scorePenalty is intentionally left unset for built-in findings so
+    // calculateScore's configured severityWeights apply instead of being
+    // shadowed by a value pre-baked from the default SEVERITY_PENALTY table
+    // (see scorer/calculator.ts's penaltyFor()).
+    expect(f.scorePenalty).toBeUndefined()
   })
 
   it('strips markdown code blocks and parses the JSON inside', () => {
@@ -87,7 +91,7 @@ describe('parseFindingsResponse', () => {
     expect(findings[0].title).toBe('Valid')
   })
 
-  it('assigns correct scorePenalty for each severity level', () => {
+  it('leaves scorePenalty unset for each severity level (configured weights apply downstream)', () => {
     const raw = JSON.stringify([
       { severity: 'critical', title: 'c', description: 'desc' },
       { severity: 'high', title: 'h', description: 'desc' },
@@ -96,8 +100,9 @@ describe('parseFindingsResponse', () => {
     const findings = parseFindingsResponse(raw, AGENT)
 
     expect(findings).toHaveLength(3)
-    expect(findings[0].scorePenalty).toBe(10)
-    expect(findings[1].scorePenalty).toBe(5)
+    expect(findings[0].scorePenalty).toBeUndefined()
+    expect(findings[1].scorePenalty).toBeUndefined()
+    expect(findings[2].scorePenalty).toBeUndefined()
   })
 })
 

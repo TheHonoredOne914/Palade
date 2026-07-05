@@ -64,6 +64,15 @@ export function getAgentsForMode(
         `Available agents: ${[...allAgents.keys()].join(', ')}`
       )
     }
+    // Custom agents are additive here too, matching the default branch below —
+    // otherwise a mode with agentOverrides set (e.g. ghost/onboard via
+    // modeConfig) silently drops every custom agent the user configured.
+    // Skip any custom agent already present via an explicit override name to
+    // avoid double-including it.
+    const overriddenNames = new Set(agents.map((a) => a.name))
+    for (const customAgent of customAgents.values()) {
+      if (!overriddenNames.has(customAgent.name)) agents.push(customAgent)
+    }
     return agents
   }
   // In practice swarm.ts always threads context.modeConfig.agentOverrides

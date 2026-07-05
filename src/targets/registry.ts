@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
-import type { TargetDefinition } from './schema.js'
+import { TargetDefinitionSchema, type TargetDefinition } from './schema.js'
 
 const NPM_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search'
 const NPM_REGISTRY_URL = 'https://registry.npmjs.org'
@@ -121,12 +121,26 @@ export async function getTargetFromRegistry(packageName: string): Promise<Target
     return null
   }
 
-  return {
+  const built: TargetDefinition = {
     name,
     description,
     entry: typeof entry === 'string' ? entry : Array.isArray(entry) ? entry : '.',
     focus: Array.isArray(focus) ? focus : undefined,
   }
+
+  // Validate before handing it to appendTargetToFile — an invalid target
+  // (e.g. an empty entry array) would otherwise get written to
+  // palade.targets.ts, report "installed" to the user, and then be silently
+  // dropped later by loadTargets' own schema parse.
+  const validated = TargetDefinitionSchema.safeParse(built)
+  if (!validated.success) {
+    console.warn(
+      `[registry] ${packageName} paladeTarget failed validation: ${validated.error.issues.map((i) => i.message).join(', ')}`
+    )
+    return null
+  }
+
+  return validated.data
 }
 
 export function appendTargetToFile(projectRoot: string, target: TargetDefinition): void {

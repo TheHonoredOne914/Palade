@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { readFile, writeFile, mkdir, appendFile } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { theme } from '../../ui/theme.js'
@@ -42,6 +42,19 @@ export async function settingsCommand(opts: SettingsOptions): Promise<void> {
 }
 
 async function interactiveSettings(projectRoot: string): Promise<void> {
+  // Mirrors picker.ts's guard: readline prompts below never resolve without a
+  // real terminal, so a non-TTY invocation (CI, piped input, etc.) would hang
+  // forever instead of failing fast.
+  if (!process.stdin.isTTY) {
+    console.error(
+      chalk.red(
+        '  Interactive settings require a terminal (no stdin TTY detected). ' +
+          'Use `palade settings --set key=value` or `palade settings --list` instead.'
+      )
+    )
+    throw new CliExitError(1)
+  }
+
   await showCurrentConfig(projectRoot)
 
   console.log()
@@ -62,7 +75,23 @@ async function interactiveSettings(projectRoot: string): Promise<void> {
   const envPath = join(projectRoot, '.env')
   const envVar = `${provider.toUpperCase().replace('-', '_')}_API_KEY`
 
-  await appendFile(envPath, `\n${envVar}=${key.trim()}\n`, 'utf-8')
+  // Replace an existing `VAR=` line in place rather than always appending —
+  // appendFile on every run accumulated a duplicate line per run.
+  let envContent = ''
+  try {
+    envContent = await readFile(envPath, 'utf-8')
+  } catch {
+    // .env doesn't exist yet — start fresh
+  }
+  const newLine = `${envVar}=${key.trim()}`
+  const lineRe = new RegExp(`^${envVar}=.*$`, 'm')
+  envContent = lineRe.test(envContent)
+    ? envContent.replace(lineRe, newLine)
+    : envContent
+      ? `${envContent.trimEnd()}\n${newLine}\n`
+      : `${newLine}\n`
+
+  await writeFile(envPath, envContent, 'utf-8')
   console.log(theme.success(`\n  ✓ Saved ${envVar} to .env\n`))
 }
 

@@ -306,7 +306,11 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
         try {
           const writtenPaths: string[] = []
           for (const f of modifiedFiles) {
-            const oldContent = getFileContentAtRef(mergeBase, f.path, projectRoot)
+            // Renamed/copied files (git status R/C) don't exist at the
+            // merge-base under their new `f.path` — look them up at their
+            // pre-rename path so their base-branch findings are found instead
+            // of every finding in the file reading as newly introduced.
+            const oldContent = getFileContentAtRef(mergeBase, f.oldPath ?? f.path, projectRoot)
             if (oldContent === null) continue
             const dest = join(baseTempDir, f.path)
             mkdirSync(dirname(dest), { recursive: true })
