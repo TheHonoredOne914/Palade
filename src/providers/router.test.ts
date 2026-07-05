@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { FallbackProvider, AllProvidersExhaustedError } from './router.js'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
+import { AuthError } from '../errors/types.js'
 
 function mockProvider(
   name: string,
@@ -95,11 +96,39 @@ describe('FallbackProvider', () => {
     expect(fallback1.complete).toHaveBeenCalled()
   })
 
-  // --- Test 3b: All providers fail with the same unclassified error ---
-  it('throws AllProvidersExhaustedError when every provider fails with an unclassified error', async () => {
+  // --- Test 3b: All providers fail with an auth-classified error ---
+  // 'invalid api key' is auth-like per swarm.ts's isFatalAuthError classification,
+  // so once every provider in the chain has failed with it, the FallbackProvider
+  // must surface an AuthError (not the generic AllProvidersExhaustedError) so the
+  // swarm can abort the whole run instead of burning quota on doomed retries.
+  it('throws AuthError when every provider fails with an auth-classified error', async () => {
     primary = mockProvider('primary', 'model-a', 'fail-fatal')
     fallback1 = mockProvider('fallback1', 'model-b', 'fail-fatal')
     const fp = new FallbackProvider(primary, [fallback1])
+
+    await expect(fp.complete(dummyReq)).rejects.toThrow(AuthError)
+  })
+
+  // --- Test 3c: All providers fail with a genuinely unclassified, non-auth error ---
+  it('throws AllProvidersExhaustedError when every provider fails with a genuinely unclassified, non-auth error', async () => {
+    const weirdMessage = 'upstream returned proprietary error code 418'
+    const weirdPrimary: IProvider = {
+      name: 'primary',
+      model: 'model-a',
+      complete: vi.fn(async () => {
+        throw new Error(weirdMessage)
+      }),
+      isAvailable: vi.fn(async () => true),
+    }
+    const weirdFallback: IProvider = {
+      name: 'fallback1',
+      model: 'model-b',
+      complete: vi.fn(async () => {
+        throw new Error(weirdMessage)
+      }),
+      isAvailable: vi.fn(async () => true),
+    }
+    const fp = new FallbackProvider(weirdPrimary, [weirdFallback])
 
     await expect(fp.complete(dummyReq)).rejects.toThrow(AllProvidersExhaustedError)
   })

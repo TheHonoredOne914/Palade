@@ -37,16 +37,31 @@ const MAX_RETRIES = 3
 const BASE_DELAY_MS = 500
 const MAX_DELAY_MS = 8000
 
-const DAILY_LIMIT_PATTERN = /daily\s+limit|per[\s-]day|quota\s+exceed|out\s+of\s+quota/i
+// Single source of truth for fatal-quota phrasing, shared with
+// router.ts's FATAL_KEYWORDS — these two lists had drifted apart (this
+// pattern was missing 'insufficient_quota' and 'monthly limit', which
+// FATAL_KEYWORDS treated as fatal), so a provider whose body used one of
+// those phrases wasn't marked exhausted here even though the router would
+// separately mark it dead.
+export const FATAL_QUOTA_KEYWORDS = [
+  'per day',
+  'per-day',
+  'daily limit',
+  'quota exceeded',
+  'out of quota',
+  'insufficient_quota',
+  'monthly limit',
+]
 
 /**
- * Scans a raw response body for daily/per-day rate-limit language. Shared by
- * every adapter so daily-limit detection is a plain text scan regardless of
- * whether a provider's error body is JSON, wraps the message in `error.message`,
- * or isn't parseable JSON at all.
+ * Scans a raw response body for daily/per-day/quota-exhaustion language.
+ * Shared by every adapter so daily-limit detection is a plain text scan
+ * regardless of whether a provider's error body is JSON, wraps the message in
+ * `error.message`, or isn't parseable JSON at all.
  */
 export function isDailyLimitError(body: string): boolean {
-  return DAILY_LIMIT_PATTERN.test(body)
+  const lower = body.toLowerCase()
+  return FATAL_QUOTA_KEYWORDS.some((keyword) => lower.includes(keyword))
 }
 
 export async function fetchWithRetry(

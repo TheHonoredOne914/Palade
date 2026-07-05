@@ -233,6 +233,11 @@ export async function runSwarm(
 
       if (isFatalAuthError(agentError)) {
         runAbort.abort()
+        // Record whatever batches already succeeded before this fatal error
+        // was raised — otherwise the rethrow below skips the memory.record()
+        // call further down in this same agent promise, silently losing
+        // partial findings from batches that completed fine.
+        memory.record(agent.name, allFindings)
         throw agentError
       }
 
@@ -271,11 +276,13 @@ export async function runSwarm(
     // inside each agent promise — they record partial findings before throwing.
     // A rejection here means the agent's own catch couldn't recover.
     if (result.status === 'rejected') {
-      const err = result.reason
+      const err = result.reason instanceof Error ? result.reason : new Error(String(result.reason))
       if (err instanceof ReviewCancelledError) throw err
-      console.warn(
-        chalk.yellow(`⚠ Agent failed: ${err instanceof Error ? err.message : String(err)}`)
-      )
+      // A fatal auth error must abort the whole run rather than resolve
+      // "successfully" with whatever partial findings existed — otherwise a
+      // dead API key silently produces a clean-looking report.
+      if (isFatalAuthError(err)) throw err
+      console.warn(chalk.yellow(`⚠ Agent failed: ${err.message}`))
     }
   }
 

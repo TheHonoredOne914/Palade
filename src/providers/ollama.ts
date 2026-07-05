@@ -2,16 +2,25 @@ import type { CompletionRequest, CompletionResponse, IProvider } from './base.js
 import { createLimiter } from './base.js'
 import { OllamaNotRunningError } from '../errors/types.js'
 
+const DEFAULT_DEADLINE_MS = 300_000
+
 export default class OllamaProvider implements IProvider {
   name = 'ollama'
   model: string
   private baseUrl: string
+  private readonly deadlineMs: number
   private readonly limiter: ReturnType<typeof createLimiter>
 
-  constructor(model?: string, baseUrl?: string, maxConcurrency = 4) {
+  constructor(
+    model?: string,
+    baseUrl?: string,
+    maxConcurrency = 4,
+    deadlineMs: number = DEFAULT_DEADLINE_MS
+  ) {
     this.model = model ?? 'minimax-m2.5'
     this.baseUrl = baseUrl ?? 'http://localhost:11434'
     this.limiter = createLimiter(maxConcurrency)
+    this.deadlineMs = deadlineMs
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
@@ -34,12 +43,18 @@ export default class OllamaProvider implements IProvider {
       },
     }
 
+    // Combine the caller's cancellation signal with this provider's own hard
+    // ceiling, matching every other adapter (groq/cerebras/nvidia/openrouter/
+    // opencode-zen) — without this, a hung local Ollama server never times out.
+    const timeoutSignal = AbortSignal.timeout(this.deadlineMs)
+    const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
+
     try {
       const res = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: req.signal,
+        signal,
       })
 
       if (!res.ok) {
