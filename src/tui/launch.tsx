@@ -21,7 +21,9 @@ export async function launchTUI(): Promise<void> {
     'OPENROUTER_API_KEY',
     'CEREBRAS_API_KEY',
     'NVIDIA_API_KEY',
+    'OPENCODE_ZEN_API_KEY',
     'OLLAMA_MODEL',
+    'OLLAMA_BASE_URL',
   ].some((k) => !!process.env[k])
 
   let config

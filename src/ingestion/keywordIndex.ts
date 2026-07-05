@@ -7,7 +7,15 @@ export function buildKeywordIndex(chunks: CodeChunk[]): CodeChunk[] {
   // same objects, chunks processed later in that loop would end up matching
   // against already-inflated content from earlier iterations. Copying here
   // decouples the index from those later mutations.
-  return chunks.map((chunk) => ({ ...chunk }))
+  //
+  // Also pre-compute word lists once per chunk so getKeywordContext doesn't
+  // re-extract them on every call — this avoids O(N*M) redundant regex work
+  // where N = chunks reviewed and M = chunks in the index.
+  return chunks.map((chunk) => {
+    const contentLower = chunk.content.toLowerCase()
+    const words = contentLower.match(/\b[a-z]{4,}\b/g) ?? []
+    return { ...chunk, _words: words } as CodeChunk & { _words: string[] }
+  })
 }
 
 export function getKeywordContext(
@@ -41,9 +49,8 @@ export function getKeywordContext(
   const scoredChunks = index
     .filter((c) => c.id !== chunk.id)
     .map((c) => {
-      const contentLower = c.content.toLowerCase()
-      // Extract words from chunk content
-      const chunkWords = contentLower.match(/\b[a-z]{4,}\b/g) || []
+      // Use pre-computed word list if available, otherwise fall back to extraction
+      const chunkWords = (c as any)._words ?? (c.content.toLowerCase().match(/\b[a-z]{4,}\b/g) || [])
       const chunkWordCount = chunkWords.length
 
       let queryWordCount = 0

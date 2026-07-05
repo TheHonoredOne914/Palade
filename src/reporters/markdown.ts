@@ -33,7 +33,11 @@ function truncate(text: string, maxWidth: number, truncateChar: string): string 
 }
 
 function escapeMarkdown(text: string): string {
-  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\n/g, ' ')
+  return text
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/`/g, '\\`')
+    .replace(/\n/g, ' ')
 }
 
 function createMarkdownTable(

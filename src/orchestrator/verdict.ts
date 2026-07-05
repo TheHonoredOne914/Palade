@@ -71,20 +71,20 @@ interface ValenceResult {
   margin: number
 }
 
+// Pre-compile keyword regexes once at module scope — whole-word matches only
+// to avoid miscounting common fragments ('add' in "address", 'key' in "monkey").
+const HARDEN_REGEXES = HARDEN_KEYWORDS.map((w) => new RegExp(`\\b${w}\\b`))
+const RELAX_REGEXES = RELAX_KEYWORDS.map((w) => new RegExp(`\\b${w}\\b`))
+
 function getValence(text: string): ValenceResult {
   const t = text.toLowerCase()
   let hardenHits = 0
   let relaxHits = 0
-  // Whole-word matches only — substring matching miscounts common fragments
-  // ('add' in "address", 'key' in "monkey") and skews the harden/relax tally.
-  // Pre-compile keyword regexes once instead of constructing per-call
-  const hardenRegexes = HARDEN_KEYWORDS.map((w) => new RegExp(`\\b${w}\\b`))
-  const relaxRegexes = RELAX_KEYWORDS.map((w) => new RegExp(`\\b${w}\\b`))
 
-  for (const re of hardenRegexes) {
+  for (const re of HARDEN_REGEXES) {
     if (re.test(t)) hardenHits++
   }
-  for (const re of relaxRegexes) {
+  for (const re of RELAX_REGEXES) {
     if (re.test(t)) relaxHits++
   }
   const margin = Math.abs(hardenHits - relaxHits)

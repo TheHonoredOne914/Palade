@@ -62,7 +62,8 @@ function renderCategoryScoreHtml(
   score: number,
   findingCount: number
 ): string {
-  const color = getScoreColor(score)
+  const safeScore = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0
+  const color = getScoreColor(safeScore)
   const label =
     CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS] ??
     category.charAt(0).toUpperCase() + category.slice(1)
@@ -70,9 +71,9 @@ function renderCategoryScoreHtml(
         <div class="category-item">
           <div class="category-name">${escapeHtml(label)}</div>
           <div class="category-bar">
-            <div class="category-bar-fill" style="width: ${score}%; background: ${color};"></div>
+            <div class="category-bar-fill" style="width: ${safeScore}%; background: ${color};"></div>
           </div>
-          <div class="category-score" style="color: ${color};">${score}</div>
+          <div class="category-score" style="color: ${color};">${safeScore}</div>
         </div>`
 }
 

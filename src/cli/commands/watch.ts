@@ -118,13 +118,11 @@ export async function watchCommand(opts: {
       const scope = { projectRoot, files: [filePath] }
       const manifests = await walkProject(projectRoot, scope)
       if (manifests.length === 0) {
-        isProcessing = false
         return
       }
 
       const chunks = await chunkFiles(manifests)
       if (chunks.length === 0) {
-        isProcessing = false
         return
       }
 

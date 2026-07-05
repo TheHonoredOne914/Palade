@@ -9,7 +9,7 @@ function toPosix(path: string): string {
 }
 
 function withoutExtension(path: string): string {
-  return path.replace(/\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|cs|cpp|c|rb|php|swift|kt|dart)$/, '')
+  return path.replace(/\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|cs|cpp|cc|c|h|hpp|rb|php|swift|kt|dart)$/, '')
 }
 
 function resolveRelativeImport(fromFile: string, specifier: string): string | null {
@@ -62,25 +62,30 @@ function expectedTestBases(filePath: string): string[] {
   ].map(toPosix)
 }
 
-function scoreRelatedChunk(subject: CodeChunk, candidate: CodeChunk): number {
+function scoreRelatedChunk(
+  subject: CodeChunk,
+  candidate: CodeChunk,
+  subjectImports: string[],
+  subjectTerms: Set<string>,
+  subjectTestBases: string[]
+): number {
   if (candidate.id === subject.id) return 0
 
   const candidateBase = withoutExtension(toPosix(candidate.filePath))
   let score = 0
 
-  for (const spec of extractImportSpecifiers(subject.content)) {
+  for (const spec of subjectImports) {
     const resolved = resolveRelativeImport(subject.filePath, spec)
     if (resolved && candidateBase === withoutExtension(resolved)) score += 10
   }
 
-  for (const testBase of expectedTestBases(subject.filePath)) {
+  for (const testBase of subjectTestBases) {
     if (candidateBase === testBase) score += 8
   }
 
   const subjectBase = withoutExtension(toPosix(subject.filePath)).split('/').pop()
   if (subjectBase && candidate.content.includes(subjectBase)) score += 4
 
-  const subjectTerms = identifierTerms(subject.content)
   const candidateTerms = identifierTerms(candidate.content)
   let overlap = 0
   for (const term of subjectTerms) {
@@ -92,8 +97,13 @@ function scoreRelatedChunk(subject: CodeChunk, candidate: CodeChunk): number {
 }
 
 export function buildRetrievedContext(subject: CodeChunk, allChunks: CodeChunk[]): string {
+  // Hoist subject-only computations out of the per-candidate loop to avoid O(N²)
+  const subjectImports = extractImportSpecifiers(subject.content)
+  const subjectTerms = identifierTerms(subject.content)
+  const subjectTestBases = expectedTestBases(subject.filePath)
+
   const related = allChunks
-    .map((chunk) => ({ chunk, score: scoreRelatedChunk(subject, chunk) }))
+    .map((chunk) => ({ chunk, score: scoreRelatedChunk(subject, chunk, subjectImports, subjectTerms, subjectTestBases) }))
     .filter((entry) => entry.score >= 4)
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_RESULTS)

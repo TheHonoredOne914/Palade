@@ -63,7 +63,7 @@ export async function traceDependencies(
   // shorter path to it is found later, or its transitive deps get dropped
   // depending on unrelated import ordering.
   const visited = new Map<string, number>()
-  const results: string[] = []
+  const results = new Set<string>()
 
   async function trace(currentPath: string, currentDepth: number): Promise<void> {
     if (currentDepth > depth) return
@@ -92,7 +92,14 @@ export async function traceDependencies(
         resolvedFromRoot + '.tsx',
         resolvedFromRoot + '.js',
         resolvedFromRoot + '.jsx',
+        resolvedFromRoot + '.mjs',
+        resolvedFromRoot + '.cjs',
         resolvedFromRoot + '.py',
+        resolvedFromRoot + '.c',
+        resolvedFromRoot + '.h',
+        resolvedFromRoot + '.cc',
+        resolvedFromRoot + '.hpp',
+        resolvedFromRoot + '.cpp',
         resolvedFromRoot.replace(/\.js$/, '.ts'),
         resolvedFromRoot.replace(/\.js$/, '.tsx'),
         resolvedFromRoot.replace(/\.mjs$/, '.ts'),
@@ -102,8 +109,8 @@ export async function traceDependencies(
       if (!foundPath) continue
 
       const relFromRoot = normalizePath(relative(projectRoot, foundPath))
-      if (!results.includes(relFromRoot)) {
-        results.push(relFromRoot)
+      if (!results.has(relFromRoot)) {
+        results.add(relFromRoot)
       }
 
       if (currentDepth < depth) {
@@ -113,7 +120,7 @@ export async function traceDependencies(
   }
 
   await trace(filePath, 1)
-  return results
+  return Array.from(results)
 }
 
 function extractLocalImports(content: string, filePath: string): string[] {

@@ -29,7 +29,7 @@ export class ProviderPool implements IProvider {
     // advance it — this prevents two concurrent complete() calls from picking
     // the same provider when they interleave at the `await provider.isAvailable()`.
     const startIdx = this.index
-    this.index = (startIdx + n) % n // advance past all n candidates we'll try
+    this.index = (startIdx + 1) % n // advance round-robin for next call
     for (let offset = 0; offset < n; offset++) {
       const provider = this.providers[(startIdx + offset) % n]
       if (await provider.isAvailable()) {

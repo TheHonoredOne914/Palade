@@ -209,10 +209,15 @@ export function attributeFindings(
   model?: string
 ): AgentFinding[] {
   const validNames = new Set(domains.map((d) => d.name))
-  validNames.add('Architect' as AgentName) // Allow verdicts in economy mode
+  // Map 'Architect' (used in economy-mode verdicts) to the closest semantic
+  // category so downstream scoring/reporting has a recognized key.
+  const ARCHITECT_ALIAS = 'architecture'
+  validNames.add(ARCHITECT_ALIAS)
 
   const attributed: AgentFinding[] = []
   for (const f of findings) {
+    // Remap 'Architect' to the canonical alias so downstream code handles it
+    if (f.agentName === 'Architect') f.agentName = ARCHITECT_ALIAS
     if (!validNames.has(f.agentName)) continue
     f.provider = provider
     f.model = model

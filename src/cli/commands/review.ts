@@ -444,6 +444,7 @@ export async function reviewCommand(
       score: scoreResult.score,
       breakdown: scoreResult.breakdown,
       delta: scoreResult.delta,
+      kind: 'full',
     },
     config.score.maxHistoryEntries
   )
