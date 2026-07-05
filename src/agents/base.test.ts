@@ -40,17 +40,26 @@ describe('parseFindingsResponse', () => {
     expect(findings[0].title).toBe('t')
   })
 
-  it('returns empty array for an empty string', () => {
-    expect(parseFindingsResponse('', AGENT)).toEqual([])
+  it('surfaces a visible parse-failure finding for an empty string, not a silent []', () => {
+    const findings = parseFindingsResponse('', AGENT)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].severity).toBe('info')
+    expect(findings[0].scorePenalty).toBe(0)
+    expect(findings[0].tags).toContain('parse-failure')
+    expect(findings[0].title).toContain('REVIEW INCOMPLETE')
   })
 
-  it('returns empty array for garbage text with no JSON', () => {
-    expect(parseFindingsResponse('This is not JSON at all.', AGENT)).toEqual([])
+  it('surfaces a visible parse-failure finding for garbage text with no JSON, not a silent []', () => {
+    const findings = parseFindingsResponse('This is not JSON at all.', AGENT)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].tags).toContain('parse-failure')
   })
 
-  it('returns empty array when JSON is an object, not an array', () => {
+  it('surfaces a visible parse-failure finding when JSON is an object, not an array', () => {
     const raw = '{"severity":"high","title":"test"}'
-    expect(parseFindingsResponse(raw, AGENT)).toEqual([])
+    const findings = parseFindingsResponse(raw, AGENT)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].tags).toContain('parse-failure')
   })
 
   it('returns empty array when severity is not in SEVERITY_PENALTY', () => {

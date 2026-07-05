@@ -240,16 +240,20 @@ describe('FallbackProvider', () => {
     expect(fp.fallbackCount).toBe(1)
   })
 
-  it('suppresses console.warn when falling back', async () => {
+  it('logs a summary + error-detail line when falling back', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     primary = mockProvider('primary', 'model-a', 'fail-retryable')
     const fp = new FallbackProvider(primary, [fallback1])
 
     await fp.complete(dummyReq)
 
-    expect(warnSpy).toHaveBeenCalledOnce()
+    // Fallback intentionally logs two lines: a summary (reason + provider
+    // name) and a dim detail line with the actual error message, so the
+    // failure is diagnosable without needing --debug.
+    expect(warnSpy).toHaveBeenCalledTimes(2)
     expect(warnSpy.mock.calls[0][0]).toContain('exhausted retries')
     expect(warnSpy.mock.calls[0][0]).toContain('primary')
+    expect(warnSpy.mock.calls[1][0]).toContain('503 service unavailable')
     warnSpy.mockRestore()
   })
 })

@@ -68,7 +68,7 @@ function SafeInputHandler({
       }
       return
     }
-    if (!showSettings && !showAutocomplete) {
+    if (!showSettings && !showAutocomplete && status !== 'running') {
       if (key.upArrow) onUp()
       if (key.downArrow) onDown()
     }
@@ -146,16 +146,25 @@ export function App({
         })
         .catch(() => setShowSettings(true))
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // intentionally only on mount
+
+  // Read live status/showSettings via refs rather than effect deps — this
+  // handler is only registered once, so a SIGINT arriving in the gap between
+  // a status change and React committing the re-render can no longer see a
+  // stale value and misfire (e.g. calling exit() while a swarm is actually
+  // still running, orphaning it instead of aborting it).
+  const statusRef = useRef(status)
+  statusRef.current = status
+  const showSettingsRef = useRef(showSettings)
+  showSettingsRef.current = showSettings
 
   useEffect(() => {
     const handler = () => {
-      if (showSettings) {
+      if (showSettingsRef.current) {
         setShowSettings(false)
         return
       }
-      if (status === 'running') {
+      if (statusRef.current === 'running') {
         abortRef.current?.abort()
         abortRef.current = null
         appendLine({ type: 'warn', text: '  Interrupted.' })
@@ -168,7 +177,7 @@ export function App({
     return () => {
       process.off('SIGINT', handler)
     }
-  }, [status, showSettings, exit, appendLine])
+  }, [exit, appendLine])
 
   const handleSubmit = useCallback(
     (value: string) => {
@@ -212,7 +221,11 @@ export function App({
       if (message) appendLine({ type: 'output', text: '  ' + message })
       // Re-read env to update provider circles and dismiss no-provider banner
       const hasKey = [
-        'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'CEREBRAS_API_KEY', 'NVIDIA_API_KEY', 'OLLAMA_MODEL'
+        'GROQ_API_KEY',
+        'OPENROUTER_API_KEY',
+        'CEREBRAS_API_KEY',
+        'NVIDIA_API_KEY',
+        'OLLAMA_MODEL',
       ].some((k) => !!process.env[k])
       if (hasKey) {
         setLiveProviderStatus({
@@ -306,10 +319,19 @@ export function App({
                       marginBottom={1}
                       flexDirection="column"
                     >
-                      <Text color="#EF4444" bold>⚠ No AI provider configured</Text>
-                      <Text color="#D1D5DB">{'  '}Set a key in the Settings panel that just opened, or export an env var:</Text>
-                      <Text color="#6EE7B7">{'  '}GROQ_API_KEY  OPENROUTER_API_KEY  CEREBRAS_API_KEY  NVIDIA_API_KEY</Text>
-                      <Text color="#9CA3AF">{'  '}Then press Esc and run /review to start reviewing code.</Text>
+                      <Text color="#EF4444" bold>
+                        ⚠ No AI provider configured
+                      </Text>
+                      <Text color="#D1D5DB">
+                        {'  '}Set a key in the Settings panel that just opened, or export an env
+                        var:
+                      </Text>
+                      <Text color="#6EE7B7">
+                        {'  '}GROQ_API_KEY OPENROUTER_API_KEY CEREBRAS_API_KEY NVIDIA_API_KEY
+                      </Text>
+                      <Text color="#9CA3AF">
+                        {'  '}Then press Esc and run /review to start reviewing code.
+                      </Text>
                     </Box>
                   )}
                 </Box>

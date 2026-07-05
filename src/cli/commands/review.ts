@@ -30,7 +30,7 @@ import type { AgentName } from '../../agents/base.js'
 import type { ResolvedTarget } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import { groupBySeverity } from '../../orchestrator/merger.js'
-import { CliExitError } from '../../errors/types.js'
+import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import { detectLanguages } from '../../ingestion/walker.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync, statSync } from 'node:fs'
@@ -408,6 +408,10 @@ export async function reviewCommand(
       dryRunConfig: opts.dryRun ? config : undefined,
     })
   } catch (err: unknown) {
+    if (err instanceof ReviewCancelledError) {
+      console.log(chalk.dim('\n  Review cancelled — no score or report generated.'))
+      throw new CliExitError(0)
+    }
     if (err instanceof AllProvidersExhaustedError) {
       console.error(
         chalk.red('\n✖ All LLM providers failed. Palade could not complete this review.\n')
