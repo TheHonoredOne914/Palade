@@ -3,7 +3,7 @@ import chalk from 'chalk'
 import { loadConfig } from '../../config/loader.js'
 import { DEFAULT_CONFIG } from '../../config/defaults.js'
 import { initRouter } from '../../providers/router.js'
-import { walkProject } from '../../ingestion/walker.js'
+import { walkProject, buildIgnoreFilter } from '../../ingestion/walker.js'
 import { chunkFiles } from '../../ingestion/chunker.js'
 import { scheduleBatches } from '../../orchestrator/scheduler.js'
 import type { AgentFinding, AgentContext } from '../../agents/base.js'
@@ -246,18 +246,13 @@ export async function watchCommand(opts: {
     void processNext()
   }
 
-  const ignored = [
-    /node_modules/,
-    /\.palade/,
-    /dist/,
-    /\.git/,
-    /\.lock$/,
-    /\.min\.(js|css)$/,
-    /coverage/,
-  ]
+  const ignoreFilter = await buildIgnoreFilter(projectRoot)
 
   const watcher = chokidar.watch('.', {
-    ignored,
+    ignored: (path: string) => {
+      const rel = path.replace(/\\/g, '/')
+      return ignoreFilter.ignores(rel)
+    },
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300 },

@@ -42,8 +42,6 @@ function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
   }
 
   if (a.filePath && b.filePath && a.filePath === b.filePath) {
-    const similarTitle = jaccardSimilarity(a.title, b.title) > 0.4
-
     if (a.lineStart !== undefined && b.lineStart !== undefined) {
       if (a.lineStart === b.lineStart) {
         if (jaccardSimilarity(a.title, b.title) > 0.4) return true
@@ -78,6 +76,9 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
     scorePenalty: Math.max(keep.scorePenalty ?? 0, discard.scorePenalty ?? 0),
     tags: Array.from(tagSet),
     description: mergedDescription,
+    mergedFromAgents: [keep.agentName, discard.agentName].filter(
+      (n, i, arr) => arr.indexOf(n) === i
+    ),
   }
 }
 

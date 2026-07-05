@@ -70,6 +70,11 @@ export interface SwarmOptions {
    */
   economyMode?: boolean
   /**
+   * Caps the number of built-in specialist agents run in parallel (config.swarm.agentCount).
+   * Custom agents are additive and not counted against this cap.
+   */
+  agentCount?: number
+  /**
    * Strict Triage mode: Throw an error if any file is dropped due to maxReviewTokens limit.
    */
   strictTriage?: boolean

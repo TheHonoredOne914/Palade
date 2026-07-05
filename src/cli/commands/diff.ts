@@ -38,6 +38,7 @@ interface DiffOpts {
   base?: string
   ci?: boolean
   signal?: AbortSignal
+  tui?: boolean
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -81,7 +82,12 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     const driftWarnings = await checkDecisionDrift(projectRoot, changedFiles)
     for (const warning of driftWarnings) {
       console.log(chalk.red(`\n  ⚠ DRIFT  ${warning}`))
-      const override = await askConfirm(chalk.yellow('  Override?'), false)
+      let override = true
+      if (!opts.tui) {
+        override = await askConfirm(chalk.yellow('  Override?'), false)
+      } else {
+        console.log(theme.dim('  Drift override prompt skipped in TUI mode.'))
+      }
       if (!override) {
         console.error(theme.error('\n  ✗ Drift blocked by user.'))
         throw new CliExitError(1)
@@ -194,6 +200,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           timeoutMs: config.swarm.timeoutMs,
           maxReviewTokens: config.swarm.maxReviewTokens,
           customAgents: customAgentDefs,
+          agentCount: config.swarm.agentCount,
           economyMode: config.swarm.economyMode,
           signal: opts.signal,
         },
@@ -325,6 +332,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                 timeoutMs: config.swarm.timeoutMs,
                 maxReviewTokens: config.swarm.maxReviewTokens,
                 customAgents: customAgentDefs,
+                agentCount: config.swarm.agentCount,
                 economyMode: config.swarm.economyMode,
                 signal: opts.signal,
                 onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {

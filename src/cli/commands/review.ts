@@ -224,18 +224,22 @@ export async function reviewCommand(
 
   // 5. Handle --pick
   let resolvedTarget: ResolvedTarget | undefined = undefined
+  if (opts.tui && opts.pick) {
+    console.log(theme.dim('  --pick is not supported inside the interactive TUI. Reviewing all files.'))
+    opts.pick = false
+  }
+  if (opts.pick && !process.stdin.isTTY) {
+    console.log(theme.dim('  --pick requires an interactive terminal. Reviewing all files.'))
+    opts.pick = false
+  }
   if (opts.pick) {
     const allManifests = await import('../../ingestion/walker.js').then((m) =>
       m.walkProject(projectRoot, { projectRoot })
     )
     const selectedPaths = await launchPicker(projectRoot, allManifests)
     if (selectedPaths.length === 0) {
-      if (!process.stdin.isTTY) {
-        console.log(theme.dim('  --pick requires an interactive terminal. Reviewing all files.'))
-      } else {
-        console.log(theme.dim('  No files selected.'))
-        return
-      }
+      console.log(theme.dim('  No files selected.'))
+      return
     } else {
       scope.files = selectedPaths
     }
@@ -386,6 +390,7 @@ export async function reviewCommand(
         timeoutMs: config.swarm.timeoutMs,
         maxReviewTokens: config.swarm.maxReviewTokens,
         customAgents: customAgentDefs,
+        agentCount: config.swarm.agentCount,
         economyMode: opts.economy ?? config.swarm.economyMode,
         exhaustive: opts.exhaustive,
         strictTriage: opts.strictTriage,

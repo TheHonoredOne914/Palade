@@ -21,6 +21,19 @@ Palade is a sophisticated CLI and TUI (Terminal User Interface) tool that runs a
 
 Palade is optimized for **TypeScript and JavaScript** projects but also works with other languages. It runs entirely on your local machine and communicates directly with your LLM provider of choice (Groq, Cerebras, OpenRouter, Nvidia, or locally via Ollama).
 
+## Configure a Provider
+
+Set one of the following environment variables before running Palade. The default provider is `opencode-zen` (no signup required) when available.
+
+| Provider     | Environment variable(s) |
+|--------------|--------------------------|
+| opencode-zen | `OPENCODE_ZEN_API_KEY`   |
+| Groq         | `GROQ_API_KEY`           |
+| Cerebras     | `CEREBRAS_API_KEY`       |
+| Nvidia       | `NVIDIA_API_KEY`         |
+| OpenRouter   | `OPENROUTER_API_KEY`     |
+| Ollama       | `OLLAMA_MODEL` / `OLLAMA_BASE_URL` |
+
 ## Commands
 
 ### Interactive TUI
@@ -76,6 +89,7 @@ palade targets search <query>
 Initialize your project to create a `palade.config.ts` configuration file:
 ```bash
 palade init
+```
 This lets you set your API keys, LLM providers, and customize the swarm's behavior!
 
 ### Configuration: Economy Mode

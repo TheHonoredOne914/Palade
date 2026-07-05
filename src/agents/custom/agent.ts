@@ -9,6 +9,7 @@ import {
   annotateComplexity,
   buildChunkContext,
   buildSystemPrompt,
+  computeMaxTokens,
   parseFindingsResponse,
   SEVERITY_PENALTY,
   verifyCriticalHighFindings,

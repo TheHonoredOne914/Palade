@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import { DEFAULT_BADGE_PATH, DEFAULT_CONSTITUTION_PATH, DEFAULT_SPEC_PATH } from './defaults.js'
+import { SEVERITY_PENALTY } from '../agents/base.js'
+import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS } from '../scorer/calculator.js'
 
 const ProviderConfigSchema = z.object({
   apiKey: z.string().default(''),
@@ -68,11 +70,11 @@ export const PaladeConfigSchema = z.object({
       // keyed by severity. Defaults match agents/base.ts's SEVERITY_PENALTY.
       severityWeights: z
         .object({
-          critical: z.number().default(10),
-          high: z.number().default(5),
-          medium: z.number().default(2),
-          low: z.number().default(0.5),
-          info: z.number().default(0),
+          critical: z.number().default(SEVERITY_PENALTY.critical),
+          high: z.number().default(SEVERITY_PENALTY.high),
+          medium: z.number().default(SEVERITY_PENALTY.medium),
+          low: z.number().default(SEVERITY_PENALTY.low),
+          info: z.number().default(SEVERITY_PENALTY.info),
         })
         .default({}),
       // Base penalty per cross-agent conflict, keyed by severity, before the

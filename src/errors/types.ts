@@ -83,3 +83,14 @@ export class ReviewCancelledError extends Error {
     this.name = 'ReviewCancelledError'
   }
 }
+
+export class AuthError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public providerName: string
+  ) {
+    super(message)
+    this.name = 'AuthError'
+  }
+}

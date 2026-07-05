@@ -197,12 +197,54 @@ export async function detectLanguages(
   }
 }
 
+export async function buildIgnoreFilter(
+  projectRoot: string
+): Promise<Ignore> {
+  const ig = ignore()
+
+  for (const pattern of DEFAULT_IGNORES) {
+    ig.add(pattern)
+  }
+
+  try {
+    let ignoreContent = ''
+    try {
+      ignoreContent = await readFile(join(projectRoot, '.palade', 'ignore'), 'utf-8')
+    } catch {
+      ignoreContent = await readFile(join(projectRoot, '.paladeignore'), 'utf-8')
+    }
+    const customRules = ignoreContent
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+    for (const rule of customRules) {
+      ig.add(rule.replace(/\r/g, ''))
+    }
+  } catch {
+    // .palade/ignore not found — use defaults only
+  }
+
+  try {
+    const gitignoreContent = await readFile(join(projectRoot, '.gitignore'), 'utf-8')
+    const gitRules = gitignoreContent
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+    for (const rule of gitRules) {
+      ig.add(rule.replace(/\r/g, ''))
+    }
+  } catch {
+    // .gitignore not found — continue
+  }
+
+  return ig
+}
+
 export async function walkProject(
   projectRoot: string,
   scope: ScopeOptions
 ): Promise<FileManifest[]> {
-  // Build ignore rules
-  const ig = ignore()
+  const ig = await buildIgnoreFilter(projectRoot)
 
   // Add default ignores
   for (const pattern of DEFAULT_IGNORES) {

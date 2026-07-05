@@ -1,3 +1,4 @@
+import chalk from 'chalk'
 import type { CodeChunk } from '../ingestion/types.js'
 import { getProvider } from '../providers/router.js'
 import {
@@ -89,7 +90,7 @@ export const DEFAULT_DOMAINS: DomainSpec[] = [
   },
 ]
 
-function buildCombinedSystemPrompt(domains: DomainSpec[]): string {
+function buildCombinedSystemPrompt(domains: DomainSpec[], context?: AgentContext): string {
   const sections = domains
     .map((d) => {
       let extra = ''
@@ -104,13 +105,13 @@ function buildCombinedSystemPrompt(domains: DomainSpec[]): string {
     })
     .join('\n\n')
 
-  return `You are a combined multi-domain code review swarm. You are reviewing code as part of a larger analysis.
+  let prompt = `You are a combined multi-domain code review swarm. You are reviewing code as part of a larger analysis.
 
 You must review the provided code through ALL of the following lenses in a single pass:
 
 ${sections}
 
-Before outputting any JSON, you MUST write a <thinking> block to trace data flow, analyze edge cases, and justify your logic for all domains. 
+Before outputting any JSON, you MUST write a <thinking> block to trace data flow, analyze edge cases, and justify your logic for all domains.
 At the end of your <thinking> block, perform a Self-Critique: ask yourself if there are any conditions where the code is actually safe or if you might be hallucinating. If the code is safe, drop the finding.
 
 After your <thinking> block, return ONLY a valid JSON array of findings. No other text.
@@ -141,6 +142,12 @@ If you detect that two of your lenses fundamentally disagree on the same piece o
    - \`description\`: "Decision: {What to do}\\nTradeoff: {Cost accepted}\\nConfidence: {0-100%}\\nLosing side: {Which lens was rejected}"
    - \`tags\`: ["architectural-decision"]
 `
+
+  if (context?.spec) {
+    prompt += `\n\n=== BUSINESS LOGIC SPECIFICATION ===\n${context.spec}\n====================================\n\nCRITICAL: Cross-reference the code against the business logic specification above to ensure it is implemented correctly.`
+  }
+
+  return prompt
 }
 
 /**
@@ -165,7 +172,7 @@ export class CombinedAnalyzer implements IAgent {
     try {
       const provider = getProvider('primary')
       const systemPrompt = buildSystemPrompt(
-        buildCombinedSystemPrompt(this.domains),
+        buildCombinedSystemPrompt(this.domains, context),
         context,
         context.modeConfig
       )
@@ -220,7 +227,14 @@ export function attributeFindings(
   for (const f of findings) {
     // Remap 'Architect' to the canonical alias so downstream code handles it
     if (f.agentName === 'Architect') f.agentName = ARCHITECT_ALIAS
-    if (!validNames.has(f.agentName)) continue
+    if (!validNames.has(f.agentName)) {
+      console.warn(
+        chalk.yellow(
+          `⚠ combined: dropped finding "${f.title}" with unrecognized agentName "${f.agentName}"`
+        )
+      )
+      continue
+    }
     f.provider = provider
     f.model = model
     const penalty = SEVERITY_PENALTY[f.severity as Severity]

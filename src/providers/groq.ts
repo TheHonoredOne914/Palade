@@ -1,6 +1,7 @@
 import chalk from 'chalk'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 import { fetchWithRetry, createLimiter, isDailyLimitError } from './base.js'
+import { AuthError } from '../errors/types.js'
 
 interface OpenAIChoice {
   message: { content: string }
@@ -29,7 +30,7 @@ export class GroqProvider implements IProvider {
 
   constructor(
     apiKey: string,
-    model = 'llama-3.3-70b-versatile',
+    model = 'openai/gpt-oss-120b',
     maxConcurrency = 8,
     baseUrl = 'https://api.groq.com/openai/v1',
     deadlineMs: number = DEFAULT_DEADLINE_MS
@@ -103,6 +104,9 @@ export class GroqProvider implements IProvider {
       if (res.status === 429 && isDailyLimitError(body)) {
         this.dailyLimitExhausted = true
         throw new Error(`Groq daily limit exceeded. ${body.slice(0, 200)}`)
+      }
+      if (res.status === 401 || res.status === 403) {
+        throw new AuthError(`Groq error ${res.status}: ${body}`, res.status, this.name)
       }
       throw new Error(`Groq error ${res.status}: ${body}`)
     }

@@ -1,5 +1,6 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 import { fetchWithRetry, createLimiter, isDailyLimitError } from './base.js'
+import { AuthError } from '../errors/types.js'
 
 interface OpenAIChoice {
   message: { content: string }
@@ -102,6 +103,9 @@ export class CerebrasProvider implements IProvider {
       if (res.status === 429 && isDailyLimitError(body)) {
         this.dailyLimitExhausted = true
         throw new Error(`Cerebras daily limit exceeded. ${body.slice(0, 200)}`)
+      }
+      if (res.status === 401 || res.status === 403) {
+        throw new AuthError(`Cerebras error ${res.status}: ${body}`, res.status, this.name)
       }
       throw new Error(`Cerebras error ${res.status}: ${body}`)
     }

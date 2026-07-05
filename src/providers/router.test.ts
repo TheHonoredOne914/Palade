@@ -2,25 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { FallbackProvider, AllProvidersExhaustedError } from './router.js'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 
-vi.mock('./backoff.js', () => ({
-  withExponentialBackoff: vi.fn(async (fn, options) => {
-    const { maxRetries, retryableErrors } = options
-    let attempt = 0
-    while (true) {
-      try {
-        return await fn()
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err))
-        const isRetryable = retryableErrors.some((msg: string) => error.message.includes(msg))
-        if (!isRetryable || attempt >= maxRetries) {
-          throw error
-        }
-        attempt++
-      }
-    }
-  }),
-}))
-
 function mockProvider(
   name: string,
   model: string,

@@ -1,5 +1,6 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 import { fetchWithRetry, createLimiter, isDailyLimitError } from './base.js'
+import { AuthError } from '../errors/types.js'
 
 const DEFAULT_DEADLINE_MS = 300_000
 
@@ -92,6 +93,9 @@ export class NvidiaProvider implements IProvider {
       if (res.status === 429 && isDailyLimitError(body)) {
         this.dailyLimitExhausted = true
         throw new Error(`NVIDIA daily limit exceeded. ${body.slice(0, 200)}`)
+      }
+      if (res.status === 401 || res.status === 403) {
+        throw new AuthError(`NVIDIA error ${res.status}: ${body}`, res.status, this.name)
       }
       throw new Error(`NVIDIA error ${res.status}: ${body}`)
     }

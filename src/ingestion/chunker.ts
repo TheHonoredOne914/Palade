@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import type { FileManifest, CodeChunk } from './types.js'
 import ts from 'typescript'
 
-const MAX_TOKENS = 6000
+export const MAX_TOKENS = 6000
 const CHUNK_LINES = 150
 const CHUNK_OVERLAP = 30
 const CHARS_PER_TOKEN = 4

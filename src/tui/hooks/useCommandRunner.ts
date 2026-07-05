@@ -15,6 +15,7 @@ import {
   runTargetsList,
 } from '../../cli/commands/targets.js'
 import { CliExitError } from '../../errors/types.js'
+import { formatErrorMessages } from '../../errors/handler.js'
 
 interface CommandRunnerOptions {
   config?: PaladeConfig
@@ -171,6 +172,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               base: flag('base') ?? 'main',
               ci: hasFlag('ci'),
               signal: runSignal,
+              tui: true,
             })
             break
           }
@@ -212,7 +214,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
           }
 
           case 'init': {
-            await initCommand({ yes: hasFlag('yes') || hasFlag('y'), signal: runSignal })
+            await initCommand({ yes: hasFlag('yes') || hasFlag('y'), signal: runSignal, tui: true })
             break
           }
 
@@ -261,8 +263,10 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
             opts.appendLine({ type: 'dim', text: err.message })
           }
         } else {
-          const msg = err instanceof Error ? err.message : String(err)
-          opts.appendLine({ type: 'error', text: msg })
+          for (const line of formatErrorMessages(err)) {
+            if (!line) continue
+            opts.appendLine({ type: 'error', text: line })
+          }
         }
       } finally {
         const current = opts.getAbortSignal?.()

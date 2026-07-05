@@ -1,7 +1,8 @@
 import type { CodeChunk } from '../ingestion/types.js'
+import { estimateTokens, MAX_TOKENS } from '../ingestion/chunker.js'
 
 const SOFT_TOKEN_LIMIT = 16_000
-const HARD_CHUNK_LIMIT = 6_000
+const HARD_CHUNK_LIMIT = MAX_TOKENS
 
 function splitChunk(chunk: CodeChunk): CodeChunk[] {
   const lines = chunk.content.split('\n')
@@ -73,10 +74,6 @@ function splitChunk(chunk: CodeChunk): CodeChunk[] {
       tokenCount: estimateTokens(rightContent),
     },
   ]
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4)
 }
 
 export function estimateTotalTokens(chunks: CodeChunk[]): number {

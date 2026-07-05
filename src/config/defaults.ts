@@ -1,4 +1,6 @@
 import { PaladeConfig } from './schema.js'
+import { SEVERITY_PENALTY } from '../agents/base.js'
+import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS } from '../scorer/calculator.js'
 
 export const DEFAULT_CONSTITUTION_PATH = '.palade/constitution.md'
 export const DEFAULT_BADGE_PATH = 'palade-badge.svg'

@@ -14,15 +14,16 @@ import { mergeFindings } from './merger.js'
 import { scheduleBatches } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
-import { ReviewCancelledError } from '../errors/types.js'
+import { ReviewCancelledError, AuthError } from '../errors/types.js'
 
 // Providers don't expose a structured status/code field on thrown errors —
 // they're plain Errors with the status baked into the message string (see
 // src/providers/*.ts, e.g. `Cerebras error 401: ...`) — so we're stuck
 // pattern-matching on the message. Word-boundary regexes avoid false
 // positives on unrelated text that merely contains these digits.
-function isFatalAuthError(message: string): boolean {
-  const msg = message.toLowerCase()
+function isFatalAuthError(err: Error): boolean {
+  if (err instanceof AuthError) return true
+  const msg = err.message.toLowerCase()
   return (
     /\b401\b/.test(msg) ||
     /\b403\b/.test(msg) ||
@@ -72,7 +73,8 @@ export async function runSwarm(
   const modeAgents = getAgentsForMode(
     context.mode,
     context.modeConfig?.agentOverrides,
-    options.customAgents
+    options.customAgents,
+    options.agentCount
   )
 
   let agents: IAgent[] = modeAgents
@@ -124,6 +126,11 @@ export async function runSwarm(
     const allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
     try {
+      const batches = scheduleBatches(
+        reviewChunks,
+        options.softTokenLimit,
+        options.hardChunkLimit
+      )
       const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>
@@ -188,7 +195,7 @@ export async function runSwarm(
           const err = result.reason
           agentError = err instanceof Error ? err : new Error(String(err))
 
-          if (isFatalAuthError(agentError.message)) {
+          if (isFatalAuthError(agentError)) {
             fatalError = agentError
           }
         }
@@ -224,7 +231,7 @@ export async function runSwarm(
         throw new ReviewCancelledError()
       }
 
-      if (isFatalAuthError(agentError.message)) {
+      if (isFatalAuthError(agentError)) {
         runAbort.abort()
         throw agentError
       }
@@ -290,11 +297,11 @@ export async function runSwarm(
   if (!options.noVerdict) {
     const conflicts = detectConflicts(memory.getAll())
     for (const conflict of conflicts) {
-      // Low-confidence conflicts come from a near-tie in the harden/relax
-      // keyword tally (see verdict.ts's NEAR_TIE_MARGIN) — the "conflict" may
-      // not be real, so don't spend an arbitration call or persist an ADR for it.
-      if (conflict.confidence === 'low') continue
-
+      // detectConflicts already pre-filters out pairs the keyword tally is
+      // confident actually agree — everything it returns (including
+      // 'low'-confidence entries: near-ties, one-sided, or no keyword signal
+      // at all) is a real candidate. Let the LLM's own `is_conflict` field
+      // below make the final call instead of gating on the tally here.
       options.onVerdictDetected?.(
         conflict.filePath,
         conflict.sideA.agentName,
@@ -429,12 +436,12 @@ export async function runSwarm(
     synthesis = await analyzeSynthesis(finalFindings, crossAgentFindings, context)
     options.onSynthesisComplete?.(Date.now() - synthStart)
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err)
-    if (isFatalAuthError(errorMsg)) {
-      throw err instanceof Error ? err : new Error(errorMsg)
+    const error = err instanceof Error ? err : new Error(String(err))
+    if (isFatalAuthError(error)) {
+      throw error
     }
 
-    console.warn(chalk.red(`⚠ Synthesis failed: ${errorMsg}`))
+    console.warn(chalk.red(`⚠ Synthesis failed: ${error.message}`))
   }
 
   return {

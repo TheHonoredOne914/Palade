@@ -71,7 +71,7 @@ const GITIGNORE_APPEND = `
 .palade/
 `
 
-export async function initCommand(opts?: { yes?: boolean; signal?: AbortSignal }): Promise<void> {
+export async function initCommand(opts?: { yes?: boolean; signal?: AbortSignal; tui?: boolean }): Promise<void> {
   if (opts?.signal?.aborted) return
   const cwd = process.cwd()
 
@@ -87,8 +87,8 @@ export async function initCommand(opts?: { yes?: boolean; signal?: AbortSignal }
   if (ignoreExists) existingFiles.push('.palade/ignore')
 
   if (existingFiles.length > 0 && !opts?.yes) {
-    if (!process.stdin.isTTY) {
-      // Non-interactive: skip existing, only create missing
+    if (!process.stdin.isTTY || opts?.tui) {
+      // Non-interactive or TUI: skip existing, only create missing
     } else {
       const proceed = await askConfirm(
         `${existingFiles.length} config file(s) already exist. Create missing files and update .gitignore?`

@@ -40,6 +40,8 @@ export interface AgentFinding {
   /** The model that actually produced this finding. */
   model?: string
   complexity?: number
+  /** When this finding results from merging findings across agents, the original agent names. */
+  mergedFromAgents?: AgentName[]
 }
 
 export interface DiffContext {
@@ -107,6 +109,16 @@ export const SEVERITY_PENALTY: Record<Severity, number> = {
   medium: 2,
   low: 0.5,
   info: 0,
+}
+
+// A flat output cap starves large batches the same way combined.ts's flat cap
+// starved multi-domain calls: more chunks reviewed means more potential
+// findings, so the JSON array gets cut off mid-stream (see
+// salvageTruncatedArray, which exists to patch over exactly this). Scale the
+// budget with batch size using the same shape as combined.ts's
+// `Math.max(8192, domains.length * 1500)`.
+export function computeMaxTokens(chunkCount: number): number {
+  return Math.max(4096, chunkCount * 1000)
 }
 
 export function buildChunkContext(chunks: CodeChunk[]): string {
@@ -497,7 +509,7 @@ export abstract class BaseSpecialistAgent implements IAgent {
       const response = await provider.complete({
         systemPrompt,
         userPrompt,
-        maxTokens: 4096,
+        maxTokens: computeMaxTokens(chunks.length),
         signal,
       })
       const findings = validateAndFingerprintFindings(

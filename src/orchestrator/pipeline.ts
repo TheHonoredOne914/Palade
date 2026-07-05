@@ -127,8 +127,46 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   // pristine chunk corpus BEFORE mutating any chunk.content — otherwise an
   // earlier chunk's injected foreign-code block would leak into the retrieved
   // context of later chunks, making the result order-dependent.
+  // Merge context from both sources, dedup by chunk id to avoid duplicates.
+  function mergeContexts(
+    retrieved: string,
+    keyword: string
+  ): string {
+    if (!retrieved) return keyword
+    if (!keyword) return retrieved
+    const seen = new Set<string>()
+    const blocks: string[] = []
+    for (const src of [retrieved, keyword]) {
+      const lines = src.split('\n')
+      let i = 0
+      while (i < lines.length) {
+        if (lines[i].startsWith('// --- ')) {
+          const key = lines[i]
+          if (!seen.has(key)) {
+            seen.add(key)
+            const blockLines: string[] = [lines[i]]
+            i++
+            while (i < lines.length && !lines[i].startsWith('// --- ')) {
+              blockLines.push(lines[i])
+              i++
+            }
+            blocks.push(blockLines.join('\n'))
+          } else {
+            i++
+            while (i < lines.length && !lines[i].startsWith('// --- ')) {
+              i++
+            }
+          }
+        } else {
+          i++
+        }
+      }
+    }
+    if (blocks.length === 0) return ''
+    return `\n\n/* [REPOSITORY CONTEXT] */\n${blocks.join('\n\n')}\n/* [END REPOSITORY CONTEXT] */\n\n`
+  }
   const contextPrefixes = activeChunks.map(
-    (chunk) => buildRetrievedContext(chunk, chunks) + getKeywordContext(chunk, keywordIndex)
+    (chunk) => mergeContexts(buildRetrievedContext(chunk, chunks), getKeywordContext(chunk, keywordIndex))
   )
   activeChunks.forEach((chunk, i) => {
     const contextPrefix = contextPrefixes[i]

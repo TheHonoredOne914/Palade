@@ -70,7 +70,8 @@ function scoreRelatedChunk(
   candidate: CodeChunk,
   subjectImports: string[],
   subjectTerms: Set<string>,
-  subjectTestBases: string[]
+  subjectTestBases: string[],
+  subjectBase?: string
 ): number {
   if (candidate.id === subject.id) return 0
 
@@ -86,15 +87,16 @@ function scoreRelatedChunk(
     if (candidateBase === testBase) score += 8
   }
 
-  const subjectBase = withoutExtension(toPosix(subject.filePath)).split('/').pop()
   if (subjectBase && candidate.content.includes(subjectBase)) score += 4
 
-  const candidateTerms = identifierTerms(candidate.content)
-  let overlap = 0
-  for (const term of subjectTerms) {
-    if (candidateTerms.has(term)) overlap++
+  if (subjectTerms.size > 0) {
+    const candidateTerms = identifierTerms(candidate.content)
+    let overlap = 0
+    for (const term of subjectTerms) {
+      if (candidateTerms.has(term)) overlap++
+    }
+    score += Math.min(overlap, 4)
   }
-  score += Math.min(overlap, 4)
 
   return score
 }
@@ -104,11 +106,12 @@ export function buildRetrievedContext(subject: CodeChunk, allChunks: CodeChunk[]
   const subjectImports = extractImportSpecifiers(subject.content)
   const subjectTerms = identifierTerms(subject.content)
   const subjectTestBases = expectedTestBases(subject.filePath)
+  const subjectBase = withoutExtension(toPosix(subject.filePath)).split('/').pop()
 
   const related = allChunks
     .map((chunk) => ({
       chunk,
-      score: scoreRelatedChunk(subject, chunk, subjectImports, subjectTerms, subjectTestBases),
+      score: scoreRelatedChunk(subject, chunk, subjectImports, subjectTerms, subjectTestBases, subjectBase),
     }))
     .filter((entry) => entry.score >= 4)
     .sort((a, b) => b.score - a.score)

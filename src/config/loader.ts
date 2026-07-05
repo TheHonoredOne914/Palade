@@ -53,7 +53,6 @@ function buildEnvConfig(): Partial<PaladeConfig> {
     providers.nvidia = {
       apiKey: nvidiaKeys[0],
       apiKeys: nvidiaKeys.length > 1 ? nvidiaKeys : undefined,
-      model: 'minimaxai/minimax-m3',
     }
   }
 
@@ -70,7 +69,6 @@ function buildEnvConfig(): Partial<PaladeConfig> {
     providers['opencode-zen'] = {
       apiKey: opencodeZenKeys[0],
       apiKeys: opencodeZenKeys.length > 1 ? opencodeZenKeys : undefined,
-      model: 'deepseek-v4-flash-free',
     }
   }
 

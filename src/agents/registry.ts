@@ -40,7 +40,8 @@ export const AGENT_REGISTRY: IAgent[] = Array.from(BUILTIN_AGENTS.values())
 export function getAgentsForMode(
   mode: ReviewMode,
   agentOverrides?: AgentName[],
-  customAgentDefs: CustomAgentDefinition[] = []
+  customAgentDefs: CustomAgentDefinition[] = [],
+  agentCount?: number
 ): IAgent[] {
   const customAgents = new Map<string, CustomAgent>()
   for (const def of customAgentDefs) {
@@ -74,5 +75,11 @@ export function getAgentsForMode(
     const ghostAgentName = GHOST_MODE.agentOverrides?.[0] ?? 'deadCode'
     return [allAgents.get(ghostAgentName) ?? BUILTIN_AGENTS.get('deadCode')!]
   }
-  return [...AGENT_REGISTRY, ...customAgents.values()]
+  // Custom agents are additive and never counted against the cap — the cap
+  // is on built-in specialist parallelism (matches config.swarm.agentCount's
+  // usage in the cost estimator and CLI progress counters, see
+  // src/ingestion/estimator.ts and src/cli/commands/diff.ts).
+  const builtIns =
+    agentCount && agentCount > 0 ? AGENT_REGISTRY.slice(0, agentCount) : AGENT_REGISTRY
+  return [...builtIns, ...customAgents.values()]
 }

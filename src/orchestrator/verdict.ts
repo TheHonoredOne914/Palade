@@ -16,10 +16,13 @@ export interface Conflict {
   sideA: AgentFinding
   sideB: AgentFinding
   /**
-   * How confident the keyword-based valence tally is in this being a real
-   * conflict. 'low' when either side's harden/relax hit count was a
-   * near-tie (margin <= 1), since the harden-vs-relax call for that side
-   * could easily have gone the other way.
+   * How confident the cheap keyword-based valence tally is that this is a
+   * real conflict — informational only. 'high' means the tally itself found
+   * clear opposite harden/relax signals; 'low' covers near-ties, one-sided
+   * signals, and pairs with no keyword signal at all. Every entry here still
+   * gets sent to the LLM for arbitration — the tally is only used upstream
+   * (in detectConflicts) to skip pairs it's confident actually AGREE, not to
+   * decide what counts as a conflict.
    */
   confidence: 'low' | 'high'
 }
@@ -46,6 +49,16 @@ const HARDEN_KEYWORDS = [
   'guard',
   'require',
   'prevent',
+  'enforce',
+  'sanitize',
+  'escape',
+  'restrict',
+  'fail-safe',
+  'timeout',
+  'reject',
+  'deny',
+  'authenticate',
+  'authorize',
 ]
 
 const RELAX_KEYWORDS = [
@@ -63,6 +76,15 @@ const RELAX_KEYWORDS = [
   'ignore',
   'simplify',
   'fast',
+  'assume',
+  'allow',
+  'permit',
+  'shortcut',
+  'optimize',
+  'lazy',
+  'defer',
+  'speed',
+  'permissive',
 ]
 
 interface ValenceResult {
@@ -131,21 +153,36 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
         const valA = getValence(a.title + ' ' + a.description)
         const valB = getValence(b.title + ' ' + b.description)
 
-        // If opposite valences, it's a conflict
-        if (
+        // Cheap pre-filter: skip only the pairs the keyword tally is confident
+        // AGREE (same non-neutral direction, no near-tie on either side) — those
+        // are almost certainly not a real conflict, so don't burn an LLM call.
+        // Everything else — opposite valences, a neutral side (no keyword hit
+        // at all, e.g. a real conflict phrased without any tracked word), or a
+        // near-tie — is a candidate: the actual conflict/no-conflict call is
+        // made by the LLM's own `is_conflict` field in arbitrateConflict, not
+        // by this tally.
+        const bothAgree =
+          valA.valence !== 'neutral' &&
+          valA.valence === valB.valence &&
+          valA.margin > NEAR_TIE_MARGIN &&
+          valB.margin > NEAR_TIE_MARGIN
+        if (bothAgree) continue
+
+        const opposite =
           (valA.valence === 'harden' && valB.valence === 'relax') ||
           (valA.valence === 'relax' && valB.valence === 'harden')
-        ) {
-          const nearTie = valA.margin <= NEAR_TIE_MARGIN || valB.margin <= NEAR_TIE_MARGIN
-          conflicts.push({
-            filePath,
-            lineStart: Math.min(a.lineStart!, b.lineStart!),
-            lineEnd: Math.max(a.lineEnd!, b.lineEnd!),
-            sideA: a,
-            sideB: b,
-            confidence: nearTie ? 'low' : 'high',
-          })
-        }
+        const nearTie = valA.margin <= NEAR_TIE_MARGIN || valB.margin <= NEAR_TIE_MARGIN
+
+        conflicts.push({
+          filePath,
+          lineStart: Math.min(a.lineStart!, b.lineStart!),
+          lineEnd: Math.max(a.lineEnd!, b.lineEnd!),
+          sideA: a,
+          sideB: b,
+          // 'high' only when the keyword tally itself clearly signals a
+          // contradiction; everything else is 'low' but still arbitrated.
+          confidence: opposite && !nearTie ? 'high' : 'low',
+        })
       }
     }
   }

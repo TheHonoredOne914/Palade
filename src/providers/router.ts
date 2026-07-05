@@ -9,7 +9,6 @@ import { OpenRouterProvider } from './openrouter.js'
 import { OpenCodeZenProvider } from './opencode-zen.js'
 import OllamaProvider from './ollama.js'
 import { ProviderPool } from './pool.js'
-import { withExponentialBackoff } from './backoff.js'
 
 export class AllProvidersExhaustedError extends Error {
   constructor(public readonly attempts: { provider: string; finalError: string }[]) {
@@ -194,14 +193,7 @@ export class FallbackProvider implements IProvider {
       }
 
       try {
-        const response = await withExponentialBackoff(() => provider.complete(req), {
-          maxRetries: 2,
-          baseDelayMs: 1000,
-          maxDelayMs: 15000,
-          retryableErrors: RETRYABLE_KEYWORDS,
-          fatalErrors: FATAL_KEYWORDS,
-          signal: req.signal,
-        })
+        const response = await provider.complete(req)
 
         if (provider !== primaryProvider) {
           this._fallbackCount++

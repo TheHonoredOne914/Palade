@@ -117,27 +117,58 @@ export function writeHistory(
   }
 }
 
+// Advisory lock so two concurrent appendEntry() calls (e.g. `review` and
+// `diff` running at once) don't both read-modify-write and clobber each
+// other's entry. `wx` fails if the lockfile already exists, giving us
+// exclusive-create semantics without a locking dependency.
+function acquireLock(historyPath: string): string {
+  const lockPath = `${historyPath}.lock`
+  const maxAttempts = 50 // ~1s total wait
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      writeFileSync(lockPath, String(process.pid), { flag: 'wx' })
+      return lockPath
+    } catch {
+      const until = Date.now() + 20
+      while (Date.now() < until) {
+        // ponytail: busy-wait spin, fine for a ~20ms lock wait; a stale
+        // lock (crashed process) still self-clears after maxAttempts below.
+      }
+    }
+  }
+  return lockPath
+}
+
+function releaseLock(lockPath: string): void {
+  try {
+    unlinkSync(lockPath)
+  } catch {
+    // already gone — nothing to clean up
+  }
+}
+
 export function appendEntry(
   historyPath: string,
   entry: ScoreHistoryEntry,
   maxEntries: number = MAX_HISTORY_ENTRIES
 ): ScoreHistoryEntry[] {
-  const existing = readHistory(historyPath)
-  existing.push(entry)
-  writeHistory(historyPath, existing, maxEntries)
-  // Return what was actually persisted — the untrimmed array would diverge
-  // from the next readHistory() once the retention cap kicks in.
-  return existing.slice(-maxEntries)
-}
-
-export function getLatestEntry(historyPath: string): ScoreHistoryEntry | null {
-  const entries = readHistory(historyPath)
-  if (entries.length === 0) return null
-  return entries[entries.length - 1]
+  const lockPath = acquireLock(historyPath)
+  try {
+    const existing = readHistory(historyPath)
+    existing.push(entry)
+    writeHistory(historyPath, existing, maxEntries)
+    // Return what was actually persisted — the untrimmed array would diverge
+    // from the next readHistory() once the retention cap kicks in.
+    return existing.slice(-maxEntries)
+  } finally {
+    releaseLock(lockPath)
+  }
 }
 
 export function getPreviousScore(historyPath: string): number | null {
-  const entries = readHistory(historyPath)
+  // Only 'full' review entries are comparable — a prior 'diff' score covers
+  // a different (smaller) file set, same reasoning as scoreCommand's filter.
+  const entries = readHistory(historyPath).filter((e) => e.kind !== 'diff')
   if (entries.length === 0) return null
   return entries[entries.length - 1].score
 }
