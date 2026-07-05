@@ -28,7 +28,7 @@ export class CerebrasProvider implements IProvider {
 
   constructor(
     apiKey: string,
-    model = 'llama-3.3-70b',
+    model = 'gpt-oss-120b',
     maxConcurrency = 4,
     baseUrl = 'https://api.cerebras.ai/v1',
     deadlineMs: number = DEFAULT_DEADLINE_MS

@@ -9,7 +9,7 @@ export default class OllamaProvider implements IProvider {
   private readonly limiter: ReturnType<typeof createLimiter>
 
   constructor(model?: string, baseUrl?: string, maxConcurrency = 4) {
-    this.model = model ?? 'codellama:13b'
+    this.model = model ?? 'minimax-m2.5'
     this.baseUrl = baseUrl ?? 'http://localhost:11434'
     this.limiter = createLimiter(maxConcurrency)
   }
