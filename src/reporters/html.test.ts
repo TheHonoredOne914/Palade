@@ -103,7 +103,9 @@ describe('reporters/html', () => {
     if (tmpPath) {
       try {
         rmSync(tmpPath, { force: true })
-      } catch {}
+      } catch {
+        // best-effort cleanup
+      }
     }
   })
 

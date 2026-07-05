@@ -266,9 +266,10 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
         filePath = undefined
       }
 
-      let lineStart =
+      const lineStart =
         typeof obj.lineStart === 'number' && !isNaN(obj.lineStart) ? obj.lineStart : undefined
-      let lineEnd = typeof obj.lineEnd === 'number' && !isNaN(obj.lineEnd) ? obj.lineEnd : undefined
+      const lineEnd =
+        typeof obj.lineEnd === 'number' && !isNaN(obj.lineEnd) ? obj.lineEnd : undefined
 
       const tags = Array.isArray(obj.tags) ? obj.tags.filter((t) => typeof t === 'string') : []
 

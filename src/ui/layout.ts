@@ -4,6 +4,7 @@ import type { AgentFinding } from '../agents/base.js'
 
 // Match full SGR escape sequences, including multi-parameter truecolor codes
 // like \x1b[38;2;R;G;Bm that chalk.hex() (used throughout theme.ts) emits.
+// eslint-disable-next-line no-control-regex -- matching the ESC control char is the point
 const ANSI_RE = /\u001b\[[0-9;]*m/g
 
 function visibleLen(s: string): number {
