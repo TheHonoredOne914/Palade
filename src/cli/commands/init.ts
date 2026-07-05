@@ -10,7 +10,7 @@ export default {
   
   // swarm: {
   //   agentCount: 6,
-  //   economyMode: true, // Set to false to opt-in to max per-domain prompt richness at higher cost
+  //   economyMode: false, // Set to true to opt into cheaper combined-call mode
   // }
 }
 `

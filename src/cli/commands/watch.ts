@@ -7,8 +7,7 @@ import { walkProject } from '../../ingestion/walker.js'
 import { chunkFiles } from '../../ingestion/chunker.js'
 import { scheduleBatches } from '../../orchestrator/scheduler.js'
 import type { AgentFinding, AgentContext } from '../../agents/base.js'
-import { MaintainabilityAgent } from '../../agents/specialist/maintainability.js'
-import { ArchitectureAgent } from '../../agents/specialist/architecture.js'
+import { getAgentsForMode } from '../../agents/registry.js'
 import { theme } from '../../ui/theme.js'
 import { formatDriftAlert } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
@@ -135,8 +134,8 @@ export async function watchCommand(opts: {
         mode: 'standard',
       }
 
-      // Run lightweight agents
-      const agents = [new ArchitectureAgent(), new MaintainabilityAgent()]
+      // Run the full agent set for the current mode/config, mirroring review.
+      const agents = getAgentsForMode('standard')
       const allFindings: AgentFinding[] = []
       const batches = scheduleBatches(chunks)
 

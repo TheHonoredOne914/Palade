@@ -16,13 +16,11 @@ import type { CustomAgentDefinition } from './schema.js'
 
 export class CustomAgent implements IAgent {
   readonly name: AgentName
-  readonly domain: string
   private readonly systemPrompt: string
   private readonly penaltyOverrides: Partial<Record<Severity, number>>
 
   constructor(def: CustomAgentDefinition) {
     this.name = def.name
-    this.domain = def.domain
     this.systemPrompt = def.systemPrompt
     this.penaltyOverrides = def.severityPenalty ?? {}
   }

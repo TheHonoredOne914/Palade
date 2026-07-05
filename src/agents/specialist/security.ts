@@ -46,7 +46,6 @@ Additional security focus:
 
 export class SecurityAgent extends BaseSpecialistAgent {
   name: AgentName = 'security'
-  domain = 'security'
 
   protected getSystemPrompt(): string {
     return SYSTEM_PROMPT

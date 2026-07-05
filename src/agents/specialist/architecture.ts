@@ -25,13 +25,13 @@ Example output:
 [
   {
     "severity": "high",
-    "title": "SQL query built with string concatenation",
-    "description": "The getUserById function builds a SQL query by concatenating user input directly into the query string. This allows SQL injection. Use parameterized queries instead.",
-    "filePath": "src/db/users.ts",
-    "lineStart": 34,
-    "lineEnd": 38,
-    "symbolName": "getUserById",
-    "tags": ["sql", "injection", "security"]
+    "title": "Circular dependency between service and repository layers",
+    "description": "OrderService imports PaymentRepository to check payment status, and PaymentRepository imports OrderService to look up order totals. This circular dependency couples two layers that should be independently testable and risks module-initialization-order bugs.",
+    "filePath": "src/services/orderService.ts",
+    "lineStart": 12,
+    "lineEnd": 18,
+    "symbolName": "OrderService",
+    "tags": ["architecture", "circular-dependency"]
   }
 ]
 
@@ -46,7 +46,6 @@ Additional architecture focus:
 
 export class ArchitectureAgent extends BaseSpecialistAgent {
   name: AgentName = 'architecture'
-  domain = 'architecture'
 
   protected getSystemPrompt(): string {
     return SYSTEM_PROMPT

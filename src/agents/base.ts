@@ -87,11 +87,17 @@ export interface AgentContext {
   spec?: string
   /** The formal constitution with behavioral guidelines for the agents */
   constitution?: string
+  /**
+   * Whether to append the built-in Ponytail/Karpathy/GStack skills block to
+   * this agent's system prompt. Defaults to true (unset === enabled) so
+   * behavior is unchanged unless a caller explicitly opts out via
+   * `swarm.includeSkills: false` in config.
+   */
+  includeSkills?: boolean
 }
 
 export interface IAgent {
   name: AgentName
-  domain: string
   analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]>
 }
 
@@ -113,6 +119,66 @@ export function buildChunkContext(chunks: CodeChunk[]): string {
       return `=== FILE: ${c.filePath} (lines ${c.startLine}–${c.endLine}) ===\n${numberedContent}`
     })
     .join('\n\n')
+}
+
+/**
+ * Best-effort recovery for a JSON array that was cut off mid-stream (typically
+ * a max_tokens truncation). Scans for complete top-level `{...}` objects
+ * inside the array and JSON.parses each individually, discarding only the
+ * dangling/incomplete tail object instead of the whole batch.
+ */
+function salvageTruncatedArray(text: string): unknown[] {
+  const arrayStart = text.indexOf('[')
+  if (arrayStart === -1) return []
+
+  const salvaged: unknown[] = []
+  let depth = 0
+  let inString = false
+  let escaped = false
+  let objStart = -1
+
+  for (let i = arrayStart + 1; i < text.length; i++) {
+    const ch = text[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (ch === '\\') {
+        escaped = true
+      } else if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+      continue
+    }
+
+    if (ch === '{') {
+      if (depth === 0) objStart = i
+      depth++
+    } else if (ch === '}') {
+      depth--
+      if (depth === 0 && objStart !== -1) {
+        const candidate = text.slice(objStart, i + 1)
+        try {
+          salvaged.push(JSON.parse(candidate))
+        } catch {
+          // Incomplete/malformed fragment — skip it.
+        }
+        objStart = -1
+      }
+    } else if (ch === '[') {
+      depth++
+    } else if (ch === ']') {
+      depth--
+      if (depth < 0) break // reached the outer array's closing bracket
+    }
+  }
+
+  return salvaged
 }
 
 export function parseFindingsResponse(raw: string, agentName: AgentName): AgentFinding[] {
@@ -154,8 +220,21 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
     try {
       parsed = JSON.parse(cleaned.replace(/,\s*([\]}])/g, '$1'))
     } catch {
-      console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
-      return []
+      // Likely a response truncated mid-array (e.g. hit max_tokens). Rather
+      // than dropping the whole batch's findings, salvage whichever complete
+      // top-level objects we can still extract.
+      const salvaged = salvageTruncatedArray(cleaned)
+      if (salvaged.length > 0) {
+        console.warn(
+          chalk.yellow(
+            `⚠ ${agentName}: response appears truncated — salvaged ${salvaged.length} finding(s) from partial JSON`
+          )
+        )
+        parsed = salvaged
+      } else {
+        console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
+        return []
+      }
     }
   }
 
@@ -261,8 +340,11 @@ export function buildSystemPrompt(
     prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}`
   }
 
-  // Embed Ponytail, Karpathy, and GStack philosophies into every agent's baseline behavior
-  prompt += `\n\n${HARDCODED_SKILLS}`
+  // Embed Ponytail, Karpathy, and GStack philosophies into every agent's baseline behavior,
+  // unless explicitly disabled (default: enabled) to save the ~3.5KB per call.
+  if (context.includeSkills !== false) {
+    prompt += `\n\n${HARDCODED_SKILLS}`
+  }
 
   if (context.constitution) {
     prompt += `\n\nAGENT CONSTITUTION (BEHAVIORAL GUIDELINES):\n${context.constitution}`
@@ -344,7 +426,6 @@ Reply strictly YES or NO.`,
 
 export abstract class BaseSpecialistAgent implements IAgent {
   abstract name: AgentName
-  abstract domain: string
   protected abstract getSystemPrompt(context?: AgentContext): string
 
   async analyze(

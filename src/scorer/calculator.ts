@@ -3,6 +3,15 @@ import { SEVERITY_PENALTY } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from './types.js'
 
+// Floors/caps are intentionally asymmetric: a single category is allowed to
+// sink further (floor 10, cap 90) than the blended overall score (floor 5,
+// cap 95), so one bad category can hurt the total without a single agent
+// being able to zero it out entirely.
+const CATEGORY_SCORE_FLOOR = 10
+const CATEGORY_PENALTY_CAP = 90
+const TOTAL_SCORE_FLOOR = 5
+const TOTAL_PENALTY_CAP = 95
+
 /**
  * Per-finding penalty. Honors an explicit `scorePenalty` when the producing
  * agent set one (custom agents with severityPenalty overrides), and falls back
@@ -55,9 +64,9 @@ export function calculateCategoryScore(
     }
   }
 
-  // Cap category penalty at 90 so a single category can't zero out the score
-  const cappedPenalty = Math.min(penalty, 90)
-  const score = Math.max(10, Math.round(100 - cappedPenalty))
+  // Cap category penalty so a single category can't zero out the score
+  const cappedPenalty = Math.min(penalty, CATEGORY_PENALTY_CAP)
+  const score = Math.max(CATEGORY_SCORE_FLOOR, Math.round(100 - cappedPenalty))
 
   return {
     category,
@@ -118,7 +127,10 @@ export function calculateScore(
   const avgCategoryScore =
     categoryScores.reduce((sum, c) => sum + c.score, 0) / categoryScores.length
   // Blend: 60% average category score, 40% penalty-based score
-  const penaltyScore = Math.max(5, Math.round(100 - Math.min(totalPenalty, 95)))
+  const penaltyScore = Math.max(
+    TOTAL_SCORE_FLOOR,
+    Math.round(100 - Math.min(totalPenalty, TOTAL_PENALTY_CAP))
+  )
   const total = Math.round(avgCategoryScore * 0.6 + penaltyScore * 0.4)
 
   const breakdown: ScoreBreakdown = {

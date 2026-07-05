@@ -5,6 +5,7 @@ import type { AgentFinding, AgentContext, AgentName, IAgent } from '../agents/ba
 import { getAgentsForMode } from '../agents/registry.js'
 import { synthesize as analyzeSynthesis } from '../agents/synthesis.js'
 import { CombinedAnalyzer } from '../agents/combined.js'
+import { CustomAgent } from '../agents/custom/agent.js'
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
 import { triageFiles } from './triage.js'
@@ -40,6 +41,14 @@ export async function runSwarm(
   const startTime = Date.now()
 
   // Pass 1: Triage — reduce 400+ chunks to ~45 high-value chunks (unless exhaustive)
+  if (!manifests && !options.exhaustive) {
+    console.warn(
+      chalk.yellow(
+        '\n⚠ No file manifests provided — skipping triage and token-budget enforcement. ' +
+          'All chunks will be reviewed regardless of maxReviewTokens.'
+      )
+    )
+  }
   const reviewChunks =
     manifests && !options.exhaustive
       ? await triageFiles(manifests, allChunks, {
@@ -48,15 +57,21 @@ export async function runSwarm(
         })
       : allChunks
 
-  // Economy mode replaces the N parallel per-domain agents with a single
-  // combined multi-domain analyzer that reviews all lenses in one provider
-  // call per batch. This cuts the ~6x resend of the same chunk content.
-  // Tradeoff: latency up, per-domain prompt richness down — see combined.ts.
-  // Custom agents always run as separate per-domain calls even in economy
-  // mode, since they can't be merged into the combined prompt reliably.
+  // Economy mode replaces the N parallel per-domain BUILT-IN agents with a
+  // single combined multi-domain analyzer that reviews all lenses in one
+  // provider call per batch. This cuts the ~6x resend of the same chunk
+  // content. Tradeoff: latency up, per-domain prompt richness down — see
+  // combined.ts. Custom agents still run as separate per-domain calls even in
+  // economy mode (alongside the combined analyzer), since they can't be
+  // merged into the combined prompt reliably.
+  const modeAgents = getAgentsForMode(
+    context.mode,
+    context.modeConfig?.agentOverrides,
+    options.customAgents
+  )
   const agents: IAgent[] = options.economyMode
-    ? [new CombinedAnalyzer()]
-    : getAgentsForMode(context.mode, context.modeConfig?.agentOverrides, options.customAgents)
+    ? [new CombinedAnalyzer(), ...modeAgents.filter((a) => a instanceof CustomAgent)]
+    : modeAgents
   const memory = new AgentMemory()
 
   const agentTimings: Partial<Record<AgentName, number>> = {}
@@ -75,7 +90,12 @@ export async function runSwarm(
     let allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
     try {
-      const batches = scheduleBatches(reviewChunks)
+      // batchTokenLimit isn't (yet) a formal field on SwarmOptions — read it
+      // defensively so callers can override the scheduler's default soft
+      // token limit without requiring a type change here.
+      const batchTokenLimit = (options as SwarmOptions & { batchTokenLimit?: number })
+        .batchTokenLimit
+      const batches = scheduleBatches(reviewChunks, batchTokenLimit)
       const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>
@@ -200,6 +220,11 @@ export async function runSwarm(
   if (!options.noVerdict) {
     const conflicts = detectConflicts(memory.getAll())
     for (const conflict of conflicts) {
+      // Low-confidence conflicts come from a near-tie in the harden/relax
+      // keyword tally (see verdict.ts's NEAR_TIE_MARGIN) — the "conflict" may
+      // not be real, so don't spend an arbitration call or persist an ADR for it.
+      if (conflict.confidence === 'low') continue
+
       options.onVerdictDetected?.(
         conflict.filePath,
         conflict.sideA.agentName,
@@ -226,7 +251,7 @@ export async function runSwarm(
         // Inject into findings for synthesis
         finalFindings.push({
           id: crypto.randomUUID(),
-          agentName: 'Architect',
+          agentName: 'architecture',
           title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
           description: `Decision: ${verdict.decision}\nTradeoff: ${verdict.tradeoff_accepted}${savedNote}`,
           filePath: conflict.filePath,
@@ -244,7 +269,7 @@ export async function runSwarm(
   // suppress ADR persistence and description mutation here just as it gates the
   // arbitration block above.
   for (const finding of options.noVerdict ? [] : finalFindings) {
-    if (finding.agentName === 'Architect' && finding.title.startsWith('[VERDICT]')) {
+    if (finding.agentName === 'architecture' && finding.title.startsWith('[VERDICT]')) {
       // Parse tradeoff out of description. Models sometimes emit a literal
       // backslash-n instead of a real newline inside the JSON string, so
       // split on both.
@@ -298,15 +323,26 @@ export async function runSwarm(
           confidence: parseInt(confidenceStr, 10),
           losing_side: losingStr,
         }
-        try {
-          const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
-          finding.description += `\nSaved as: ${slug}.md`
-        } catch (err) {
+        // A reworded/relabeled combined-mode output can fail the "Decision:"/
+        // "Tradeoff:" line matching above, leaving both fields blank — don't
+        // persist an empty ADR to disk in that case.
+        if (!decisionStr && !tradeoffStr) {
           console.warn(
             chalk.yellow(
-              `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+              `⚠ Could not parse economy-mode verdict for ${finding.filePath ?? 'unknown'} (empty decision/tradeoff) — skipping ADR save`
             )
           )
+        } else {
+          try {
+            const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
+            finding.description += `\nSaved as: ${slug}.md`
+          } catch (err) {
+            console.warn(
+              chalk.yellow(
+                `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+              )
+            )
+          }
         }
       }
     }

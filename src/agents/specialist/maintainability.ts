@@ -24,14 +24,14 @@ Each finding must match this exact schema:
 Example output:
 [
   {
-    "severity": "high",
-    "title": "SQL query built with string concatenation",
-    "description": "The getUserById function builds a SQL query by concatenating user input directly into the query string. This allows SQL injection. Use parameterized queries instead.",
-    "filePath": "src/db/users.ts",
-    "lineStart": 34,
-    "lineEnd": 38,
-    "symbolName": "getUserById",
-    "tags": ["sql", "injection", "security"]
+    "severity": "medium",
+    "title": "Duplicated validation logic across two modules",
+    "description": "The same email-format check is copy-pasted in signupForm.ts and profileForm.ts with slightly different regexes, so a future fix to one will silently miss the other. Extract a shared isValidEmail helper.",
+    "filePath": "src/forms/signupForm.ts",
+    "lineStart": 22,
+    "lineEnd": 26,
+    "symbolName": "validateEmail",
+    "tags": ["duplication", "naming"]
   }
 ]
 
@@ -46,7 +46,6 @@ Additional maintainability focus:
 
 export class MaintainabilityAgent extends BaseSpecialistAgent {
   name: AgentName = 'maintainability'
-  domain = 'maintainability'
 
   protected getSystemPrompt(): string {
     return SYSTEM_PROMPT

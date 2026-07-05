@@ -1,17 +1,24 @@
 import type { CompletionRequest, CompletionResponse, IProvider } from './base.js'
+import { createLimiter } from './base.js'
 import { OllamaNotRunningError } from '../errors/types.js'
 
 export default class OllamaProvider implements IProvider {
   name = 'ollama'
   model: string
   private baseUrl: string
+  private readonly limiter: ReturnType<typeof createLimiter>
 
-  constructor(model?: string, baseUrl?: string) {
+  constructor(model?: string, baseUrl?: string, maxConcurrency = 4) {
     this.model = model ?? 'codellama:13b'
     this.baseUrl = baseUrl ?? 'http://localhost:11434'
+    this.limiter = createLimiter(maxConcurrency)
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
+    return this.limiter(() => this.doComplete(req))
+  }
+
+  private async doComplete(req: CompletionRequest): Promise<CompletionResponse> {
     const start = performance.now()
 
     const body = {
@@ -23,6 +30,7 @@ export default class OllamaProvider implements IProvider {
       stream: false,
       options: {
         temperature: req.temperature ?? 0.0,
+        num_predict: req.maxTokens ?? 4096,
       },
     }
 
@@ -61,6 +69,14 @@ export default class OllamaProvider implements IProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    return true
+    try {
+      const res = await fetch(`${this.baseUrl}/api/tags`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(1500),
+      })
+      return res.ok
+    } catch {
+      return false
+    }
   }
 }

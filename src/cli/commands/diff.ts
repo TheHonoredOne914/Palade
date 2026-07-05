@@ -117,6 +117,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       totalChunks: chunks.length,
       mode: 'standard',
       diffContext,
+      includeSkills: config.swarm.includeSkills,
     }
 
     const agentCount = config.swarm.agentCount
@@ -150,7 +151,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
         customAgents: customAgentDefs,
         economyMode: config.swarm.economyMode,
         signal: opts.signal,
-      })
+      }, manifests)
       console.log(
         theme.success(
           `  Analysis complete — ${swarmResult.findings.length} findings in ${(swarmResult.durationMs / 1000).toFixed(1)}s`
@@ -214,6 +215,9 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       score: scoreResult.score,
       breakdown: scoreResult.breakdown,
       delta: scoreResult.delta,
+      // Distinguish changed-files-only scores from full-repo `review` scores
+      // so trend/baseline lookups don't mix the two.
+      kind: 'diff',
     })
 
     // Regenerate the score badge the same way `review` does, so it doesn't

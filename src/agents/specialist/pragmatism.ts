@@ -32,7 +32,6 @@ Focus on these principles:
 
 export class PragmatismAgent extends BaseSpecialistAgent {
   name: AgentName = 'pragmatism'
-  domain = 'pragmatism'
 
   protected getSystemPrompt(): string {
     return SYSTEM_PROMPT

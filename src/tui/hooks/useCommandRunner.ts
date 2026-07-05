@@ -7,6 +7,7 @@ import { diffCommand } from '../../cli/commands/diff.js'
 import { watchCommand } from '../../cli/commands/watch.js'
 import { scoreCommand } from '../../cli/commands/score.js'
 import { initCommand } from '../../cli/commands/init.js'
+import { decisionsCommand } from '../../cli/commands/decisions.js'
 import {
   runTargetsSearch,
   runTargetsAdd,
@@ -120,6 +121,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
         'format',
         'base',
         'file',
+        'days',
       ])
       const positional = rest.filter((r, i) => {
         if (r.startsWith('--')) return false
@@ -152,6 +154,12 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               format: flag('format'),
               open: hasFlag('no-open') ? false : hasFlag('open') ? true : undefined,
               quiet: false,
+              tui: true,
+              dryRun: hasFlag('dry-run'),
+              economy: hasFlag('economy'),
+              exhaustive: hasFlag('exhaustive'),
+              strictTriage: hasFlag('strict-triage'),
+              noVerdict: hasFlag('no-verdict'),
               signal: runSignal,
             })
             break
@@ -179,6 +187,14 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
 
           case 'score': {
             await scoreCommand({ history: hasFlag('history'), signal: runSignal })
+            break
+          }
+
+          case 'decisions': {
+            const action = positional[0]
+            const slug = positional[1]
+            const days = flag('days')
+            await decisionsCommand(action, slug, { days: days ? parseInt(days, 10) : undefined })
             break
           }
 

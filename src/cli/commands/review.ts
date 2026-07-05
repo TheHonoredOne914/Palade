@@ -6,7 +6,7 @@ import { loadCustomAgents } from '../../agents/custom/loader.js'
 import { launchPicker } from '../picker.js'
 import { runPipeline } from '../../orchestrator/pipeline.js'
 import { calculateScore } from '../../scorer/calculator.js'
-import { readHistory, appendEntry } from '../../scorer/history.js'
+import { readHistory, appendEntry, getPreviousScore } from '../../scorer/history.js'
 import { renderBadge, getScoreColor, getBadgeData } from '../../scorer/badge.js'
 import { reportJson } from '../../reporters/json.js'
 import { writeHtmlReport, startLocalServer } from '../../reporters/html.js'
@@ -84,7 +84,7 @@ export async function reviewCommand(
     !opts.glob &&
     !opts.pick
   ) {
-    if (process.stdin.isTTY) {
+    if (process.stdin.isTTY && !opts.tui) {
       opts.pick = true
     }
   }
@@ -161,6 +161,9 @@ export async function reviewCommand(
         console.log(
           theme.dim(`  + ${symbolChunks.length - 1} dependency file(s) traced (depth ${depth})`)
         )
+      }
+      if (deps.length > 10) {
+        console.log(theme.dim(`  + ${deps.length - 10} more dependencies truncated`))
       }
     }
   }
@@ -393,14 +396,7 @@ export async function reviewCommand(
 
   // 9. Calculate score
   const historyPath = join(projectRoot, config.score.historyFile)
-  const previousScore = (() => {
-    try {
-      const entries = readHistory(historyPath)
-      return entries.length > 0 ? entries[entries.length - 1].score : null
-    } catch {
-      return null
-    }
-  })()
+  const previousScore = getPreviousScore(historyPath)
 
   const scoreResult = calculateScore(
     swarmResult.findings,

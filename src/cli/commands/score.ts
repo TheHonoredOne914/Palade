@@ -14,7 +14,9 @@ export async function scoreCommand(opts: {
     const config = await loadConfig()
     if (opts.signal?.aborted) throw new CliExitError(1)
     const historyPath = join(process.cwd(), config.score.historyFile)
-    const entries = readHistory(historyPath)
+    // Only 'full' (whole-repo `review`) entries feed the trend/sparkline —
+    // changed-files-only `diff` scores aren't comparable and would skew it.
+    const entries = readHistory(historyPath).filter((e) => e.kind !== 'diff')
 
     if (entries.length === 0) {
       console.log(theme.dim("  No score history. Run 'palade review' first."))

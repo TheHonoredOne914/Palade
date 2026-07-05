@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { relative, sep } from 'node:path'
 import type { ChangedFile } from './types.js'
+import { parseHistoryEntries } from '../scorer/history.js'
 
 const GIT_STATUS_MAP: Record<string, ChangedFile['status']> = {
   A: 'added',
@@ -113,7 +114,10 @@ export async function getBaseScore(
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     })
-    const entries = JSON.parse(content) as Array<{ score: number; timestamp: string }>
+    // Only 'full' (whole-repo review) entries count as a baseline — a prior
+    // `palade diff` run's changed-files-only score would be an apples-to-oranges
+    // comparison.
+    const entries = parseHistoryEntries(content).filter((e) => e.kind !== 'diff')
     if (entries.length === 0) return null
     return entries[entries.length - 1].score
   } catch {

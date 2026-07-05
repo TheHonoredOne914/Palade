@@ -27,13 +27,13 @@ Example output:
 [
   {
     "severity": "high",
-    "title": "SQL query built with string concatenation",
-    "description": "The getUserById function builds a SQL query by concatenating user input directly into the query string. This allows SQL injection. Use parameterized queries instead.",
-    "filePath": "src/db/users.ts",
-    "lineStart": 34,
-    "lineEnd": 38,
-    "symbolName": "getUserById",
-    "tags": ["sql", "injection", "security"]
+    "title": "Refund calculation has zero test coverage",
+    "description": "calculateRefundAmount handles partial refunds, restocking fees, and currency rounding, but no test file exercises it. A regression here would silently misrefund customers.",
+    "filePath": "src/billing/refunds.ts",
+    "lineStart": 15,
+    "lineEnd": 33,
+    "symbolName": "calculateRefundAmount",
+    "tags": ["testing", "untested-critical-path"]
   }
 ]
 
@@ -50,7 +50,6 @@ Additional test intelligence focus:
 
 export class TestIntelligenceAgent extends BaseSpecialistAgent {
   name: AgentName = 'testIntelligence'
-  domain = 'test intelligence'
 
   protected getSystemPrompt(): string {
     return SYSTEM_PROMPT

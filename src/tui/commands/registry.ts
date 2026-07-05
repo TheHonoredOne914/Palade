@@ -56,6 +56,13 @@ export const COMMAND_REGISTRY: CommandDef[] = [
     ],
   },
   {
+    name: 'decisions',
+    args: '[list|show|stale] [slug]',
+    description: 'Manage architecture decisions (Verdict Mode ADRs)',
+    usage: '/decisions [list|show <slug>|stale] [--days <n>]',
+    examples: ['/decisions', '/decisions list', '/decisions show <slug>', '/decisions stale --days 14'],
+  },
+  {
     name: 'settings',
     args: '',
     description: 'Open the interactive settings manager',
