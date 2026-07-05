@@ -52,6 +52,7 @@ export async function watchCommand(opts: {
   const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
   let isProcessing = false
   const accumulatedFindings = new Map<string, AgentFinding[]>()
+  const MAX_ACCUMULATED_FILES = 200
   let sweepQueue: string[] = []
   const urgentQueue: string[] = []
   let loopTimer: ReturnType<typeof setTimeout> | null = null
@@ -168,6 +169,11 @@ export async function watchCommand(opts: {
 
       if (allFindings.length > 0) {
         accumulatedFindings.set(filePath, allFindings)
+        // Evict oldest entries when the map grows unbounded
+        if (accumulatedFindings.size > MAX_ACCUMULATED_FILES) {
+          const keysToDelete = [...accumulatedFindings.keys()].slice(0, accumulatedFindings.size - MAX_ACCUMULATED_FILES)
+          for (const key of keysToDelete) accumulatedFindings.delete(key)
+        }
         console.log('\n' + formatDriftAlert(filePath, allFindings))
       } else {
         accumulatedFindings.delete(filePath)
@@ -288,8 +294,8 @@ export async function watchCommand(opts: {
     for (const timer of debounceTimers.values()) clearTimeout(timer)
     debounceTimers.clear()
     if (loopTimer) clearTimeout(loopTimer)
-    watcher.close()
-    console.log(theme.dim('\n  Watcher stopped.'))
+    try { watcher.close() } catch {}
+    process.exitCode = 0
     process.exit(0)
   })
 

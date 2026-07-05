@@ -37,7 +37,7 @@ const MAX_RETRIES = 3
 const BASE_DELAY_MS = 500
 const MAX_DELAY_MS = 8000
 
-const DAILY_LIMIT_PATTERN = /daily|per-day/i
+const DAILY_LIMIT_PATTERN = /daily\s+limit|per[\s-]day|quota\s+exceed|out\s+of\s+quota/i
 
 /**
  * Scans a raw response body for daily/per-day rate-limit language. Shared by

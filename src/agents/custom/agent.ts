@@ -20,11 +20,13 @@ export class CustomAgent implements IAgent {
   readonly name: AgentName
   private readonly systemPrompt: string
   private readonly penaltyOverrides: Partial<Record<Severity, number>>
+  readonly domain: string
 
   constructor(def: CustomAgentDefinition) {
     this.name = def.name
     this.systemPrompt = def.systemPrompt
     this.penaltyOverrides = def.severityPenalty ?? {}
+    this.domain = def.domain
   }
 
   /** Get score penalty for a severity, using custom overrides or defaults. */

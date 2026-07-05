@@ -212,10 +212,15 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
   cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
   cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
 
-  // Safely strip outer markdown code blocks using a non-greedy match
-  const greedyMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
-  if (greedyMatch) {
-    cleaned = greedyMatch[1].trim()
+  // Strip outer markdown code blocks — when multiple blocks exist, prefer the
+  // one that looks like a JSON array (starts with '['). A simple non-greedy match
+  // would grab the first (shortest) block, which is often an explanatory code
+  // snippet, not the findings array.
+  const allBlocks = [...cleaned.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)]
+  if (allBlocks.length > 0) {
+    // Prefer the block containing a JSON array
+    const jsonBlock = allBlocks.find((m) => m[1].trim().startsWith('['))
+    cleaned = (jsonBlock ?? allBlocks[allBlocks.length - 1])[1].trim()
   }
 
   // Find outermost JSON array bounds
@@ -272,7 +277,7 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
     ) {
       const obj = item as Record<string, unknown>
       const severity = obj.severity as Severity
-      if (!(severity in SEVERITY_PENALTY)) continue
+      if (!Object.hasOwn(SEVERITY_PENALTY, severity)) continue
 
       const title = obj.title as string
       if (!title || title.trim().length === 0) continue
@@ -334,7 +339,8 @@ export function buildSystemPrompt(
 - info: Informational observation or non-blocking suggestion.`
   if (context.diffContext) {
     const dc = context.diffContext
-    prompt += `\n\nDIFF CONTEXT: This is a diff review of branch '${dc.headBranch}' vs '${dc.baseBranch}'. Focus on issues in the ${dc.changedFiles.length} changed files. Prioritise newly introduced problems over pre-existing ones.`
+    const changedPaths = dc.changedFiles.map((f) => f.path).join(', ')
+    prompt += `\n\nDIFF CONTEXT: This is a diff review of branch '${dc.headBranch}' vs '${dc.baseBranch}'. Focus on issues in the ${dc.changedFiles.length} changed files: ${changedPaths}. Prioritise newly introduced problems over pre-existing ones.`
   }
   if (context.targetDescription) {
     prompt += `\n\nSUBSYSTEM CONTEXT: ${context.targetDescription}`

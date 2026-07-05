@@ -3,7 +3,7 @@ import { BaseSpecialistAgent, type AgentContext } from '../base.js'
 export class LogicAgent extends BaseSpecialistAgent {
   name = 'logic' as const
 
-  getSystemPrompt(context: AgentContext): string {
+  protected getSystemPrompt(context: AgentContext): string {
     let prompt = `You are a Logic & Correctness expert reviewing source code.
 Your sole job is to identify logical flaws, state mismanagement, race conditions, edge case mishandling, and invalid assumptions.
 

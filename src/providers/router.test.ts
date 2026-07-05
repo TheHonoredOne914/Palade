@@ -168,11 +168,21 @@ describe('FallbackProvider', () => {
 
     expect(result).toBe(true)
     expect(primary.isAvailable).toHaveBeenCalledOnce()
-    expect(fallback1.isAvailable).not.toHaveBeenCalled()
   })
 
-  it('isAvailable returns false when primary is unavailable', async () => {
+  it('isAvailable returns true when primary is unavailable but fallback is available', async () => {
     primary = mockProvider('primary', 'model-a', 'fail-fatal')
+    fallback1 = mockProvider('fallback1', 'model-b', 'success')
+    const fp = new FallbackProvider(primary, [fallback1])
+
+    const result = await fp.isAvailable()
+
+    expect(result).toBe(true)
+  })
+
+  it('isAvailable returns false when all providers are unavailable', async () => {
+    primary = mockProvider('primary', 'model-a', 'fail-fatal')
+    fallback1 = mockProvider('fallback1', 'model-b', 'fail-fatal')
     const fp = new FallbackProvider(primary, [fallback1])
 
     const result = await fp.isAvailable()

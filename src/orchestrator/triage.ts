@@ -78,10 +78,11 @@ export async function triageFiles(
     try {
       let cleaned = response.content.trim()
 
-      // Safely strip outer markdown code blocks using a greedy match
-      const greedyMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
-      if (greedyMatch) {
-        cleaned = greedyMatch[1].trim()
+      // Strip outer markdown code blocks — prefer the block containing a JSON array
+      const allBlocks = [...cleaned.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)]
+      if (allBlocks.length > 0) {
+        const jsonBlock = allBlocks.find((m) => m[1].trim().startsWith('['))
+        cleaned = (jsonBlock ?? allBlocks[allBlocks.length - 1])[1].trim()
       }
 
       // Find the outermost JSON array boundaries
@@ -220,7 +221,7 @@ function heuristicSelect(
     return { path: m.path, score: scoreManifestForReview(m) }
   })
 
-  const sortedPaths = scored.sort((a, b) => b.score - a.score).map((s) => s.path)
+  const sortedPaths = [...new Set(scored.sort((a, b) => b.score - a.score).map((s) => s.path))]
 
   const selected: CodeChunk[] = []
   let tokensUsed = 0

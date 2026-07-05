@@ -216,7 +216,8 @@ export function attributeFindings(
     if (!validNames.has(f.agentName)) continue
     f.provider = provider
     f.model = model
-    f.scorePenalty = SEVERITY_PENALTY[f.severity as Severity]
+    const penalty = SEVERITY_PENALTY[f.severity as Severity]
+    if (typeof penalty === 'number') f.scorePenalty = penalty
     attributed.push(f)
   }
   return attributed

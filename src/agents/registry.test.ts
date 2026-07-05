@@ -53,7 +53,7 @@ describe('agents/registry', () => {
         {
           name: 'myCustomAgent',
           domain: 'Custom Domain',
-          prompt: 'Custom Prompt',
+          systemPrompt: 'Custom Prompt',
         },
       ]
       const agents = getAgentsForMode('standard', undefined, customDefs)

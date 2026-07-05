@@ -1,5 +1,5 @@
 import { readdir, stat, readFile, realpath } from 'node:fs/promises'
-import { join, relative, extname, sep, normalize, dirname } from 'node:path'
+import { join, relative, extname, normalize, dirname } from 'node:path'
 import ignore, { Ignore } from 'ignore'
 import type { FileManifest, Language, ScopeOptions, LanguageProfile } from './types.js'
 import { parseFile } from './annotationParser.js'
@@ -150,7 +150,7 @@ async function walkDir(
 
     const linesOfCode = content.split('\n').length
 
-    const importRegex = /(?:import(?:[\s\S]*?from\s+)?|require\()\s*['"]([^'"]+)['"]/g
+    const importRegex = /(?:\bimport(?:[\s\S]*?from\s+)?|\brequire\()\s*['"]([^'"]+)['"]/g
     let match
     const importedPaths = []
     let importCount = 0
@@ -161,7 +161,7 @@ async function walkDir(
     const annotations = await parseFile(fullPath, language === 'python')
 
     results.push({
-      path: relPath.split(sep).join('/'),
+      path: relPath,
       absolutePath: fullPath,
       language,
       sizeBytes: fileStat.size,
@@ -278,6 +278,7 @@ export async function walkProject(
     const gitLog = execSync('git log --name-only --pretty=format:', {
       cwd: projectRoot,
       encoding: 'utf-8',
+      maxBuffer: 10 * 1024 * 1024, // 10 MB — repos with extensive history can exceed the 1 MB default
     })
     const churnMap = new Map<string, number>()
     for (const line of gitLog.split('\n')) {
@@ -306,11 +307,17 @@ export async function walkProject(
       if (raw.startsWith('.')) {
         // relative import
         const resolved = normalize(join(dirname(m.path), raw)).replace(/\\/g, '/')
-        // Try exact match, .ts, .js, /index.ts
+        // Try exact match, then common extensions and index files
+        const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
         let target = pathMap.get(resolved)
-        if (!target) target = pathMap.get(resolved + '.ts')
-        if (!target) target = pathMap.get(resolved + '.js')
-        if (!target) target = pathMap.get(resolved + '/index.ts')
+        for (const ext of extensions) {
+          if (target) break
+          target = pathMap.get(resolved + ext)
+        }
+        for (const ext of extensions) {
+          if (target) break
+          target = pathMap.get(resolved + '/index' + ext)
+        }
 
         if (target && target.importers) {
           if (!target.importers.includes(m.path)) {

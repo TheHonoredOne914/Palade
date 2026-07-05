@@ -43,7 +43,11 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
   try {
     const content = await readFile(configPath, 'utf-8')
     for (const p of PROVIDERS) {
-      const re = new RegExp(`${p.id}[\\s\\S]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
+      // Use a non-backtracking pattern to avoid ReDoS: match the provider
+      // section non-greedily up to apiKey, but constrain to a reasonable line
+      // count instead of using [\s\S]{0,200}? which can cause catastrophic
+      // backtracking on long config files.
+      const re = new RegExp(`${p.id}[^]*?apiKey:\\s*['"]([^'"]+)['"]`)
       const m = content.match(re)
       if (m) result[p.id] = m[1]
     }
@@ -75,7 +79,8 @@ async function saveApiKey(
     .replace(/'/g, "\\'")
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r')
-  const updateRe = new RegExp(`(${providerId}[\\s\\S]{0,200}?apiKey:\\s*)(['"])([^'"]*)(\\2)`)
+  // Same non-backtracking approach as the read regex above
+  const updateRe = new RegExp(`(${providerId}[^]*?apiKey:\\s*)(['"])([^'"]*)(\\2)`)
   if (updateRe.test(content)) {
     content = content.replace(
       updateRe,

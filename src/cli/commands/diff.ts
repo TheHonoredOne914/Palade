@@ -26,6 +26,7 @@ import { askConfirm } from '../../ui/prompt.js'
 import { buildAnnotationSummary } from '../../ingestion/annotationParser.js'
 import { renderBadge, getBadgeData } from '../../scorer/badge.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
+import type { SwarmResult } from '../../orchestrator/types.js'
 import type { AgentContext, AgentFinding, AgentName, DiffContext } from '../../agents/base.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import chalk from 'chalk'
@@ -159,7 +160,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     throwIfAborted(opts.signal)
     console.log(theme.dim('  Starting analysis...'))
 
-    let swarmResult: any
+    let swarmResult: SwarmResult
     try {
       swarmResult = await runSwarm(
         chunks,
@@ -218,15 +219,15 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       const norm = (p: string) => p.replace(/^\.?\/+/, '')
       const ignoredFileSet = new Set(annotationSummary.ignoredFiles.map(norm))
       swarmResult.findings = swarmResult.findings.filter(
-        (f: { filePath?: string; lineStart?: number }) => {
+        (f: { filePath?: string; lineStart?: number; lineEnd?: number }) => {
           if (!f.filePath) return true
           if (ignoredFileSet.has(norm(f.filePath))) return false
           if (f.lineStart === undefined) return true
           return !annotationSummary.ignoredLines.some(
             (il) =>
               norm(il.filePath) === norm(f.filePath!) &&
-              f.lineStart! >= il.startLine &&
-              f.lineStart! <= il.startLine + 1
+              f.lineStart! <= il.startLine + 1 &&
+              (f.lineEnd ?? f.lineStart!) >= il.startLine
           )
         }
       )

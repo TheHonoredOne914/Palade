@@ -44,13 +44,14 @@ export async function decisionsCommand(
 
       let decisionText = 'Unknown'
       if (decisionLine !== -1 && lines.length > decisionLine + 1) {
-        decisionText = lines[decisionLine + 1].trim().slice(0, 50)
+        decisionText = lines[decisionLine + 1].trim()
       }
 
       console.log(`  ${theme.primary(file.replace('.md', ''))}`)
       console.log(`    Date: ${theme.dim(dateLine || 'unknown')}`)
       console.log(`    File: ${theme.white(fileLine || 'unknown')}`)
-      console.log(`    Decision: ${theme.dim(decisionText + '...')}\n`)
+      const truncated = decisionText.length > 50 ? decisionText.slice(0, 50) + '...' : decisionText
+      console.log(`    Decision: ${theme.dim(truncated)}\n`)
     }
   } else if (act === 'show') {
     if (!slug) {

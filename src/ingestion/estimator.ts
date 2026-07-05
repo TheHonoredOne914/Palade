@@ -32,9 +32,9 @@ function getProviderModelKey(providerName: string, providerConfig?: { model?: st
   if (providerName === 'opencode-zen')
     return `opencode-zen:${providerConfig?.model || 'deepseek-v4-flash-free'}`
   if (providerName === 'groq') return `groq:${providerConfig?.model || 'llama-3.3-70b-versatile'}`
-  if (providerName === 'cerebras') return `cerebras:${providerConfig?.model || 'llama-3.3-70b'}`
+  if (providerName === 'cerebras') return `cerebras:${providerConfig?.model || 'gpt-oss-120b'}`
   if (providerName === 'openrouter')
-    return `openrouter:${providerConfig?.model || 'deepseek/deepseek-r1'}`
+    return `openrouter:${providerConfig?.model || 'openrouter/free'}`
   if (providerName === 'nvidia') return `nvidia:${providerConfig?.model || 'minimaxai/minimax-m3'}`
   return `${providerName}:${providerConfig?.model || 'unknown'}`
 }

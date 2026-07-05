@@ -105,7 +105,7 @@ export class NvidiaProvider implements IProvider {
     // If content is empty but tokens were used, retry with more tokens (cap at 32768)
     if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
       const newMax = Math.min(maxTokens * 2, 32768)
-      return this.doComplete(req, newMax, attempt + 1, deadline)
+      if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1, deadline)
     }
 
     return {

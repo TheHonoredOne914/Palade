@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { resolve, relative, dirname } from 'node:path'
+import { resolve, relative, dirname, sep } from 'node:path'
 import { existsSync } from 'node:fs'
 import ts from 'typescript'
 
@@ -42,9 +42,11 @@ function resolveImport(fromFile: string, importPath: string, projectRoot: string
     resolved = normalizedImport
   }
 
-  // Guard against path traversal
+  // Guard against path traversal — startsWith alone is insufficient because
+  // "/home/user/project2" starts with "/home/user/proj". Must ensure the
+  // resolved path is either the root itself or starts with root + separator.
   const resolvedAbs = resolve(projectRoot, resolved)
-  if (!resolvedAbs.startsWith(projectRoot)) {
+  if (resolvedAbs !== projectRoot && !resolvedAbs.startsWith(projectRoot + sep)) {
     return projectRoot // refuse traversal
   }
 

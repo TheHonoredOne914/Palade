@@ -124,8 +124,7 @@ export class OpenCodeZenProvider implements IProvider {
     // exceed the 16384 default or the retry re-sends an identical request)
     if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
       const newMax = Math.min(maxTokens * 2, 32768)
-
-      return this.doComplete(req, newMax, attempt + 1, deadline)
+      if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1, deadline)
     }
 
     return {

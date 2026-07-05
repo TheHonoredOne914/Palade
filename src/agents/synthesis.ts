@@ -65,9 +65,10 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
   cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
 
   // Safely strip outer markdown code blocks using a non-greedy match
-  const greedyMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
-  if (greedyMatch) {
-    cleaned = greedyMatch[1].trim()
+  const allBlocks = [...cleaned.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)]
+  if (allBlocks.length > 0) {
+    const jsonBlock = allBlocks.find((m) => m[1].trim().startsWith('{'))
+    cleaned = (jsonBlock ?? allBlocks[allBlocks.length - 1])[1].trim()
   }
 
   // Find the outermost JSON object boundaries
@@ -111,7 +112,7 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
             title: f.title as string,
             rationale: f.rationale as string,
             estimatedHours: hours,
-            affectedFiles: Array.isArray(f.affectedFiles) ? (f.affectedFiles as string[]) : [],
+            affectedFiles: Array.isArray(f.affectedFiles) ? f.affectedFiles.filter((x): x is string => typeof x === 'string') : [],
           }
         })
     : []
@@ -146,13 +147,14 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
 function computeDebtCounts(
   findings: AgentFinding[]
 ): Pick<DebtEstimate, 'critical' | 'high' | 'medium' | 'low' | 'total'> {
-  const counts = { critical: 0, high: 0, medium: 0, low: 0, total: findings.length }
+  const counts = { critical: 0, high: 0, medium: 0, low: 0, total: 0 }
   for (const f of findings) {
     if (f.severity === 'critical') counts.critical++
     else if (f.severity === 'high') counts.high++
     else if (f.severity === 'medium') counts.medium++
     else if (f.severity === 'low') counts.low++
   }
+  counts.total = counts.critical + counts.high + counts.medium + counts.low
   return counts
 }
 
@@ -161,6 +163,8 @@ export interface SynthesizeOptions {
   maxSynthesisFindings?: number
   /** Timeout in ms for the synthesis provider call. Default 180_000 (180s). */
   synthesisTimeoutMs?: number
+  /** External abort signal so user cancellation (Ctrl+C) propagates to the synthesis provider call. */
+  signal?: AbortSignal
 }
 
 export async function synthesize(
@@ -169,8 +173,10 @@ export async function synthesize(
   context: AgentContext,
   options: SynthesizeOptions = {}
 ): Promise<SynthesisResult> {
-  const { maxSynthesisFindings = 50, synthesisTimeoutMs = 180_000 } = options
+  const { maxSynthesisFindings = 50, synthesisTimeoutMs = 180_000, signal } = options
   const debtCounts = computeDebtCounts(allFindings)
+  // Define cleanup function at function scope so catch can access it
+  let onExternalAbort: (() => void) | undefined
   try {
     const provider: IProvider = getProvider('synthesis')
 
@@ -200,6 +206,10 @@ export async function synthesize(
     )
 
     const controller = new AbortController()
+    // Link external abort signal so user cancellation (Ctrl+C) propagates
+    // to the synthesis provider call.
+    onExternalAbort = () => controller.abort()
+    signal?.addEventListener('abort', onExternalAbort)
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => {
@@ -225,6 +235,8 @@ export async function synthesize(
         signal: controller.signal,
       })
       .catch((err: unknown): null => {
+        // Re-throw AbortErrors so the outer catch can handle graceful cancellation
+        if (err instanceof Error && err.name === 'AbortError') throw err
         console.warn(
           `[synthesis] provider.complete failed: ${err instanceof Error ? err.message : String(err)}`
         )
@@ -253,8 +265,10 @@ export async function synthesize(
       }
     }
     result.debtEstimate = { ...debtCounts, highestROIFix: result.debtEstimate.highestROIFix }
+    signal?.removeEventListener('abort', onExternalAbort!)
     return result
   } catch (err) {
+    signal?.removeEventListener('abort', onExternalAbort!)
     if (err instanceof Error && err.name === 'AbortError') {
       return {
         executiveSummary: 'Synthesis was aborted.',

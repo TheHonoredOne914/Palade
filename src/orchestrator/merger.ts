@@ -67,7 +67,7 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
   const keep = sevA <= sevB ? a : b
   const discard = sevA <= sevB ? b : a
 
-  const tagSet = new Set([...keep.tags, ...discard.tags])
+  const tagSet = new Set([...(keep.tags ?? []), ...(discard.tags ?? [])])
   const mergedDescription =
     keep.description === discard.description
       ? keep.description
@@ -87,10 +87,17 @@ export function mergeFindings(findings: AgentFinding[]): AgentFinding[] {
 
   for (let i = 0; i < result.length; i++) {
     if (merged.has(i)) continue
+    // Snapshot the current result[i] so that mutations from mergeTwo don't
+    // affect subsequent shouldMerge comparisons in this inner loop. Without
+    // this, merging result[i] with result[j] changes result[i] in-place, and
+    // later j iterations compare against the merged (mutated) version, which
+    // can produce cascading, unpredictable merges.
+    let currentI = result[i]
     for (let j = i + 1; j < result.length; j++) {
       if (merged.has(j)) continue
-      if (shouldMerge(result[i], result[j])) {
-        result[i] = mergeTwo(result[i], result[j])
+      if (shouldMerge(currentI, result[j])) {
+        currentI = mergeTwo(currentI, result[j])
+        result[i] = currentI
         merged.add(j)
       }
     }
