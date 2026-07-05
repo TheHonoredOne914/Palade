@@ -14,7 +14,7 @@ describe('scorer/badge', () => {
     it('respects band boundaries', () => {
       expect(getScoreColor(90)).toBe('brightgreen')
       expect(getScoreColor(89)).toBe('green')
-      expect(getScoreColor(75)).toBe('green')
+      expect(getScoreColor(75)).toBe('yellow')
       expect(getScoreColor(60)).toBe('yellow')
       expect(getScoreColor(40)).toBe('orange')
       expect(getScoreColor(39)).toBe('red')
