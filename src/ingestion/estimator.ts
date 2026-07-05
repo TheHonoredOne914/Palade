@@ -1,5 +1,7 @@
 import type { CodeChunk } from './types.js'
 import type { PaladeConfig } from '../config/schema.js'
+import { estimateTokens } from './chunker.js'
+import { scheduleBatches } from '../orchestrator/scheduler.js'
 
 export interface EstimateResult {
   totalChunks: number
@@ -38,13 +40,21 @@ function getProviderModelKey(providerName: string, providerConfig?: { model?: st
 export function estimateRunCost(chunks: CodeChunk[], config: PaladeConfig): EstimateResult {
   const totalChunks = chunks.length
 
-  // Approximate tokens: charCount / 4
+  // Reuse the shared chars/4 token estimation formula instead of
+  // reimplementing it here (see chunker.ts's estimateTokens).
   const totalInputTokens = chunks.reduce((sum, chunk) => {
-    return sum + Math.ceil(chunk.content.length / 4)
+    return sum + estimateTokens(chunk.content)
   }, 0)
 
   const agentCount = config.swarm.economyMode ? 1 : config.swarm.agentCount
-  const totalAgentInvocations = totalChunks * agentCount
+
+  // The swarm doesn't send 1 LLM call per chunk per agent — scheduleBatches
+  // groups chunks into batches first, and each agent makes one call per
+  // batch (see orchestrator/swarm.ts). Derive the invocation count from the
+  // real batching logic so the estimate isn't inflated relative to actual
+  // cost.
+  const totalBatches = scheduleBatches(chunks).length
+  const totalAgentInvocations = totalBatches * agentCount
 
   // Assume ~400 output tokens per agent invocation
   const estimatedOutputTokens = totalAgentInvocations * 400

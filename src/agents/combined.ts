@@ -5,6 +5,7 @@ import {
   type AgentContext,
   type AgentName,
   type Severity,
+  annotateComplexity,
   buildChunkContext,
   buildSystemPrompt,
   parseFindingsResponse,
@@ -172,6 +173,7 @@ export class CombinedAnalyzer implements IAgent {
         response.model
       )
       const validated = validateAndFingerprintFindings(findings, chunks)
+      annotateComplexity(validated, chunks)
       return verifyCriticalHighFindings(validated, chunks, provider, this.name, signal)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []

@@ -13,6 +13,7 @@ import {
   runTargetsGenerate,
   runTargetsList,
 } from '../../cli/commands/targets.js'
+import { CliExitError } from '../../errors/types.js'
 
 interface CommandRunnerOptions {
   config?: PaladeConfig
@@ -236,8 +237,17 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
           }
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        opts.appendLine({ type: 'error', text: msg })
+        // A CliExitError with code 0 is an intentional "successful" early
+        // exit (e.g. `diff` finding no changed files) — not a real failure,
+        // so it shouldn't render as a trailing red error line.
+        if (err instanceof CliExitError && err.exitCode === 0) {
+          if (err.message) {
+            opts.appendLine({ type: 'dim', text: err.message })
+          }
+        } else {
+          const msg = err instanceof Error ? err.message : String(err)
+          opts.appendLine({ type: 'error', text: msg })
+        }
       } finally {
         const current = opts.getAbortSignal?.()
         if (runSignal === undefined || current === undefined || current === runSignal) {

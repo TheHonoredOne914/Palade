@@ -1,5 +1,5 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { fetchWithRetry } from './base.js'
+import { fetchWithRetry, createLimiter } from './base.js'
 
 const DEFAULT_DEADLINE_MS = 300_000
 
@@ -9,18 +9,21 @@ export class NvidiaProvider implements IProvider {
   private readonly apiKey: string
   private readonly baseUrl: string
   private readonly deadlineMs: number
+  private readonly limiter: ReturnType<typeof createLimiter>
   private dailyLimitExhausted = false
 
   constructor(
     apiKey: string,
     model = 'minimaxai/minimax-m3',
     baseUrl = 'https://integrate.api.nvidia.com/v1',
-    deadlineMs: number = DEFAULT_DEADLINE_MS
+    deadlineMs: number = DEFAULT_DEADLINE_MS,
+    maxConcurrency = 4
   ) {
     this.apiKey = apiKey
     this.model = model
     this.baseUrl = baseUrl
     this.deadlineMs = deadlineMs
+    this.limiter = createLimiter(maxConcurrency)
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
@@ -33,7 +36,8 @@ export class NvidiaProvider implements IProvider {
     const maxTokens = req.maxTokens ?? 8192
     // One deadline for the whole logical call: internal empty-content retries
     // share it, so the ceiling holds across attempts instead of per attempt.
-    return this.doComplete(req, maxTokens, 0, Date.now() + this.deadlineMs)
+    const deadline = Date.now() + this.deadlineMs
+    return this.limiter(() => this.doComplete(req, maxTokens, 0, deadline))
   }
 
   private async doComplete(

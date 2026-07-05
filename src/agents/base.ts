@@ -342,6 +342,27 @@ Reply strictly YES or NO.`,
   return validatedFindings
 }
 
+/**
+ * Annotate findings with the cyclomatic complexity of the code chunk they
+ * reference (used later for maintainability-penalty scaling in the scorer).
+ * Shared so every analyze() path — per-domain specialists, the combined
+ * economy-mode analyzer, and custom agents — annotates complexity the same
+ * way instead of only some paths populating it.
+ */
+export function annotateComplexity(findings: AgentFinding[], chunks: CodeChunk[]): AgentFinding[] {
+  for (const f of findings) {
+    if (f.filePath && typeof f.lineStart === 'number') {
+      const match = chunks.find(
+        (c) => c.filePath === f.filePath && c.startLine <= f.lineStart! && c.endLine >= f.lineStart!
+      )
+      if (match && match.complexity !== undefined) {
+        f.complexity = match.complexity
+      }
+    }
+  }
+  return findings
+}
+
 export abstract class BaseSpecialistAgent implements IAgent {
   abstract name: AgentName
   abstract domain: string
@@ -375,17 +396,8 @@ export abstract class BaseSpecialistAgent implements IAgent {
       for (const f of findings) {
         f.provider = response.provider
         f.model = response.model
-
-        if (f.filePath && typeof f.lineStart === 'number') {
-          const match = chunks.find(
-            (c) =>
-              c.filePath === f.filePath && c.startLine <= f.lineStart! && c.endLine >= f.lineStart!
-          )
-          if (match && match.complexity !== undefined) {
-            f.complexity = match.complexity
-          }
-        }
       }
+      annotateComplexity(findings, chunks)
 
       return verifyCriticalHighFindings(findings, chunks, provider, this.name, signal)
     } catch (err) {

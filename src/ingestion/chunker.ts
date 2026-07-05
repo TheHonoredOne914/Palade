@@ -40,6 +40,10 @@ function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
       symbolName: chunk.symbolName,
       tokenCount: estimateTokens(subContent),
       language: chunk.language,
+      // Preserve the parent chunk's complexity so sub-chunks split off from
+      // a complex function keep its complexity-based scoring multiplier
+      // instead of losing it once split.
+      complexity: chunk.complexity,
     })
 
     if (endIdx >= lines.length) break
@@ -222,7 +226,10 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
   return chunks
 }
 
-export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]> {
+export async function chunkFiles(
+  manifests: FileManifest[],
+  maxChunksPerFile: number = MAX_CHUNKS_PER_FILE
+): Promise<CodeChunk[]> {
   const allChunks: CodeChunk[] = []
 
   for (const manifest of manifests) {
@@ -241,17 +248,37 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
       continue
     }
 
+    const isAstLanguage = manifest.language === 'typescript' || manifest.language === 'javascript'
+    // Guard against handing huge files to the AST parser: a pathologically
+    // large file can make full-program parsing slow/memory-heavy. Fall back
+    // to the cheaper line/bracket-based chunking strategy above these caps.
+    const lineCount = content.length === 0 ? 0 : content.split('\n').length
+    const byteSize = Buffer.byteLength(content, 'utf-8')
+    const exceedsParseLimits = lineCount > MAX_TREE_SITTER_LINES || byteSize > MAX_TREE_SITTER_BYTES
+
     let chunks: CodeChunk[]
-    if (manifest.language === 'typescript' || manifest.language === 'javascript') {
+    if (isAstLanguage && !exceedsParseLimits) {
       chunks = chunkByAST(content, manifest.path, manifest.language)
     } else {
+      if (isAstLanguage && exceedsParseLimits) {
+        console.warn(
+          `[chunker] File ${manifest.path} (${lineCount} lines, ${byteSize} bytes) exceeds the ` +
+            `AST parsing size guard (${MAX_TREE_SITTER_LINES} lines / ${MAX_TREE_SITTER_BYTES} bytes) — ` +
+            `falling back to line-based chunking.`
+        )
+      }
       // chunkByBrackets caps blocks at 300 lines, but very long lines can still
       // push a chunk past MAX_TOKENS — enforce the token cap explicitly.
       chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap(splitLargeChunk)
     }
 
-    if (chunks.length > MAX_CHUNKS_PER_FILE) {
-      chunks.length = MAX_CHUNKS_PER_FILE
+    if (chunks.length > maxChunksPerFile) {
+      console.warn(
+        `[chunker] File ${manifest.path} produced ${chunks.length} chunks, exceeding the ` +
+          `${maxChunksPerFile}-chunk cap — the remaining ${chunks.length - maxChunksPerFile} ` +
+          `chunk(s) at the end of the file were truncated and will not be reviewed.`
+      )
+      chunks.length = maxChunksPerFile
     }
 
     allChunks.push(...chunks)

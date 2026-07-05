@@ -180,6 +180,74 @@ function renderFindingsSummaryHtml(findings: ReporterContext['findings']): strin
       </table>`
 }
 
+function renderFindingLocation(finding: {
+  filePath?: string
+  lineStart?: number
+  lineEnd?: number
+}): string {
+  if (!finding.filePath) return ''
+  let location = finding.filePath
+  if (typeof finding.lineStart === 'number') {
+    location += `:${finding.lineStart}`
+    if (typeof finding.lineEnd === 'number' && finding.lineEnd !== finding.lineStart) {
+      location += `-${finding.lineEnd}`
+    }
+  }
+  return `<div class="finding-location">${escapeHtml(location)}</div>`
+}
+
+function renderFindingDetailHtml(finding: {
+  agentName: string
+  severity: string
+  title: string
+  description: string
+  filePath?: string
+  lineStart?: number
+  lineEnd?: number
+}): string {
+  const severityClass = SEVERITY_CLASSES[finding.severity as Severity] ?? 'severity-low'
+
+  return `
+        <li class="finding-item">
+          <div class="finding-header">
+            <span class="finding-severity ${severityClass}">${escapeHtml(finding.severity)}</span>
+            <span class="finding-title">${escapeHtml(finding.title)}</span>
+            <span class="finding-category" style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;">${escapeHtml(finding.agentName)}</span>
+            ${renderFindingLocation(finding)}
+          </div>
+          <div class="finding-description">${escapeHtml(finding.description)}</div>
+        </li>`
+}
+
+function renderFindingsDetailHtml(findings: ReporterContext['findings']): string {
+  if (findings.length === 0) {
+    return '<p style="color: var(--text-muted); margin-top: 1.5rem;">No individual findings.</p>'
+  }
+
+  const severityOrder: Record<string, number> = {
+    critical: 0,
+    high: 1,
+    medium: 2,
+    low: 3,
+    info: 4,
+  }
+
+  const items = [...findings]
+    .sort((a, b) => {
+      const aRank = severityOrder[a.severity] ?? 5
+      const bRank = severityOrder[b.severity] ?? 5
+      if (aRank !== bRank) return aRank - bRank
+      return (a.filePath ?? '').localeCompare(b.filePath ?? '')
+    })
+    .map((f) => renderFindingDetailHtml(f))
+    .join('\n')
+
+  return `
+      <h3 style="margin: 1.5rem 0 1rem; font-family: 'Outfit', sans-serif; font-size: 1.05rem; color: #fff;">Detailed Findings</h3>
+      <ul class="finding-list">${items}
+      </ul>`
+}
+
 function getTemplatePath(): string {
   // Check the bundled template first to prevent user-controlled template hijacking
   const bundledPath = join(__dirname, '..', '..', 'templates', 'report.html')
@@ -231,6 +299,7 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
     .join('\n')
 
   const findingsSummaryHtml = renderFindingsSummaryHtml(ctx.findings)
+  const findingsDetailHtml = renderFindingsDetailHtml(ctx.findings)
 
   const sparklineData =
     ctx.history.length > 0
@@ -254,6 +323,7 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
     observationsHtml,
     crossAgentFindingsHtml,
     findingsSummaryHtml,
+    findingsDetailHtml,
     debtEstimateHtml: '',
     sparklineData: JSON.stringify(sparklineData),
     sparklineLabels: JSON.stringify(sparklineData.map((_, i) => `Run ${i + 1}`)),
@@ -301,7 +371,7 @@ function replacePlaceholders(
       : '',
     CROSS_AGENT_FINDINGS: data.crossAgentFindingsHtml,
     AGENT_TIMINGS: data.agentTimingsHtml,
-    FINDINGS_SUMMARY: data.findingsSummaryHtml,
+    FINDINGS_SUMMARY: data.findingsSummaryHtml + data.findingsDetailHtml,
     SPARKLINE_DATA: data.sparklineData,
     SPARKLINE_LABELS: data.sparklineLabels,
     RUN_ID: escapeHtml(ctx.swarm.runId),

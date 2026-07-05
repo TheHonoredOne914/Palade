@@ -5,6 +5,7 @@ import type { AgentFinding, AgentContext, AgentName, IAgent } from '../agents/ba
 import { getAgentsForMode } from '../agents/registry.js'
 import { synthesize as analyzeSynthesis } from '../agents/synthesis.js'
 import { CombinedAnalyzer } from '../agents/combined.js'
+import { CustomAgent } from '../agents/custom/agent.js'
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
 import { triageFiles } from './triage.js'
@@ -55,7 +56,7 @@ export async function runSwarm(
   // Custom agents always run as separate per-domain calls even in economy
   // mode, since they can't be merged into the combined prompt reliably.
   const agents: IAgent[] = options.economyMode
-    ? [new CombinedAnalyzer()]
+    ? [new CombinedAnalyzer(), ...(options.customAgents ?? []).map((def) => new CustomAgent(def))]
     : getAgentsForMode(context.mode, context.modeConfig?.agentOverrides, options.customAgents)
   const memory = new AgentMemory()
 
@@ -127,6 +128,12 @@ export async function runSwarm(
       // allSettled, not all: one failed/timed-out batch must not throw away
       // the findings from batches that already succeeded.
       const results = await Promise.allSettled(batchPromises)
+      // Collect every fulfilled batch's findings first, then decide whether to
+      // throw. Throwing as soon as a fatal-auth rejection is spotted mid-loop
+      // would skip any still-unvisited fulfilled results in this same
+      // Promise.allSettled batch, silently discarding work that already
+      // succeeded.
+      let fatalError: Error | undefined
       for (const result of results) {
         if (result.status === 'fulfilled') {
           allFindings.push(...result.value)
@@ -135,10 +142,14 @@ export async function runSwarm(
           agentError = err instanceof Error ? err : new Error(String(err))
 
           if (isFatalAuthError(agentError.message)) {
-            runAbort.abort()
-            throw agentError
+            fatalError = agentError
           }
         }
+      }
+
+      if (fatalError) {
+        runAbort.abort()
+        throw fatalError
       }
 
       if (agentError) {

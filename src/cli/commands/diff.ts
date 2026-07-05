@@ -9,7 +9,14 @@ import { appendEntry } from '../../scorer/history.js'
 import { reportJson } from '../../reporters/json.js'
 import { writeHtmlReport, startLocalServer } from '../../reporters/html.js'
 import { reportMarkdown } from '../../reporters/markdown.js'
-import { isGitRepo, getCurrentBranch, getChangedFiles, getBaseScore } from '../../diff/git.js'
+import {
+  isGitRepo,
+  getCurrentBranch,
+  getChangedFiles,
+  getBaseScore,
+  getMergeBase,
+  getFileContentAtRef,
+} from '../../diff/git.js'
 import { compareFindings, rankIntroducedFindings } from '../../diff/comparator.js'
 import { checkDecisionDrift } from '../../orchestrator/verdict.js'
 import { printDiffBanner, printDiffSummary } from '../../reporters/terminal.js'
@@ -19,11 +26,12 @@ import { askConfirm } from '../../ui/prompt.js'
 import { buildAnnotationSummary } from '../../ingestion/annotationParser.js'
 import { renderBadge, getBadgeData } from '../../scorer/badge.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
-import type { AgentContext, AgentName, DiffContext } from '../../agents/base.js'
+import type { AgentContext, AgentFinding, AgentName, DiffContext } from '../../agents/base.js'
 import { CliExitError } from '../../errors/types.js'
 import chalk from 'chalk'
-import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
+import { mkdirSync, existsSync, writeFileSync, mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
+import { tmpdir } from 'node:os'
 
 interface DiffOpts {
   base?: string
@@ -119,6 +127,31 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       diffContext,
     }
 
+    // Load the same logic spec / agent constitution that the shared review
+    // pipeline (orchestrator/pipeline.ts) injects into AgentContext, so
+    // `diff` reviews respect the same project conventions as `review` does.
+    const specPath = config.swarm.specPath ?? 'palade.spec.md'
+    const absoluteSpecPath = join(projectRoot, specPath)
+    if (existsSync(absoluteSpecPath)) {
+      try {
+        context.spec = readFileSync(absoluteSpecPath, 'utf-8')
+        console.log(theme.dim(`  Loaded logic spec from ${specPath}`))
+      } catch {
+        console.log(chalk.yellow(`  Failed to read spec file: ${specPath}`))
+      }
+    }
+
+    const constitutionPath = config.swarm.constitutionPath ?? '.palade/constitution.md'
+    const absoluteConstitutionPath = join(projectRoot, constitutionPath)
+    if (existsSync(absoluteConstitutionPath)) {
+      try {
+        context.constitution = readFileSync(absoluteConstitutionPath, 'utf-8')
+        console.log(theme.dim(`  Loaded agent constitution from ${constitutionPath}`))
+      } catch {
+        console.log(chalk.yellow(`  Failed to read constitution file: ${constitutionPath}`))
+      }
+    }
+
     const agentCount = config.swarm.agentCount
     let completedAgents = 0
 
@@ -205,16 +238,24 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     const scoreResult = calculateScore(
       swarmResult.findings,
       swarmResult.crossAgentFindings,
-      baseScore
+      baseScore,
+      {
+        severityWeights: config.score.severityWeights,
+        crossAgentPenalty: config.score.crossAgentPenalty,
+      }
     )
 
-    const updatedHistory = appendEntry(historyPath, {
-      timestamp: new Date().toISOString(),
-      runId: swarmResult.runId,
-      score: scoreResult.score,
-      breakdown: scoreResult.breakdown,
-      delta: scoreResult.delta,
-    })
+    const updatedHistory = appendEntry(
+      historyPath,
+      {
+        timestamp: new Date().toISOString(),
+        runId: swarmResult.runId,
+        score: scoreResult.score,
+        breakdown: scoreResult.breakdown,
+        delta: scoreResult.delta,
+      },
+      config.score.maxHistoryEntries
+    )
 
     // Regenerate the score badge the same way `review` does, so it doesn't
     // go stale after a `diff` run.
@@ -226,7 +267,69 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       writeFileSync(badgePath, badgeSvg, 'utf-8')
     }
 
-    const findingDiff = compareFindings(swarmResult.findings, [], changedFiles)
+    // Compute real base-branch findings so the "resolved" (fixed since base)
+    // comparator path is actually reachable, not just "introduced". Scoped to
+    // only the modified changed files (added files have no base version, and
+    // deleted files aren't reviewable on either side) to keep the extra scan
+    // proportional to the size of this diff rather than the whole project.
+    let baseFindings: AgentFinding[] = []
+    try {
+      const mergeBase = await getMergeBase(base, projectRoot)
+      const modifiedFiles = changedFiles.filter((f) => f.status === 'modified')
+      if (mergeBase && modifiedFiles.length > 0) {
+        const baseTempDir = mkdtempSync(join(tmpdir(), 'palade-diff-base-'))
+        try {
+          const writtenPaths: string[] = []
+          for (const f of modifiedFiles) {
+            const oldContent = getFileContentAtRef(mergeBase, f.path, projectRoot)
+            if (oldContent === null) continue
+            const dest = join(baseTempDir, f.path)
+            mkdirSync(dirname(dest), { recursive: true })
+            writeFileSync(dest, oldContent, 'utf-8')
+            writtenPaths.push(f.path)
+          }
+
+          if (writtenPaths.length > 0) {
+            console.log(
+              theme.dim(`  Scanning ${base} @ ${mergeBase.slice(0, 8)} for resolved findings...`)
+            )
+            const baseScope: ScopeOptions = { projectRoot: baseTempDir, files: writtenPaths }
+            const baseManifests = await walkProject(baseTempDir, baseScope)
+            if (baseManifests.length > 0) {
+              const baseChunks = await chunkFiles(baseManifests)
+              const baseContext: AgentContext = {
+                projectLanguages: (await detectLanguages(baseTempDir, baseScope)).primary,
+                totalFiles: baseManifests.length,
+                totalChunks: baseChunks.length,
+                mode: 'standard',
+              }
+              const baseSwarmResult = await runSwarm(baseChunks, baseContext, {
+                timeoutMs: config.swarm.timeoutMs,
+                maxReviewTokens: config.swarm.maxReviewTokens,
+                customAgents: customAgentDefs,
+                economyMode: config.swarm.economyMode,
+                signal: opts.signal,
+              })
+              baseFindings = baseSwarmResult.findings
+            }
+          }
+        } finally {
+          rmSync(baseTempDir, { recursive: true, force: true })
+        }
+      }
+    } catch (err) {
+      // Base-branch scan is best-effort — if it fails for any reason (no
+      // merge-base, git errors, provider errors), fall back to reporting only
+      // "introduced" findings rather than failing the whole diff run.
+      console.log(
+        chalk.yellow(
+          `  ⚠ Base branch scan failed, resolved findings will not be reported: ${err instanceof Error ? err.message : String(err)}`
+        )
+      )
+      baseFindings = []
+    }
+
+    const findingDiff = compareFindings(swarmResult.findings, baseFindings, changedFiles)
 
     const rankedIntroduced = rankIntroducedFindings(findingDiff.introduced)
     findingDiff.introduced = rankedIntroduced

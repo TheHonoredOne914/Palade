@@ -91,6 +91,37 @@ export async function getChangedFiles(baseBranch: string, cwd: string): Promise<
   return changedFiles
 }
 
+export async function getMergeBase(baseBranch: string, cwd: string): Promise<string | null> {
+  try {
+    return execFileSync('git', ['merge-base', baseBranch, 'HEAD'], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Read a file's content as it existed at a given ref (commit-ish). Returns
+ * null if the file didn't exist at that ref (e.g. it was added after the
+ * base branch diverged) or the read otherwise fails (binary blob, etc.).
+ */
+export function getFileContentAtRef(ref: string, filePath: string, cwd: string): string | null {
+  try {
+    const posixPath = filePath.split(sep).join('/')
+    return execFileSync('git', ['show', `${ref}:${posixPath}`], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 1024 * 1024 * 32,
+    })
+  } catch {
+    return null
+  }
+}
+
 export async function getBaseScore(
   baseBranch: string,
   historyFile: string,
