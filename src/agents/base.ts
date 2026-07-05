@@ -181,10 +181,29 @@ function salvageTruncatedArray(text: string): unknown[] {
   return salvaged
 }
 
+// A total parse failure must never look identical to "the agent reviewed this
+// batch and found nothing" — that's how a truncated/garbled response gets
+// silently reported to the user as clean code. Surface it as a real (info,
+// zero-penalty) finding that flows through the normal merge/score/report
+// pipeline instead of vanishing after a console.warn nobody reads.
+function unparsableResponseFinding(agentName: AgentName, reason: string): AgentFinding[] {
+  return [
+    {
+      id: crypto.randomUUID(),
+      agentName,
+      severity: 'info',
+      title: `[REVIEW INCOMPLETE] ${agentName} response could not be parsed`,
+      description: `The ${agentName} agent's response for this batch ${reason}. Findings for this batch may be missing — this is not a signal that the reviewed code is clean.`,
+      tags: ['review-incomplete', 'parse-failure'],
+      scorePenalty: 0,
+    },
+  ]
+}
+
 export function parseFindingsResponse(raw: string, agentName: AgentName): AgentFinding[] {
   if (!raw || raw.trim().length === 0) {
     console.warn(chalk.yellow(`⚠ ${agentName}: empty response from provider`))
-    return []
+    return unparsableResponseFinding(agentName, 'was empty')
   }
 
   let cleaned = raw.trim()
@@ -207,7 +226,7 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
   } else {
     // If no array brackets found, it might be an empty response or pure conversational text
     if (!cleaned.includes('[')) {
-      return []
+      return unparsableResponseFinding(agentName, 'contained no JSON findings array')
     }
   }
 
@@ -233,14 +252,14 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
         parsed = salvaged
       } else {
         console.warn(chalk.yellow(`⚠ ${agentName}: could not parse JSON from response`))
-        return []
+        return unparsableResponseFinding(agentName, 'could not be parsed as JSON')
       }
     }
   }
 
   if (!Array.isArray(parsed)) {
     console.warn(`[${agentName}] Response is not an array`)
-    return []
+    return unparsableResponseFinding(agentName, 'was not a JSON array')
   }
 
   const findings: AgentFinding[] = []

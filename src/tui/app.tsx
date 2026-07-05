@@ -68,7 +68,7 @@ function SafeInputHandler({
       }
       return
     }
-    if (!showSettings && !showAutocomplete) {
+    if (!showSettings && !showAutocomplete && status !== 'running') {
       if (key.upArrow) onUp()
       if (key.downArrow) onDown()
     }
@@ -149,13 +149,23 @@ export function App({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // intentionally only on mount
 
+  // Read live status/showSettings via refs rather than effect deps — this
+  // handler is only registered once, so a SIGINT arriving in the gap between
+  // a status change and React committing the re-render can no longer see a
+  // stale value and misfire (e.g. calling exit() while a swarm is actually
+  // still running, orphaning it instead of aborting it).
+  const statusRef = useRef(status)
+  statusRef.current = status
+  const showSettingsRef = useRef(showSettings)
+  showSettingsRef.current = showSettings
+
   useEffect(() => {
     const handler = () => {
-      if (showSettings) {
+      if (showSettingsRef.current) {
         setShowSettings(false)
         return
       }
-      if (status === 'running') {
+      if (statusRef.current === 'running') {
         abortRef.current?.abort()
         abortRef.current = null
         appendLine({ type: 'warn', text: '  Interrupted.' })
@@ -168,7 +178,7 @@ export function App({
     return () => {
       process.off('SIGINT', handler)
     }
-  }, [status, showSettings, exit, appendLine])
+  }, [exit, appendLine])
 
   const handleSubmit = useCallback(
     (value: string) => {
