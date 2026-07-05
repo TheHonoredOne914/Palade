@@ -1,5 +1,4 @@
-import type { AgentFinding, AgentName } from '../agents/base.js'
-import type { CrossAgentFinding } from '../orchestrator/types.js'
+
 
 export type ScoreCategory = string
 

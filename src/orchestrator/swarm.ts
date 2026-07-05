@@ -4,7 +4,7 @@ import pLimit from 'p-limit'
 import type { AgentFinding, AgentContext, AgentName, IAgent } from '../agents/base.js'
 import { getAgentsForMode } from '../agents/registry.js'
 import { synthesize as analyzeSynthesis } from '../agents/synthesis.js'
-import { CombinedAnalyzer } from '../agents/combined.js'
+import { CombinedAnalyzer, DEFAULT_DOMAINS } from '../agents/combined.js'
 import { CustomAgent } from '../agents/custom/agent.js'
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
@@ -74,9 +74,23 @@ export async function runSwarm(
     context.modeConfig?.agentOverrides,
     options.customAgents
   )
-  const agents: IAgent[] = options.economyMode
-    ? [new CombinedAnalyzer(), ...modeAgents.filter((a) => a instanceof CustomAgent)]
-    : modeAgents
+  
+  let agents: IAgent[] = modeAgents
+  if (options.economyMode) {
+    const builtInAgents = modeAgents.filter((a) => !(a instanceof CustomAgent))
+    const customAgents = modeAgents.filter((a) => a instanceof CustomAgent)
+    
+    // Ghost mode or heavily filtered modes might only have 1 built-in agent.
+    // Combining 1 agent defeats the purpose of economy mode (which is to batch N domains)
+    // and just degrades prompt quality. So if <= 1 built-in agent, just run standard mode.
+    if (builtInAgents.length > 1) {
+      const activeDomains = builtInAgents.map((a) => {
+        const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
+        return defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
+      })
+      agents = [new CombinedAnalyzer(activeDomains), ...customAgents]
+    }
+  }
   const memory = new AgentMemory()
 
   const agentTimings: Partial<Record<AgentName, number>> = {}
@@ -105,7 +119,7 @@ export async function runSwarm(
 
       const batchPromises = batches.map((batch, batchIdx) =>
         limit(async () => {
-          const agentTimeoutMs = options.timeoutMs ?? 300_000
+          const agentTimeoutMs = options.timeoutMs ?? 600_000
           // One AbortController per batch. On timeout we abort it so the in-flight
           // provider fetch is cancelled (the underlying signal flows through
           // IAgent.analyze → provider.complete → fetchWithRetry) instead of
@@ -261,8 +275,8 @@ export async function runSwarm(
         conflict.sideB.agentName
       )
 
-      const verdict = await arbitrateConflict(conflict, context, options.signal)
-      if (verdict) {
+      const verdict = (await arbitrateConflict(conflict, context, options.signal)) as any
+      if (verdict && verdict.is_conflict) {
         options.onVerdictDecided?.(verdict.decision, verdict.confidence)
 
         // Save to ADR — a failed disk write must not abort the review
@@ -328,21 +342,26 @@ export async function runSwarm(
 
       // Save to disk if not already saved (hasn't been run through the arbitrateConflict loop above)
       if (!lines.some((l) => l.includes('Saved as:'))) {
+        // The combined analyzer's verdict returns a single "Architect" finding.
+        // Try to figure out the winning vs losing sides from the text so the ADR isn't blank.
+        const winningLensMatch = decisionStr.match(/(\w+) says/i)
+        const winningLens = winningLensMatch ? winningLensMatch[1] : 'CombinedAgent(Winner)'
+        
         const fakeConflict = {
           filePath: finding.filePath || 'unknown',
           lineStart: finding.lineStart || 0,
           lineEnd: finding.lineEnd || 0,
           sideA: {
-            agentName: 'CombinedAgent(Lens A)',
-            title: '',
-            description: '',
+            agentName: winningLens as any,
+            title: `[VERDICT DECISION] ${finding.title.replace('[VERDICT] ', '')}`,
+            description: decisionStr,
             severity: 'info',
             tags: [],
           } as any,
           sideB: {
-            agentName: 'CombinedAgent(Lens B)',
-            title: '',
-            description: '',
+            agentName: losingStr as any,
+            title: `[REJECTED] ${finding.title.replace('[VERDICT] ', '')}`,
+            description: `This lens was rejected in favor of the tradeoff.`,
             severity: 'info',
             tags: [],
           } as any,

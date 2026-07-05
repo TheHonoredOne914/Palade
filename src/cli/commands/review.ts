@@ -15,21 +15,12 @@ import { reportTerminal } from '../../reporters/terminal.js'
 import { validateMode, getModeConfig } from '../../modes/index.js'
 import { writeOnboardDocs } from '../../modes/onboard.js'
 import { createLiveProgress } from '../../ui/progress.js'
-import { theme, scoreTheme } from '../../ui/theme.js'
-import {
-  kvTable,
-  findingsTable,
-  divider,
-  sparkline,
-  sectionBox,
-  scoreGrade,
-  formatDelta,
-} from '../../ui/layout.js'
+import { theme } from '../../ui/theme.js'
+import { kvTable } from '../../ui/layout.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentName } from '../../agents/base.js'
 import type { ResolvedTarget } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
-import { groupBySeverity } from '../../orchestrator/merger.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import { detectLanguages } from '../../ingestion/walker.js'
 import chalk from 'chalk'
@@ -323,7 +314,6 @@ export async function reviewCommand(
   }
 
   // 8. Run pipeline with progress
-  const agentCount = config.swarm.agentCount
   let completedAgents = 0
   const progress = opts.quiet || opts.tui ? undefined : createLiveProgress()
   let swarmResult: any

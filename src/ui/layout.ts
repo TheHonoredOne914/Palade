@@ -59,55 +59,7 @@ export function kvTable(rows: [string, string][]): string {
   return rows.map(([k, v]) => `  ${theme.dim(k.padEnd(18))} ${v}`).join('\n')
 }
 
-export function findingsTable(
-  findings: {
-    severity: string
-    agentName: string
-    filePath?: string
-    lineStart?: number
-    title: string
-  }[]
-): string {
-  const lines: string[] = []
 
-  // Table Header
-  lines.push(
-    `  ${theme.primaryBold('Severity'.padEnd(12))} ${theme.primaryBold('Agent'.padEnd(20))} ${theme.primaryBold('Location'.padEnd(30))} ${theme.primaryBold('Issue')}`
-  )
-  lines.push(theme.dim('  ' + '─'.repeat(12 + 20 + 30 + 40 + 3)))
-
-  for (const f of findings.slice(0, 30)) {
-    const loc = f.filePath ? `${truncatePath(f.filePath, 20)}:${f.lineStart ?? '?'}` : '—'
-
-    // strip-ansi equivalent for padEnd calculations isn't available easily,
-    // but we can just use template literals with fixed manual padding.
-    // We'll pad the raw values, then apply color.
-
-    const sevRaw = f.severity.padEnd(12)
-    const agentRaw = f.agentName.padEnd(20)
-    const locRaw = loc.padEnd(30)
-
-    const coloredSev =
-      f.severity === 'critical'
-        ? theme.error(sevRaw)
-        : f.severity === 'high'
-          ? theme.warning(sevRaw)
-          : f.severity === 'medium'
-            ? theme.accent(sevRaw)
-            : theme.dim(sevRaw)
-
-    lines.push(
-      `  ${coloredSev} ${theme.dim(agentRaw)} ${theme.dim(locRaw)} ${truncate(f.title, 38)}`
-    )
-  }
-
-  return lines.join('\n')
-}
-
-export function divider(width?: number): string {
-  const w = width ?? Math.min(process.stdout.columns || 72, 72)
-  return theme.dim('─'.repeat(w))
-}
 
 const BLOCKS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█']
 

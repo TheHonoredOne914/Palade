@@ -9,6 +9,7 @@ import type { ScoreCategory } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
 
 import { CATEGORY_LABELS } from '../scorer/types.js'
+import { scoreGrade } from '../ui/layout.js'
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
   critical: 'severity-critical',
@@ -18,15 +19,7 @@ const SEVERITY_CLASSES: Record<Severity, string> = {
   info: 'severity-low',
 }
 
-function getScoreGrade(score: number): string {
-  if (score >= 90) return 'A+'
-  if (score >= 80) return 'A'
-  if (score >= 75) return 'B+'
-  if (score >= 70) return 'B'
-  if (score >= 60) return 'C'
-  if (score >= 40) return 'D'
-  return 'F'
-}
+
 
 function getScoreGradeClass(score: number): string {
   if (score >= 80) return 'grade-a'
@@ -274,7 +267,7 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
   const projectName = ctx.config?.projectName ?? 'Project'
   const timestamp = ctx.config?.runTimestamp ?? new Date().toISOString()
   const score = ctx.score.score
-  const grade = getScoreGrade(score)
+  const grade = scoreGrade(score)
   const gradeClass = getScoreGradeClass(score)
 
   const categoryScoresHtml = ctx.score.breakdown.categories
@@ -479,7 +472,7 @@ async function openBrowser(url: string): Promise<void> {
   await open(url)
 }
 
-export function stopLocalServer(): void {
+function stopLocalServer(): void {
   if (serverTimeout) {
     clearTimeout(serverTimeout)
     serverTimeout = null

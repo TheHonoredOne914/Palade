@@ -145,10 +145,11 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
 }
 
 const VerdictSchema = z.object({
-  decision: z.string().describe('What to actually do'),
+  is_conflict: z.boolean().describe('True ONLY if the two recommendations are mutually exclusive and cannot both be applied.'),
+  decision: z.string().describe('What to actually do (if conflict) or how to combine them (if no conflict)'),
   tradeoff_accepted: z.string().describe('The explicit cost being accepted'),
   confidence: z.coerce.number().describe('0-100 score of how confident you are in this tradeoff'),
-  losing_side: z.string().describe('Which agent recommendation was NOT taken, and why'),
+  losing_side: z.string().describe('Which agent recommendation was NOT taken, and why (or N/A)'),
 })
 
 export async function arbitrateConflict(
@@ -156,8 +157,10 @@ export async function arbitrateConflict(
   context: AgentContext,
   signal?: AbortSignal
 ): Promise<Verdict | null> {
-  let systemPrompt = `You are the Lead Architect. Two specialized agents disagree on a piece of code.
-Your job is to resolve the conflict by making a definitive architectural decision. Accept a tradeoff explicitly.
+  let systemPrompt = `You are the Lead Architect. Two specialized agents have flagged the same piece of code.
+Your first job is to determine if their recommendations actually contradict each other (mutually exclusive).
+If they do NOT conflict (e.g., they address different aspects of the same lines, or both can be implemented), set is_conflict to false.
+If they DO conflict, resolve the conflict by making a definitive architectural decision. Accept a tradeoff explicitly.
 
 Respond ONLY with JSON matching this schema:
 {

@@ -14,7 +14,7 @@ export class OpenRouterProvider implements IProvider {
 
   constructor(
     apiKey: string,
-    model = 'nvidia/nemotron-3-super-120b-a12b:free',
+    model = 'deepseek/deepseek-r1',
     maxConcurrency = 8,
     baseUrl = 'https://openrouter.ai/api/v1',
     deadlineMs: number = DEFAULT_DEADLINE_MS

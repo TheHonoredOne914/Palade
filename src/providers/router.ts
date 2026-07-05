@@ -144,9 +144,7 @@ function instantiateProviders(providers: PaladeConfig['providers']): Map<string,
   return map
 }
 
-function padRight(str: string, len: number): string {
-  return str.length >= len ? str : str + ' '.repeat(len - str.length)
-}
+
 
 let assignment: ProviderAssignment | null = null
 let allProviders: Map<string, IProvider> = new Map()

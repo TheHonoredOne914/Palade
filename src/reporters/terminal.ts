@@ -1,10 +1,11 @@
 import chalk from 'chalk'
 import type { ReporterContext, ReporterOutput } from './types.js'
-import type { ScoreCategory, ScoreResult } from '../scorer/types.js'
-import type { Severity, AgentFinding } from '../agents/base.js'
-import type { FindingDiff, ChangedFile, DiffResult } from '../diff/types.js'
-
+import type { ScoreResult } from '../scorer/types.js'
+import type { Severity } from '../agents/base.js'
+import type { FindingDiff, ChangedFile } from '../diff/types.js'
 import { CATEGORY_LABELS } from '../scorer/types.js'
+import { scoreTheme } from '../ui/theme.js'
+import { scoreGrade } from '../ui/layout.js'
 
 const SEVERITY_COLORS: Record<Severity, (text: string) => string> = {
   critical: chalk.red.bold,
@@ -14,26 +15,6 @@ const SEVERITY_COLORS: Record<Severity, (text: string) => string> = {
   info: chalk.gray,
 }
 
-// Color bands must align with getScoreGrade's tiers below — a B (70+) grade
-// rendered in cautionary yellow would have the two indicators disagreeing
-// about the same number.
-function getScoreColor(score: number): (text: string) => string {
-  if (score >= 90) return chalk.green.bold
-  if (score >= 70) return chalk.green
-  if (score >= 60) return chalk.yellow
-  if (score >= 40) return chalk.red
-  return chalk.red.bold
-}
-
-function getScoreGrade(score: number): string {
-  if (score >= 90) return 'A+'
-  if (score >= 80) return 'A'
-  if (score >= 75) return 'B+'
-  if (score >= 70) return 'B'
-  if (score >= 60) return 'C'
-  if (score >= 40) return 'D'
-  return 'F'
-}
 
 function formatDelta(delta: number): string {
   if (delta === 0) return chalk.gray('  +0')
@@ -45,12 +26,12 @@ function renderScoreBar(score: number, width: number = 20): string {
   const clamped = Math.max(0, Math.min(100, score))
   const filled = Math.round((clamped / 100) * width)
   const empty = width - filled
-  const color = getScoreColor(clamped)
+  const color = scoreTheme(clamped)
   return color('█'.repeat(filled)) + chalk.gray('░'.repeat(empty))
 }
 
 function renderCategoryScore(category: string, score: number, findingCount: number): string {
-  const color = getScoreColor(score)
+  const color = scoreTheme(score)
   const bar = renderScoreBar(score, 10)
   return `  ${chalk.bold(category.padEnd(20))} ${bar} ${color(score.toString().padStart(3))} ${chalk.gray(`(${findingCount} findings)`)}`
 }
@@ -77,8 +58,8 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
   lines.push(chalk.bold.blue('╚══════════════════════════════════════════════════════════════╝'))
   lines.push('')
 
-  const scoreColor = getScoreColor(ctx.score.score)
-  const grade = getScoreGrade(ctx.score.score)
+  const scoreColor = scoreTheme(ctx.score.score)
+  const grade = scoreGrade(ctx.score.score)
   lines.push(
     `${chalk.bold('Overall Score:')} ${scoreColor(ctx.score.score.toString())} ${chalk.gray(`/ 100`)} ${chalk.bold(`(${grade})`)}`
   )
@@ -227,7 +208,7 @@ export function printDiffSummary(ctx: {
 
   lines.push(chalk.gray('─'.repeat(50)))
 
-  const scoreColor = getScoreColor(score.score)
+  const scoreColor = scoreTheme(score.score)
   const deltaStr =
     score.delta === 0
       ? chalk.gray('  +0')

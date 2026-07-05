@@ -4,7 +4,7 @@ import type { OutputLine } from '../components/OutputPane.js'
 import type { PaladeConfig } from '../../config/schema.js'
 import { reviewCommand } from '../../cli/commands/review.js'
 import { diffCommand } from '../../cli/commands/diff.js'
-import { watchCommand } from '../../cli/commands/watch.js'
+
 import { scoreCommand } from '../../cli/commands/score.js'
 import { initCommand } from '../../cli/commands/init.js'
 import { decisionsCommand } from '../../cli/commands/decisions.js'

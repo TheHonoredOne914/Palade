@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { theme } from '../../ui/theme.js'
 import { loadConfig } from '../../config/loader.js'
+import { PaladeConfigSchema } from '../../config/schema.js'
 import { CliExitError } from '../../errors/types.js'
 import { askConfirm, askList, askQuestion } from '../../ui/prompt.js'
 import { CONFIG_TEMPLATE, IGNORE_TEMPLATE } from './init.js'
@@ -173,6 +174,13 @@ async function applySets(projectRoot: string, sets: string[]): Promise<void> {
     throw new CliExitError(1)
   }
 
+  let currentConfig: any
+  try {
+    currentConfig = await loadConfig()
+  } catch {
+    currentConfig = {}
+  }
+
   for (const set of sets) {
     const eqIdx = set.indexOf('=')
     if (eqIdx === -1) {
@@ -183,6 +191,26 @@ async function applySets(projectRoot: string, sets: string[]): Promise<void> {
     const key = set.slice(0, eqIdx).trim()
     const rawValue = set.slice(eqIdx + 1).trim()
     const value = parseValue(rawValue)
+
+    // Validate against schema first
+    const testConfig = JSON.parse(JSON.stringify(currentConfig))
+    const parts = key.split('.')
+    let curr = testConfig
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!curr[parts[i]]) curr[parts[i]] = {}
+      curr = curr[parts[i]]
+    }
+    curr[parts[parts.length - 1]] = value
+
+    try {
+      PaladeConfigSchema.parse(testConfig)
+    } catch (err: any) {
+      const msg = err.errors?.[0]?.message || String(err)
+      console.error(chalk.red(`  Invalid value for ${key}: ${msg}`))
+      continue
+    }
+    
+    currentConfig = testConfig
 
     const old = configContent
     configContent = setNestedValue(configContent, key, value)

@@ -91,7 +91,15 @@ export const DEFAULT_DOMAINS: DomainSpec[] = [
 
 function buildCombinedSystemPrompt(domains: DomainSpec[]): string {
   const sections = domains
-    .map((d) => `### ${d.label} (agentName: "${d.name}")\nLook for: ${d.focus}.`)
+    .map((d) => {
+      let extra = ''
+      if (d.name === 'deadCode') {
+        extra = ' (NOTE: You are reviewing partial chunks. Do NOT report exports as unused unless you are certain they are dead. Assume public exports are used elsewhere.)'
+      } else if (d.name === 'testIntelligence') {
+        extra = ' (NOTE: You are reviewing partial chunks. Only flag missing tests if the chunk clearly contains complex logic lacking coverage, not just because a test file isn\'t visible.)'
+      }
+      return `### ${d.label} (agentName: "${d.name}")\nLook for: ${d.focus}.${extra}`
+    })
     .join('\n\n')
 
   return `You are a combined multi-domain code review swarm. You are reviewing code as part of a larger analysis.

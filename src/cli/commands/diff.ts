@@ -184,6 +184,12 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           onSynthesisComplete: (durationMs: number): void => {
             console.log(theme.dim(`  Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`))
           },
+          onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
+            console.log(theme.dim(`  Conflict detected: ${sideA} vs ${sideB} in ${filePath}`))
+          },
+          onVerdictDecided: (decision: string, confidence: number): void => {
+            console.log(theme.success(`  ✓ Verdict decided (${confidence}% confidence)`))
+          },
           timeoutMs: config.swarm.timeoutMs,
           maxReviewTokens: config.swarm.maxReviewTokens,
           customAgents: customAgentDefs,
@@ -320,6 +326,12 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                 customAgents: customAgentDefs,
                 economyMode: config.swarm.economyMode,
                 signal: opts.signal,
+                onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
+                  console.log(theme.dim(`  [base] Conflict: ${sideA} vs ${sideB} in ${filePath}`))
+                },
+                onVerdictDecided: (decision: string, confidence: number): void => {
+                  console.log(theme.success(`  ✓ [base] Verdict decided (${confidence}% confidence)`))
+                },
               })
               baseFindings = baseSwarmResult.findings
             }

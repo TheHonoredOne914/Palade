@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DEFAULT_BADGE_PATH, DEFAULT_CONSTITUTION_PATH, DEFAULT_SPEC_PATH } from './defaults.js'
 
 const ProviderConfigSchema = z.object({
   apiKey: z.string().default(''),
@@ -44,8 +45,8 @@ export const PaladeConfigSchema = z.object({
       // keeps existing behavior; disable to save tokens if you don't rely on
       // those review lenses.
       includeSkills: z.boolean().default(true),
-      specPath: z.string().default('palade.spec.md'),
-      constitutionPath: z.string().default('.palade/constitution.md'),
+      specPath: z.string().default(DEFAULT_SPEC_PATH),
+      constitutionPath: z.string().default(DEFAULT_CONSTITUTION_PATH),
     })
     .default({}),
   output: z
@@ -60,7 +61,7 @@ export const PaladeConfigSchema = z.object({
     .object({
       historyFile: z.string().default('.palade/history.json'),
       badge: z.boolean().default(true),
-      badgePath: z.string().default('palade-badge.svg'),
+      badgePath: z.string().default(DEFAULT_BADGE_PATH),
       // Retention cap for history.json entries (oldest trimmed first).
       maxHistoryEntries: z.number().int().min(1).default(50),
       // Per-finding penalty applied when calculating category/total scores,

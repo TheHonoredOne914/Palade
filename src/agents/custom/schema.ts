@@ -1,16 +1,6 @@
 import { z } from 'zod'
 
-/** Built-in agent names that cannot be overridden by custom agents. */
-const BUILTIN_NAMES = [
-  'security',
-  'architecture',
-  'performance',
-  'maintainability',
-  'deadCode',
-  'testIntelligence',
-  'pragmatism',
-  'logic',
-] as const
+import { BUILTIN_NAMES } from '../registry.js'
 
 export const CustomAgentDefinitionSchema = z.object({
   /** Unique agent name. Must not collide with built-in names. */

@@ -423,7 +423,7 @@ Reply strictly YES or NO.`,
           temperature: 0,
           signal,
         })
-        if (/^\s*yes\b/i.test(verifyResponse.content)) {
+        if (verifyResponse.content.trim().toUpperCase() === 'YES') {
           validatedFindings.push(f)
         } else {
           console.log(
@@ -435,6 +435,11 @@ Reply strictly YES or NO.`,
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') throw err
         // If validation fails (e.g. timeout), err on the side of caution and keep it
+        console.warn(
+          chalk.yellow(
+            `  [${agentName}] Self-consistency check failed (${err instanceof Error ? err.message : String(err)}). Keeping finding: ${f.title}`
+          )
+        )
         validatedFindings.push(f)
       }
     } else {

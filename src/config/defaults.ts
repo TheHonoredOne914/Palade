@@ -1,5 +1,9 @@
 import { PaladeConfig } from './schema.js'
 
+export const DEFAULT_CONSTITUTION_PATH = '.palade/constitution.md'
+export const DEFAULT_BADGE_PATH = 'palade-badge.svg'
+export const DEFAULT_SPEC_PATH = 'palade.spec.md'
+
 export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
   swarm: {
     primary: 'opencode-zen',
@@ -9,8 +13,8 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     maxReviewTokens: 200_000,
     economyMode: false,
     includeSkills: true,
-    specPath: 'palade.spec.md',
-    constitutionPath: '.palade/constitution.md',
+    specPath: DEFAULT_SPEC_PATH,
+    constitutionPath: DEFAULT_CONSTITUTION_PATH,
   },
   output: {
     dir: '.palade/reports',
@@ -21,7 +25,7 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
   score: {
     historyFile: '.palade/history.json',
     badge: true,
-    badgePath: 'palade-badge.svg',
+    badgePath: DEFAULT_BADGE_PATH,
     maxHistoryEntries: 50,
     severityWeights: {
       critical: 10,

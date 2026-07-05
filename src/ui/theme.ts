@@ -28,10 +28,16 @@ export const theme = {
   scoreRed: chalk.hex('#FF3366').bold,
 } as const
 
+export const SCORE_THRESHOLDS = {
+  good: 80,
+  warning: 60,
+  poor: 40,
+} as const
+
 export function scoreTheme(score: number) {
-  if (score >= 80) return theme.scoreGreen
-  if (score >= 60) return theme.scoreYellow
-  if (score >= 40) return theme.scoreOrange
+  if (score >= SCORE_THRESHOLDS.good) return theme.scoreGreen
+  if (score >= SCORE_THRESHOLDS.warning) return theme.scoreYellow
+  if (score >= SCORE_THRESHOLDS.poor) return theme.scoreOrange
   return theme.scoreRed
 }
 
