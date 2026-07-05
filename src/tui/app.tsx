@@ -146,7 +146,6 @@ export function App({
         })
         .catch(() => setShowSettings(true))
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // intentionally only on mount
 
   // Read live status/showSettings via refs rather than effect deps — this
@@ -222,7 +221,11 @@ export function App({
       if (message) appendLine({ type: 'output', text: '  ' + message })
       // Re-read env to update provider circles and dismiss no-provider banner
       const hasKey = [
-        'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'CEREBRAS_API_KEY', 'NVIDIA_API_KEY', 'OLLAMA_MODEL'
+        'GROQ_API_KEY',
+        'OPENROUTER_API_KEY',
+        'CEREBRAS_API_KEY',
+        'NVIDIA_API_KEY',
+        'OLLAMA_MODEL',
       ].some((k) => !!process.env[k])
       if (hasKey) {
         setLiveProviderStatus({
@@ -316,10 +319,19 @@ export function App({
                       marginBottom={1}
                       flexDirection="column"
                     >
-                      <Text color="#EF4444" bold>⚠ No AI provider configured</Text>
-                      <Text color="#D1D5DB">{'  '}Set a key in the Settings panel that just opened, or export an env var:</Text>
-                      <Text color="#6EE7B7">{'  '}GROQ_API_KEY  OPENROUTER_API_KEY  CEREBRAS_API_KEY  NVIDIA_API_KEY</Text>
-                      <Text color="#9CA3AF">{'  '}Then press Esc and run /review to start reviewing code.</Text>
+                      <Text color="#EF4444" bold>
+                        ⚠ No AI provider configured
+                      </Text>
+                      <Text color="#D1D5DB">
+                        {'  '}Set a key in the Settings panel that just opened, or export an env
+                        var:
+                      </Text>
+                      <Text color="#6EE7B7">
+                        {'  '}GROQ_API_KEY OPENROUTER_API_KEY CEREBRAS_API_KEY NVIDIA_API_KEY
+                      </Text>
+                      <Text color="#9CA3AF">
+                        {'  '}Then press Esc and run /review to start reviewing code.
+                      </Text>
                     </Box>
                   )}
                 </Box>
