@@ -31,3 +31,12 @@ palade.agents.ts
 sample-report.html
 test-project/
 exports/
+
+# AI Assistant configs
+.claude/
+.clinerules/
+.cursor/
+.opencode/
+.windsurf/
+AGENTS.md
+CLAUDE.md

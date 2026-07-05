@@ -19,3 +19,12 @@ sample-report.html
 .tmp*/
 
 # (The dist/, bin/, templates/ directories are implicitly included by package.json's "files" array)
+
+# AI Assistant configs
+.claude/
+.clinerules/
+.cursor/
+.opencode/
+.windsurf/
+AGENTS.md
+CLAUDE.md
