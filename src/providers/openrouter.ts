@@ -14,7 +14,7 @@ export class OpenRouterProvider implements IProvider {
 
   constructor(
     apiKey: string,
-    model = 'deepseek/deepseek-r1',
+    model = 'openrouter/free',
     maxConcurrency = 8,
     baseUrl = 'https://openrouter.ai/api/v1',
     deadlineMs: number = DEFAULT_DEADLINE_MS
