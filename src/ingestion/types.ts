@@ -24,6 +24,10 @@ export interface Annotation {
   type: 'review' | 'focus' | 'ignore'
   value?: string
   line: number
+  // True when this `ignore` annotation is an explicit whole-file directive
+  // (`@palade ignore-file`), as opposed to a line-level `@palade ignore`
+  // that only suppresses findings on the annotated line.
+  fileLevel?: boolean
 }
 
 export interface FileManifest {

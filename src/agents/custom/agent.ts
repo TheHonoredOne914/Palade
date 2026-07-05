@@ -6,10 +6,12 @@ import {
   type IAgent,
   type AgentName,
   type Severity,
+  annotateComplexity,
   buildChunkContext,
   buildSystemPrompt,
   parseFindingsResponse,
   SEVERITY_PENALTY,
+  verifyCriticalHighFindings,
 } from '../base.js'
 import { validateAndFingerprintFindings } from '../../orchestrator/findingValidation.js'
 import type { CustomAgentDefinition } from './schema.js'
@@ -55,7 +57,8 @@ export class CustomAgent implements IAgent {
         f.model = response.model
         f.scorePenalty = this.getScorePenalty(f.severity)
       }
-      return findings
+      annotateComplexity(findings, chunks)
+      return verifyCriticalHighFindings(findings, chunks, provider, this.name, signal)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err

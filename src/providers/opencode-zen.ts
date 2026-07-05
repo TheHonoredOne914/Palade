@@ -21,9 +21,9 @@ export class OpenCodeZenProvider implements IProvider {
   ) {
     this.apiKey = apiKey
     this.model = model
-    this.limiter = createLimiter(maxConcurrency)
     this.baseUrl = baseUrl
     this.deadlineMs = deadlineMs
+    this.limiter = createLimiter(maxConcurrency)
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {

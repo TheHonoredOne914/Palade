@@ -61,6 +61,28 @@ export const PaladeConfigSchema = z.object({
       historyFile: z.string().default('.palade/history.json'),
       badge: z.boolean().default(true),
       badgePath: z.string().default('palade-badge.svg'),
+      // Retention cap for history.json entries (oldest trimmed first).
+      maxHistoryEntries: z.number().int().min(1).default(50),
+      // Per-finding penalty applied when calculating category/total scores,
+      // keyed by severity. Defaults match agents/base.ts's SEVERITY_PENALTY.
+      severityWeights: z
+        .object({
+          critical: z.number().default(10),
+          high: z.number().default(5),
+          medium: z.number().default(2),
+          low: z.number().default(0.5),
+          info: z.number().default(0),
+        })
+        .default({}),
+      // Base penalty per cross-agent conflict, keyed by severity, before the
+      // blast-radius multiplier is applied.
+      crossAgentPenalty: z
+        .object({
+          critical: z.number().default(15),
+          high: z.number().default(8),
+          medium: z.number().default(4),
+        })
+        .default({}),
     })
     .default({}),
 })

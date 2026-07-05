@@ -220,10 +220,25 @@ export class FallbackProvider implements IProvider {
         const isRetryable = isRetryableMessage(lastError.message)
 
         if (isFatal) {
-          this.deadProviders.add(provider.name)
-          console.warn(
-            chalk.red(`[router] provider ${provider.name} marked as DEAD (hard quota limit)`)
-          )
+          // A chain entry may be a ProviderPool backing several keys/instances
+          // that share this same provider name. A fatal error on ONE member
+          // (e.g. that key's daily quota) must not take down its healthy
+          // siblings, so defer to the entry's own isAvailable() — which for a
+          // pool aggregates per-member state — rather than blanket-marking the
+          // shared name dead on any fatal-looking error.
+          const stillAvailable = await provider.isAvailable()
+          if (stillAvailable) {
+            console.warn(
+              chalk.yellow(
+                `[router] provider ${provider.name} hit a fatal-looking error on one instance, but other instances remain available — not marking the whole provider dead`
+              )
+            )
+          } else {
+            this.deadProviders.add(provider.name)
+            console.warn(
+              chalk.red(`[router] provider ${provider.name} marked as DEAD (hard quota limit)`)
+            )
+          }
         }
 
         // Default to trying the next provider even for errors that match

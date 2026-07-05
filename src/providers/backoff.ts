@@ -28,9 +28,11 @@ export async function withExponentialBackoff<T>(
         throw error
       }
 
-      attempt++
+      // Compute the delay from the attempt count BEFORE incrementing it, so the
+      // first retry (attempt 0) waits base*2^0 = base instead of base*2.
       const jitter = Math.random() * 500
       const delay = Math.min(baseDelayMs * Math.pow(2, attempt) + jitter, maxDelayMs)
+      attempt++
 
       console.warn(
         `[backoff] attempt ${attempt}/${maxRetries} after ${Math.round(delay)}ms — ${error.message}`

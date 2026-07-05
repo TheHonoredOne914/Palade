@@ -22,8 +22,8 @@ export class NvidiaProvider implements IProvider {
     this.apiKey = apiKey
     this.model = model
     this.baseUrl = baseUrl
-    this.limiter = createLimiter(maxConcurrency)
     this.deadlineMs = deadlineMs
+    this.limiter = createLimiter(maxConcurrency)
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
@@ -36,7 +36,8 @@ export class NvidiaProvider implements IProvider {
     const maxTokens = req.maxTokens ?? 8192
     // One deadline for the whole logical call: internal empty-content retries
     // share it, so the ceiling holds across attempts instead of per attempt.
-    return this.limiter(() => this.doComplete(req, maxTokens, 0, Date.now() + this.deadlineMs))
+    const deadline = Date.now() + this.deadlineMs
+    return this.limiter(() => this.doComplete(req, maxTokens, 0, deadline))
   }
 
   private async doComplete(

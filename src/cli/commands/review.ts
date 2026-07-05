@@ -39,6 +39,12 @@ import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'nod
 // Local execution (no API keys required):
 //   OLLAMA_MODEL=codellama:13b npx palade review --target src/
 
+// Keep in sync with the report formats review.ts actually knows how to write
+// out below (json/html/md) — this mirrors config/schema.ts's
+// `output.formats` enum, which is what config.output.formats.join(',') falls
+// back to when --format isn't passed.
+const VALID_REPORT_FORMATS = ['json', 'html', 'md']
+
 interface ReviewOptions {
   target?: string
   allTargets?: boolean
@@ -74,6 +80,24 @@ export async function reviewCommand(
       )
     )
     throw new CliExitError(1)
+  }
+  // Validate --format up front, before running the (potentially expensive and
+  // slow) swarm review — an unknown format used to silently produce zero
+  // report files only after the whole run had already completed.
+  if (opts.format) {
+    const requestedFormats = opts.format
+      .split(',')
+      .map((f) => f.trim())
+      .filter(Boolean)
+    const invalidFormats = requestedFormats.filter((f) => !VALID_REPORT_FORMATS.includes(f))
+    if (invalidFormats.length > 0) {
+      console.error(
+        chalk.red(
+          `  Invalid --format value${invalidFormats.length > 1 ? 's' : ''}: ${invalidFormats.join(', ')}. Valid options: ${VALID_REPORT_FORMATS.join(', ')}`
+        )
+      )
+      throw new CliExitError(1)
+    }
   }
   if (
     !pathArg &&
@@ -327,16 +351,25 @@ export async function reviewCommand(
         ): void => {
           progress?.agentBatchDone(name, current, total, findings)
         },
-        onAgentComplete: (name: AgentName, findings: number, durationMs: number): void => {
+        onAgentComplete: (
+          name: AgentName,
+          findings: number,
+          durationMs: number,
+          error?: Error
+        ): void => {
           completedAgents++
           if (opts.tui) {
-            console.log(
-              theme.success(
-                `  ✓ ${name} agent finished in ${(durationMs / 1000).toFixed(1)}s (${findings} findings)`
+            if (error) {
+              console.log(theme.error(`  ✖ ${name} agent failed: ${error.message}`))
+            } else {
+              console.log(
+                theme.success(
+                  `  ✓ ${name} agent finished in ${(durationMs / 1000).toFixed(1)}s (${findings} findings)`
+                )
               )
-            )
+            }
           }
-          progress?.agentDone(name, findings, durationMs)
+          progress?.agentDone(name, findings, durationMs, error)
         },
         onSynthesisStart: (): void => {
           if (opts.tui) console.log(theme.dim(`  Synthesizing results...`))
@@ -401,17 +434,25 @@ export async function reviewCommand(
   const scoreResult = calculateScore(
     swarmResult.findings,
     swarmResult.crossAgentFindings,
-    previousScore
+    previousScore,
+    {
+      severityWeights: config.score.severityWeights,
+      crossAgentPenalty: config.score.crossAgentPenalty,
+    }
   )
 
   // 10. Append to history
-  appendEntry(historyPath, {
-    timestamp: new Date().toISOString(),
-    runId: swarmResult.runId,
-    score: scoreResult.score,
-    breakdown: scoreResult.breakdown,
-    delta: scoreResult.delta,
-  })
+  appendEntry(
+    historyPath,
+    {
+      timestamp: new Date().toISOString(),
+      runId: swarmResult.runId,
+      score: scoreResult.score,
+      breakdown: scoreResult.breakdown,
+      delta: scoreResult.delta,
+    },
+    config.score.maxHistoryEntries
+  )
 
   // 11. Generate badge
   if (config.score.badge) {

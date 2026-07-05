@@ -147,6 +147,12 @@ export async function runSwarm(
       // allSettled, not all: one failed/timed-out batch must not throw away
       // the findings from batches that already succeeded.
       const results = await Promise.allSettled(batchPromises)
+      // Collect every fulfilled batch's findings first, then decide whether to
+      // throw. Throwing as soon as a fatal-auth rejection is spotted mid-loop
+      // would skip any still-unvisited fulfilled results in this same
+      // Promise.allSettled batch, silently discarding work that already
+      // succeeded.
+      let fatalError: Error | undefined
       for (const result of results) {
         if (result.status === 'fulfilled') {
           allFindings.push(...result.value)
@@ -155,10 +161,14 @@ export async function runSwarm(
           agentError = err instanceof Error ? err : new Error(String(err))
 
           if (isFatalAuthError(agentError.message)) {
-            runAbort.abort()
-            throw agentError
+            fatalError = agentError
           }
         }
+      }
+
+      if (fatalError) {
+        runAbort.abort()
+        throw fatalError
       }
 
       if (agentError) {

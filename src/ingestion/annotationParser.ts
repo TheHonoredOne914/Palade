@@ -4,10 +4,14 @@ import type { AnnotationSummary } from '../agents/base.js'
 
 const REVIEW_RE = /\/\/\s*@palade\s+review\s*:\s*(.+)/i
 const FOCUS_RE = /\/\/\s*@palade\s+focus\s*:\s*(.+)/i
-const IGNORE_RE = /\/\/\s*@palade\s+ignore/i
+// Explicit whole-file directive. Must be checked before IGNORE_RE, since
+// `// @palade ignore-file` also matches the looser line-level IGNORE_RE.
+const FILE_IGNORE_RE = /\/\/\s*@palade\s+ignore-file\b/i
+const IGNORE_RE = /\/\/\s*@palade\s+ignore\b/i
 const PY_REVIEW_RE = /#\s*@palade\s+review\s*:\s*(.+)/i
 const PY_FOCUS_RE = /#\s*@palade\s+focus\s*:\s*(.+)/i
-const PY_IGNORE_RE = /#\s*@palade\s+ignore/i
+const PY_FILE_IGNORE_RE = /#\s*@palade\s+ignore-file\b/i
+const PY_IGNORE_RE = /#\s*@palade\s+ignore\b/i
 
 export function parseFile(absolutePath: string, isPython: boolean = false): Promise<Annotation[]> {
   return parseFileAsync(absolutePath, isPython)
@@ -39,6 +43,10 @@ async function parseFileAsync(absolutePath: string, isPython: boolean): Promise<
         annotations.push({ type: 'focus', value: focusMatch[1].trim(), line: lineNum })
         continue
       }
+      if (line.match(PY_FILE_IGNORE_RE)) {
+        annotations.push({ type: 'ignore', line: lineNum, fileLevel: true })
+        continue
+      }
       if (line.match(PY_IGNORE_RE)) {
         annotations.push({ type: 'ignore', line: lineNum })
         continue
@@ -53,6 +61,10 @@ async function parseFileAsync(absolutePath: string, isPython: boolean): Promise<
     const focusMatch = line.match(FOCUS_RE)
     if (focusMatch) {
       annotations.push({ type: 'focus', value: focusMatch[1].trim(), line: lineNum })
+      continue
+    }
+    if (line.match(FILE_IGNORE_RE)) {
+      annotations.push({ type: 'ignore', line: lineNum, fileLevel: true })
       continue
     }
     if (line.match(IGNORE_RE)) {
@@ -101,7 +113,10 @@ export function buildAnnotationSummary(
   for (const manifest of manifests) {
     for (const annotation of manifest.annotations) {
       if (annotation.type === 'ignore') {
-        if (annotation.line <= 5) {
+        // Only an explicit `@palade ignore-file` directive drops the whole
+        // file. A line-level `@palade ignore` near the top of the file must
+        // not be inferred as whole-file scope just because of its position.
+        if (annotation.fileLevel) {
           ignoredFiles.push(manifest.path)
         } else {
           ignoredLines.push({ filePath: manifest.path, startLine: annotation.line })
