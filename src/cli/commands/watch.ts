@@ -53,7 +53,7 @@ export async function watchCommand(opts: {
   let isProcessing = false
   const accumulatedFindings = new Map<string, AgentFinding[]>()
   let sweepQueue: string[] = []
-  let urgentQueue: string[] = []
+  const urgentQueue: string[] = []
   let loopTimer: ReturnType<typeof setTimeout> | null = null
   let currentSweepController: AbortController | null = null
 

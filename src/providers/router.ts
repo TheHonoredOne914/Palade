@@ -182,7 +182,7 @@ export class FallbackProvider implements IProvider {
     this._totalCount++
 
     let lastError: Error | undefined
-    let primaryProvider = this.chain[0]
+    const primaryProvider = this.chain[0]
 
     const attempts: { provider: string; finalError: string }[] = []
 

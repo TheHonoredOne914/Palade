@@ -87,7 +87,7 @@ export async function runSwarm(
     const agentStart = Date.now()
     options.onAgentStart?.(agent.name)
 
-    let allFindings: AgentFinding[] = []
+    const allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
     try {
       // batchTokenLimit isn't (yet) a formal field on SwarmOptions — read it

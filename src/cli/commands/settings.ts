@@ -324,8 +324,8 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
       }
     }
   } else {
-    let pathStack2: string[] = []
-    let openIndents2: number[] = []
+    const pathStack2: string[] = []
+    const openIndents2: number[] = []
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]

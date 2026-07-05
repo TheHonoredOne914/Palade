@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { execSync } from 'child_process'
 import express from 'express'
 

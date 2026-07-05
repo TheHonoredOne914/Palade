@@ -305,7 +305,7 @@ export async function walkProject(
     for (const raw of rawImports) {
       if (raw.startsWith('.')) {
         // relative import
-        let resolved = normalize(join(dirname(m.path), raw)).replace(/\\/g, '/')
+        const resolved = normalize(join(dirname(m.path), raw)).replace(/\\/g, '/')
         // Try exact match, .ts, .js, /index.ts
         let target = pathMap.get(resolved)
         if (!target) target = pathMap.get(resolved + '.ts')
