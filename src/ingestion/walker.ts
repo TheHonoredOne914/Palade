@@ -197,9 +197,7 @@ export async function detectLanguages(
   }
 }
 
-export async function buildIgnoreFilter(
-  projectRoot: string
-): Promise<Ignore> {
+export async function buildIgnoreFilter(projectRoot: string): Promise<Ignore> {
   const ig = ignore()
 
   for (const pattern of DEFAULT_IGNORES) {
