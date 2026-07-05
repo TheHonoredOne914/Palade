@@ -7,7 +7,7 @@ import { join } from 'node:path'
 
 export const PROVIDERS = [
   { id: 'groq', label: 'Groq', env: 'GROQ_API_KEY', model: 'llama-3.3-70b-versatile' },
-  { id: 'cerebras', label: 'Cerebras', env: 'CEREBRAS_API_KEY', model: 'llama3.1-70b' },
+  { id: 'cerebras', label: 'Cerebras', env: 'CEREBRAS_API_KEY', model: 'gpt-oss-120b' },
   {
     id: 'openrouter',
     label: 'OpenRouter',
@@ -96,6 +96,27 @@ async function saveApiKey(
   }
 
   await writeFile(configPath, content, 'utf-8')
+
+  // Also persist to .env so dotenv picks it up on next launch, and inject
+  // into process.env immediately so this TUI session uses the key right away.
+  const envKey = prov.env
+  process.env[envKey] = apiKey
+
+  const envPath = join(projectRoot, '.env')
+  let envContent = ''
+  try {
+    envContent = await readFile(envPath, 'utf-8')
+  } catch {
+    // file doesn't exist yet, start fresh
+  }
+  const envLineRe = new RegExp(`^${envKey}=.*$`, 'm')
+  const newLine = `${envKey}=${apiKey}`
+  if (envLineRe.test(envContent)) {
+    envContent = envContent.replace(envLineRe, newLine)
+  } else {
+    envContent = envContent ? `${envContent.trimEnd()}\n${newLine}\n` : `${newLine}\n`
+  }
+  await writeFile(envPath, envContent, 'utf-8')
 }
 
 interface SettingsPanelProps {

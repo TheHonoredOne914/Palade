@@ -249,6 +249,11 @@ export class FallbackProvider implements IProvider {
         if (i < this.chain.length - 1) {
           const reason = isRetryable ? 'exhausted retries' : 'hit an unclassified error'
           console.warn(chalk.yellow(`[router] provider ${provider.name} ${reason}, trying next`))
+          console.warn(chalk.dim(`         → ${lastError.message.split('\n')[0].slice(0, 120)}`))
+        } else {
+          // Last in chain — surface the real error so users can diagnose
+          const reason = isRetryable ? 'exhausted retries' : 'unclassified error'
+          console.warn(chalk.red(`[router] provider ${provider.name} failed (${reason}): ${lastError.message.split('\n')[0].slice(0, 200)}`))
         }
         continue
       }

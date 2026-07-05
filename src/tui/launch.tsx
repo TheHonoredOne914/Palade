@@ -16,9 +16,6 @@ export async function launchTUI(): Promise<void> {
   process.env.PALADE_TUI = '1'
 
   const { existsSync } = await import('node:fs')
-  const hasConfig =
-    existsSync(join(process.cwd(), 'palade.config.ts')) ||
-    existsSync(join(process.cwd(), '.palade', 'palade.config.ts'))
   const hasAnyEnvKey = [
     'GROQ_API_KEY',
     'OPENROUTER_API_KEY',
@@ -38,22 +35,16 @@ export async function launchTUI(): Promise<void> {
   }
 
   const hasConfigProviderKey = config
-    ? Object.values(config.providers ?? {}).some((p) => !!p?.apiKey)
+    ? Object.values(config.providers ?? {}).some((p: any) => !!p?.apiKey)
     : false
 
-  if (!hasAnyEnvKey && !hasConfigProviderKey) {
-    const { default: chalk } = await import('chalk')
-    console.log(chalk.bold.red('\n⚠ No AI provider configured.'))
-    console.log(chalk.gray('Palade needs access to an LLM to review your code.'))
-    console.log('\nTo get started immediately, set an API key. For example:')
-    console.log(chalk.cyan('  export GROQ_API_KEY=your_key_here'))
-    console.log(
-      '\nSupported env vars: GROQ_API_KEY, OPENROUTER_API_KEY, CEREBRAS_API_KEY, NVIDIA_API_KEY, OLLAMA_MODEL\n'
-    )
-    return
-  }
+  const noProvider = !hasAnyEnvKey && !hasConfigProviderKey
 
-  if (!hasConfig) {
+  // Hint when no config file exists but keys are present
+  const hasConfigFile =
+    existsSync(join(process.cwd(), 'palade.config.ts')) ||
+    existsSync(join(process.cwd(), '.palade', 'palade.config.ts'))
+  if (!noProvider && !hasConfigFile) {
     const { default: chalk } = await import('chalk')
     console.log(
       chalk.dim('Using auto-detected settings. Run `palade init` anytime to customize.\n')
@@ -64,7 +55,7 @@ export async function launchTUI(): Promise<void> {
   // provider initialization fails. If it does, surface the error and null out
   // config so the TUI commands (which depend on a working router) don't run
   // against half-initialized providers.
-  if (config) {
+  if (config && !noProvider) {
     try {
       await initRouter(config)
       providerStatus.groq = !!config.providers?.groq?.apiKey
@@ -87,6 +78,7 @@ export async function launchTUI(): Promise<void> {
       projectRoot={process.cwd()}
       version={pkg.version}
       configError={configError}
+      noProvider={noProvider}
     />,
     {
       exitOnCtrlC: false,

@@ -82,6 +82,7 @@ interface AppProps {
   projectRoot: string
   version: string
   configError?: string
+  noProvider?: boolean
 }
 
 export function App({
@@ -90,6 +91,7 @@ export function App({
   projectRoot,
   version,
   configError,
+  noProvider,
 }: AppProps): React.JSX.Element {
   const { exit } = useApp()
   const [inputValue, setInputValue] = useState('')
@@ -98,6 +100,8 @@ export function App({
   const [showSettings, setShowSettings] = useState(false)
   const [settingsProviderIdx, setSettingsProviderIdx] = useState(0)
   const [settingsKeys, setSettingsKeys] = useState<Record<string, string>>({})
+  const [liveProviderStatus, setLiveProviderStatus] = useState(providerStatus)
+  const [noProviderDismissed, setNoProviderDismissed] = useState(false)
 
   const { lines, appendLine, appendLines, clearOutput, clearNonce } = useOutputStream()
   const { pushToHistory, navigateHistory } = useCommandHistory()
@@ -131,6 +135,19 @@ export function App({
       unmountOutputAdapter()
     }
   }, [appendLine])
+
+  // Auto-open settings on first render when no provider is configured
+  useEffect(() => {
+    if (noProvider) {
+      readCurrentKeys(projectRoot)
+        .then((keys) => {
+          setSettingsKeys(keys)
+          setShowSettings(true)
+        })
+        .catch(() => setShowSettings(true))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // intentionally only on mount
 
   useEffect(() => {
     const handler = () => {
@@ -193,6 +210,20 @@ export function App({
     (message?: string) => {
       setShowSettings(false)
       if (message) appendLine({ type: 'output', text: '  ' + message })
+      // Re-read env to update provider circles and dismiss no-provider banner
+      const hasKey = [
+        'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'CEREBRAS_API_KEY', 'NVIDIA_API_KEY', 'OLLAMA_MODEL'
+      ].some((k) => !!process.env[k])
+      if (hasKey) {
+        setLiveProviderStatus({
+          groq: !!process.env['GROQ_API_KEY'],
+          cerebras: !!process.env['CEREBRAS_API_KEY'],
+          nvidia: !!process.env['NVIDIA_API_KEY'],
+          openrouter: !!process.env['OPENROUTER_API_KEY'],
+          'opencode-zen': !!process.env['OPENCODE_ZEN_API_KEY'],
+        })
+        setNoProviderDismissed(true)
+      }
     },
     [appendLine]
   )
@@ -248,7 +279,7 @@ export function App({
               return (
                 <Box key={line.id ?? i} flexDirection="column">
                   <Header
-                    providerStatus={providerStatus}
+                    providerStatus={liveProviderStatus}
                     projectRoot={projectRoot}
                     version={version}
                   />
@@ -264,6 +295,21 @@ export function App({
                         ⚠ Config:{' '}
                       </Text>
                       <Text color="#D1D5DB">{configError}</Text>
+                    </Box>
+                  )}
+                  {noProvider && !noProviderDismissed && (
+                    <Box
+                      borderStyle="round"
+                      borderColor="#EF4444"
+                      paddingX={1}
+                      marginX={1}
+                      marginBottom={1}
+                      flexDirection="column"
+                    >
+                      <Text color="#EF4444" bold>⚠ No AI provider configured</Text>
+                      <Text color="#D1D5DB">{'  '}Set a key in the Settings panel that just opened, or export an env var:</Text>
+                      <Text color="#6EE7B7">{'  '}GROQ_API_KEY  OPENROUTER_API_KEY  CEREBRAS_API_KEY  NVIDIA_API_KEY</Text>
+                      <Text color="#9CA3AF">{'  '}Then press Esc and run /review to start reviewing code.</Text>
                     </Box>
                   )}
                 </Box>
