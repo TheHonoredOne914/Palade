@@ -19,22 +19,25 @@ const SEVERITY_CLASSES: Record<Severity, string> = {
   info: 'severity-low',
 }
 
-
-
 function getScoreGradeClass(score: number): string {
+  if (score >= 90) return 'grade-a-plus'
   if (score >= 80) return 'grade-a'
-  if (score >= 60) return 'grade-b'
-  if (score >= 40) return 'grade-c'
-  if (score >= 20) return 'grade-d'
+  if (score >= 75) return 'grade-b-plus'
+  if (score >= 70) return 'grade-b'
+  if (score >= 60) return 'grade-c'
+  if (score >= 40) return 'grade-d'
   return 'grade-f'
 }
 
 function getScoreColor(score: number): string {
   const clamped = Math.max(0, Math.min(100, score))
-  if (clamped >= 75) return '#3fb950'
-  if (clamped >= 60) return '#d29922'
-  if (clamped >= 40) return '#db61a2'
-  return '#f85149'
+  let color: string
+  if (clamped >= 75) color = '#3fb950'
+  else if (clamped >= 60) color = '#d29922'
+  else if (clamped >= 40) color = '#db61a2'
+  else color = '#f85149'
+  // Ensure the returned value is a valid hex color to prevent CSS injection
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : '#888888'
 }
 
 function formatDeltaText(delta: number): string {
@@ -57,7 +60,8 @@ function renderCategoryScoreHtml(
   score: number,
   findingCount: number
 ): string {
-  const color = getScoreColor(score)
+  const safeScore = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0
+  const color = getScoreColor(safeScore)
   const label =
     CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS] ??
     category.charAt(0).toUpperCase() + category.slice(1)
@@ -65,9 +69,9 @@ function renderCategoryScoreHtml(
         <div class="category-item">
           <div class="category-name">${escapeHtml(label)}</div>
           <div class="category-bar">
-            <div class="category-bar-fill" style="width: ${score}%; background: ${color};"></div>
+            <div class="category-bar-fill" style="width: ${safeScore}%; background: ${color};"></div>
           </div>
-          <div class="category-score" style="color: ${color};">${score}</div>
+          <div class="category-score" style="color: ${color};">${safeScore}</div>
         </div>`
 }
 

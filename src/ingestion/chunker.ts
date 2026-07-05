@@ -137,7 +137,7 @@ function chunkByAST(content: string, filePath: string, language: string): CodeCh
 
 function chunkByBrackets(content: string, filePath: string, language: string): CodeChunk[] {
   const lines = content.split('\n')
-  if (lines.length === 0) return []
+  if (lines.length === 0 || (lines.length === 1 && lines[0] === '')) return []
 
   const chunks: CodeChunk[] = []
   let startIdx = 0

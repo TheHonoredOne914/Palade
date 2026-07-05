@@ -51,6 +51,10 @@ async function parseFileAsync(absolutePath: string, isPython: boolean): Promise<
         annotations.push({ type: 'ignore', line: lineNum })
         continue
       }
+      // No Python annotation matched — skip the JS-style patterns below
+      // so that e.g. a Python string `// @palade review: x` is not falsely
+      // matched by the JS-style regexes.
+      continue
     }
 
     const reviewMatch = line.match(REVIEW_RE)

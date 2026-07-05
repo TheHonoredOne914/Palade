@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import ts from 'typescript'
 import type { CodeChunk } from './types.js'
 
@@ -18,7 +18,14 @@ export async function resolveSymbol(
   const filePath = symbolRef.substring(0, doubleColonIndex)
   const symbolName = symbolRef.substring(doubleColonIndex + 2)
 
-  const absolutePath = join(projectRoot, filePath)
+  const absolutePath = resolve(projectRoot, join(projectRoot, filePath))
+
+  // Guard against path traversal — a symbolRef like "../../etc/passwd::root"
+  // must not read files outside the project root.
+  if (absolutePath !== projectRoot && !absolutePath.startsWith(projectRoot + sep)) {
+    console.warn(`Symbol reference escapes project root: ${symbolRef}`)
+    return null
+  }
 
   let content: string
   try {

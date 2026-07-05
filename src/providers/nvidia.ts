@@ -1,5 +1,5 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { fetchWithRetry, createLimiter } from './base.js'
+import { fetchWithRetry, createLimiter, isDailyLimitError } from './base.js'
 
 const DEFAULT_DEADLINE_MS = 300_000
 
@@ -89,7 +89,7 @@ export class NvidiaProvider implements IProvider {
 
     if (!res.ok) {
       const body = await res.text()
-      if (res.status === 429 && /daily|per-day/i.test(body)) {
+      if (res.status === 429 && isDailyLimitError(body)) {
         this.dailyLimitExhausted = true
         throw new Error(`NVIDIA daily limit exceeded. ${body.slice(0, 200)}`)
       }
@@ -105,7 +105,7 @@ export class NvidiaProvider implements IProvider {
     // If content is empty but tokens were used, retry with more tokens (cap at 32768)
     if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
       const newMax = Math.min(maxTokens * 2, 32768)
-      return this.doComplete(req, newMax, attempt + 1, deadline)
+      if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1, deadline)
     }
 
     return {

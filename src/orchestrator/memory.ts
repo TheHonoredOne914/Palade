@@ -48,7 +48,8 @@ export class AgentMemory {
         // see >1 distinct agent and cross-referencing would silently no-op.
         const agentName = finding.agentName
         if (finding.filePath && finding.lineStart !== undefined) {
-          const bucket = Math.floor(finding.lineStart / 10) * 10
+          // Use lineStart itself as key, then check adjacency in crossReference
+          const bucket = finding.lineStart
           const key = `${finding.filePath}:${bucket}`
           if (!locationAgentMap.has(key)) {
             locationAgentMap.set(key, new Map())

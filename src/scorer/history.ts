@@ -1,4 +1,12 @@
-import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs'
+import {
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  mkdirSync,
+  existsSync,
+  copyFileSync,
+  unlinkSync,
+} from 'node:fs'
 import { dirname } from 'node:path'
 import type { ScoreHistoryEntry, ScoreBreakdown, CategoryScore } from './types.js'
 
@@ -96,7 +104,14 @@ export function writeHistory(
     // concurrent reader never observes a half-written history.json.
     const tmpPath = `${historyPath}.${process.pid}.${Date.now()}.tmp`
     writeFileSync(tmpPath, JSON.stringify(trimmed, null, 2), 'utf-8')
-    renameSync(tmpPath, historyPath)
+    // renameSync is atomic on POSIX but fails on Windows when the target already
+    // exists — use copy+delete on Windows to avoid silent data loss.
+    if (process.platform === 'win32') {
+      copyFileSync(tmpPath, historyPath)
+      unlinkSync(tmpPath)
+    } else {
+      renameSync(tmpPath, historyPath)
+    }
   } catch {
     // history write is best-effort — never throw
   }

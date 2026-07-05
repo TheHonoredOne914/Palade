@@ -1,3 +1,5 @@
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { ModeConfig } from './index.js'
 
 export const ONBOARD_MODE: ModeConfig = {
@@ -40,9 +42,6 @@ export async function writeOnboardDocs(
   synthesisText: string,
   outputDir: string
 ): Promise<string[]> {
-  const { writeFileSync, mkdirSync, existsSync } = await import('node:fs')
-  const { join } = await import('node:path')
-
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
 
   const sections = [

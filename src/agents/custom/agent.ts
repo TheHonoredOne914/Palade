@@ -20,11 +20,13 @@ export class CustomAgent implements IAgent {
   readonly name: AgentName
   private readonly systemPrompt: string
   private readonly penaltyOverrides: Partial<Record<Severity, number>>
+  readonly domain: string
 
   constructor(def: CustomAgentDefinition) {
     this.name = def.name
     this.systemPrompt = def.systemPrompt
     this.penaltyOverrides = def.severityPenalty ?? {}
+    this.domain = def.domain
   }
 
   /** Get score penalty for a severity, using custom overrides or defaults. */
@@ -39,7 +41,13 @@ export class CustomAgent implements IAgent {
   ): Promise<AgentFinding[]> {
     try {
       const provider = getProvider('primary')
-      const systemPrompt = buildSystemPrompt(this.systemPrompt, context, context.modeConfig)
+      // Inject the domain label so the LLM knows its specialization area
+      const domainPrefix = `You are reviewing code in the '${this.domain}' domain.\n\n`
+      const systemPrompt = buildSystemPrompt(
+        domainPrefix + this.systemPrompt,
+        context,
+        context.modeConfig
+      )
       const userPrompt = buildChunkContext(chunks)
       const response = await provider.complete({
         systemPrompt,

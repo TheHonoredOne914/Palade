@@ -94,9 +94,11 @@ function buildCombinedSystemPrompt(domains: DomainSpec[]): string {
     .map((d) => {
       let extra = ''
       if (d.name === 'deadCode') {
-        extra = ' (NOTE: You are reviewing partial chunks. Do NOT report exports as unused unless you are certain they are dead. Assume public exports are used elsewhere.)'
+        extra =
+          ' (NOTE: You are reviewing partial chunks. Do NOT report exports as unused unless you are certain they are dead. Assume public exports are used elsewhere.)'
       } else if (d.name === 'testIntelligence') {
-        extra = ' (NOTE: You are reviewing partial chunks. Only flag missing tests if the chunk clearly contains complex logic lacking coverage, not just because a test file isn\'t visible.)'
+        extra =
+          " (NOTE: You are reviewing partial chunks. Only flag missing tests if the chunk clearly contains complex logic lacking coverage, not just because a test file isn't visible.)"
       }
       return `### ${d.label} (agentName: "${d.name}")\nLook for: ${d.focus}.${extra}`
     })
@@ -209,14 +211,20 @@ export function attributeFindings(
   model?: string
 ): AgentFinding[] {
   const validNames = new Set(domains.map((d) => d.name))
-  validNames.add('Architect' as AgentName) // Allow verdicts in economy mode
+  // Map 'Architect' (used in economy-mode verdicts) to the closest semantic
+  // category so downstream scoring/reporting has a recognized key.
+  const ARCHITECT_ALIAS = 'architecture'
+  validNames.add(ARCHITECT_ALIAS)
 
   const attributed: AgentFinding[] = []
   for (const f of findings) {
+    // Remap 'Architect' to the canonical alias so downstream code handles it
+    if (f.agentName === 'Architect') f.agentName = ARCHITECT_ALIAS
     if (!validNames.has(f.agentName)) continue
     f.provider = provider
     f.model = model
-    f.scorePenalty = SEVERITY_PENALTY[f.severity as Severity]
+    const penalty = SEVERITY_PENALTY[f.severity as Severity]
+    if (typeof penalty === 'number') f.scorePenalty = penalty
     attributed.push(f)
   }
   return attributed

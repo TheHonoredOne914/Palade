@@ -15,7 +15,6 @@ const SEVERITY_COLORS: Record<Severity, (text: string) => string> = {
   info: chalk.gray,
 }
 
-
 function formatDelta(delta: number): string {
   if (delta === 0) return chalk.gray('  +0')
   if (delta > 0) return chalk.green(`  +${delta}`)

@@ -25,9 +25,13 @@ export class ProviderPool implements IProvider {
     // error that gets the whole pool marked dead while healthy keys remain.
     const n = this.providers.length
     let candidate: IProvider | undefined
-    for (let i = 0; i < n; i++) {
-      const provider = this.providers[this.index % n]
-      this.index = (this.index + 1) % n
+    // Snapshot the starting index atomically before any async yields, then
+    // advance it — this prevents two concurrent complete() calls from picking
+    // the same provider when they interleave at the `await provider.isAvailable()`.
+    const startIdx = this.index
+    this.index = (startIdx + 1) % n // advance round-robin for next call
+    for (let offset = 0; offset < n; offset++) {
+      const provider = this.providers[(startIdx + offset) % n]
       if (await provider.isAvailable()) {
         candidate = provider
         break
@@ -35,7 +39,7 @@ export class ProviderPool implements IProvider {
     }
     // All members unavailable — let one produce the real error so the caller
     // can classify it (at this point the pool genuinely is exhausted).
-    const provider = candidate ?? this.providers[this.index % n]
+    const provider = candidate ?? this.providers[startIdx % n]
     return provider.complete(req)
   }
 

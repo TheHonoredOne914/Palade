@@ -71,17 +71,21 @@ interface ValenceResult {
   margin: number
 }
 
+// Pre-compile keyword regexes once at module scope — whole-word matches only
+// to avoid miscounting common fragments ('add' in "address", 'key' in "monkey").
+const HARDEN_REGEXES = HARDEN_KEYWORDS.map((w) => new RegExp(`\\b${w}\\b`))
+const RELAX_REGEXES = RELAX_KEYWORDS.map((w) => new RegExp(`\\b${w}\\b`))
+
 function getValence(text: string): ValenceResult {
   const t = text.toLowerCase()
   let hardenHits = 0
   let relaxHits = 0
-  // Whole-word matches only — substring matching miscounts common fragments
-  // ('add' in "address", 'key' in "monkey") and skews the harden/relax tally.
-  for (const w of HARDEN_KEYWORDS) {
-    if (new RegExp(`\\b${w}\\b`).test(t)) hardenHits++
+
+  for (const re of HARDEN_REGEXES) {
+    if (re.test(t)) hardenHits++
   }
-  for (const w of RELAX_KEYWORDS) {
-    if (new RegExp(`\\b${w}\\b`).test(t)) relaxHits++
+  for (const re of RELAX_REGEXES) {
+    if (re.test(t)) relaxHits++
   }
   const margin = Math.abs(hardenHits - relaxHits)
   if (hardenHits > relaxHits) return { valence: 'harden', margin }
@@ -114,8 +118,13 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
         // Must be from different agents
         if (a.agentName === b.agentName) continue
 
-        // Check line overlap (or adjacent within 5 lines)
-        const overlap = a.lineStart! <= b.lineEnd! + 5 && b.lineStart! <= a.lineEnd! + 5
+        // Check line overlap with a small adjacency window (5 lines). Two
+        // findings are "overlapping" if their line ranges are within 5 lines of
+        // each other — this catches near-misses from slightly different chunk
+        // boundaries. The adjacency check must be symmetric to avoid false
+        // positives where only one side is near the other but not vice versa.
+        const gap = Math.max(a.lineStart! - b.lineEnd!, b.lineStart! - a.lineEnd!, 0)
+        const overlap = gap <= 5
 
         if (!overlap) continue
 
@@ -145,8 +154,14 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
 }
 
 const VerdictSchema = z.object({
-  is_conflict: z.boolean().describe('True ONLY if the two recommendations are mutually exclusive and cannot both be applied.'),
-  decision: z.string().describe('What to actually do (if conflict) or how to combine them (if no conflict)'),
+  is_conflict: z
+    .boolean()
+    .describe(
+      'True ONLY if the two recommendations are mutually exclusive and cannot both be applied.'
+    ),
+  decision: z
+    .string()
+    .describe('What to actually do (if conflict) or how to combine them (if no conflict)'),
   tradeoff_accepted: z.string().describe('The explicit cost being accepted'),
   confidence: z.coerce.number().describe('0-100 score of how confident you are in this tradeoff'),
   losing_side: z.string().describe('Which agent recommendation was NOT taken, and why (or N/A)'),
@@ -206,7 +221,7 @@ Please provide your verdict.`
       signal,
     })
     const rawOutput = response.content ?? ''
-    const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
+    const jsonMatch = rawOutput.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/s)
     const jsonStr = jsonMatch?.[0] ?? rawOutput
     const parsed = JSON.parse(jsonStr)
     return VerdictSchema.parse(parsed)

@@ -116,7 +116,7 @@ export class CerebrasProvider implements IProvider {
     // NVIDIA/OpenCode Zen.
     if (content.trim().length === 0 && outputTokens > 0 && attempt < 2) {
       const newMax = Math.min(maxTokens * 2, 32768)
-      return this.doComplete(req, newMax, attempt + 1, deadline)
+      if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1, deadline)
     }
 
     return {

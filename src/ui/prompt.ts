@@ -25,6 +25,12 @@ export async function askList(query: string, choices: string[]): Promise<string>
   })
   while (true) {
     const answer = await askQuestion(`Select 1-${choices.length}: `)
+    // If stdin is closed (piped input ended), exit the loop instead of
+    // printing "Invalid selection." forever.
+    if (answer === null || answer === undefined) {
+      console.log('\nInput closed, selecting first option.')
+      return choices[0]
+    }
     const num = parseInt(answer.trim(), 10)
     if (!isNaN(num) && num >= 1 && num <= choices.length) {
       return choices[num - 1]
@@ -41,6 +47,11 @@ export async function askCheckbox(query: string, choices: string[]): Promise<str
     const answer = await askQuestion(
       `Select options by number (e.g. "1 2 4", or "all", or "none"): `
     )
+    // If stdin is closed (piped input ended), exit the loop
+    if (answer === null || answer === undefined) {
+      console.log('\nInput closed, selecting no options.')
+      return []
+    }
     const trimmed = answer.trim().toLowerCase()
     if (trimmed === 'all') return choices
     if (trimmed === 'none' || trimmed === '') return []

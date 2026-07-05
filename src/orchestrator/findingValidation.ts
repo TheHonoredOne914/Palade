@@ -66,10 +66,18 @@ export function validateAndFingerprintFindings(
 
     const normalizedPath = normalizePath(finding.filePath)
     const candidateChunks = chunksByPath.get(normalizedPath)
-    if (!candidateChunks) continue
+    if (!candidateChunks) {
+      console.warn(`[validation] Finding references file not in reviewed chunks: ${normalizedPath}`)
+      continue
+    }
 
     const matchingChunk = candidateChunks.find((chunk) => lineIsInsideChunk(finding, chunk))
-    if (!matchingChunk) continue
+    if (!matchingChunk) {
+      console.warn(
+        `[validation] Finding at ${normalizedPath}:${finding.lineStart}-${finding.lineEnd} falls outside all known chunks — dropping`
+      )
+      continue
+    }
 
     const normalized: AgentFinding = {
       ...finding,

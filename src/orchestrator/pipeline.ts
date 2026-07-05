@@ -133,8 +133,15 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   activeChunks.forEach((chunk, i) => {
     const contextPrefix = contextPrefixes[i]
     if (contextPrefix) {
-      chunk.content = contextPrefix + chunk.content
-      chunk.tokenCount = estimateTokens(chunk.content)
+      // Create a new chunk object instead of mutating the shared reference —
+      // `chunks` (used to build the keyword index) and `activeChunks` share
+      // the same CodeChunk objects, so mutating in-place would corrupt the
+      // keyword index's content mapping.
+      activeChunks[i] = {
+        ...chunk,
+        content: contextPrefix + chunk.content,
+        tokenCount: estimateTokens(contextPrefix + chunk.content),
+      }
     }
   })
 
@@ -170,13 +177,12 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   }
 
   if (opts.dryRunConfig) {
-    const reviewChunks =
-      triageManifests && !opts.swarmOptions?.exhaustive
-        ? await triageFiles(triageManifests, activeChunks, {
-            maxReviewTokens: opts.swarmOptions?.maxReviewTokens,
-            strictTriage: opts.swarmOptions?.strictTriage,
-          })
-        : activeChunks
+    const reviewChunks = !opts.swarmOptions?.exhaustive
+      ? await triageFiles(triageManifests, activeChunks, {
+          maxReviewTokens: opts.swarmOptions?.maxReviewTokens,
+          strictTriage: opts.swarmOptions?.strictTriage,
+        })
+      : activeChunks
 
     const estimate = estimateRunCost(reviewChunks, opts.dryRunConfig)
 
@@ -213,9 +219,10 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     triageManifests
   )
 
-  // Apply line-level `@palade ignore` annotations: suppress findings anchored
-  // on the annotated line or the line directly below it (the comment usually
-  // sits above the code it excuses).
+  // Apply line-level `@palade ignore` annotations: suppress findings whose
+  // line range overlaps with an ignored line. The previous implementation only
+  // checked `lineStart` against a 2-line window, which missed findings that
+  // span across ignored lines but don't start on them.
   if (annotationSummary.ignoredLines.length > 0) {
     const norm = (p: string) => p.replace(/^\.?\/+/, '')
     result.findings = result.findings.filter((f) => {
@@ -223,8 +230,8 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       return !annotationSummary.ignoredLines.some(
         (il) =>
           norm(il.filePath) === norm(f.filePath!) &&
-          f.lineStart! >= il.startLine &&
-          f.lineStart! <= il.startLine + 1
+          f.lineStart! <= il.startLine + 1 &&
+          (f.lineEnd ?? f.lineStart!) >= il.startLine
       )
     })
   }

@@ -3,7 +3,7 @@ import chalk from 'chalk'
 import pLimit from 'p-limit'
 import type { AgentFinding, AgentContext, AgentName, IAgent } from '../agents/base.js'
 import { getAgentsForMode } from '../agents/registry.js'
-import { synthesize as analyzeSynthesis } from '../agents/synthesis.js'
+import { synthesize as analyzeSynthesis, type SynthesisResult } from '../agents/synthesis.js'
 import { CombinedAnalyzer, DEFAULT_DOMAINS } from '../agents/combined.js'
 import { CustomAgent } from '../agents/custom/agent.js'
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
@@ -74,19 +74,21 @@ export async function runSwarm(
     context.modeConfig?.agentOverrides,
     options.customAgents
   )
-  
+
   let agents: IAgent[] = modeAgents
   if (options.economyMode) {
     const builtInAgents = modeAgents.filter((a) => !(a instanceof CustomAgent))
     const customAgents = modeAgents.filter((a) => a instanceof CustomAgent)
-    
+
     // Ghost mode or heavily filtered modes might only have 1 built-in agent.
     // Combining 1 agent defeats the purpose of economy mode (which is to batch N domains)
     // and just degrades prompt quality. So if <= 1 built-in agent, just run standard mode.
     if (builtInAgents.length > 1) {
       const activeDomains = builtInAgents.map((a) => {
         const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
-        return defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
+        return (
+          defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
+        )
       })
       agents = [new CombinedAnalyzer(activeDomains), ...customAgents]
     }
@@ -102,6 +104,19 @@ export async function runSwarm(
 
   // Run agents concurrently — rate-limit handling is done at the provider
   // layer (fetchWithRetry + FallbackProvider), not serialized here.
+  // batchTokenLimit isn't (yet) a formal field on SwarmOptions — read it
+  // defensively so callers can override the scheduler's default soft
+  // token limit without requiring a type change here.
+  const rawBatchTokenLimit = (options as SwarmOptions & { batchTokenLimit?: number })
+    .batchTokenLimit
+  const batchTokenLimit =
+    typeof rawBatchTokenLimit === 'number' && rawBatchTokenLimit > 0
+      ? rawBatchTokenLimit
+      : undefined
+
+  // Batch scheduling is deterministic — compute once, not per-agent
+  const batches = scheduleBatches(reviewChunks, batchTokenLimit)
+
   const agentPromises = agents.map(async (agent) => {
     const agentStart = Date.now()
     options.onAgentStart?.(agent.name)
@@ -109,12 +124,6 @@ export async function runSwarm(
     const allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
     try {
-      // batchTokenLimit isn't (yet) a formal field on SwarmOptions — read it
-      // defensively so callers can override the scheduler's default soft
-      // token limit without requiring a type change here.
-      const batchTokenLimit = (options as SwarmOptions & { batchTokenLimit?: number })
-        .batchTokenLimit
-      const batches = scheduleBatches(reviewChunks, batchTokenLimit)
       const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>
@@ -245,12 +254,28 @@ export async function runSwarm(
     }
   })
 
-  await Promise.all(agentPromises)
+  // Use allSettled instead of all: if one agent hits a fatal auth error and
+  // re-throws, Promise.all would reject immediately, discarding the findings
+  // from agents that were still in-flight or already succeeded. allSettled
+  // waits for every agent to finish, then we collect results below.
+  const agentResults = await Promise.allSettled(agentPromises)
+  for (const result of agentResults) {
+    // Agent-level rejections (fatal auth / cancelled) are already handled
+    // inside each agent promise — they record partial findings before throwing.
+    // A rejection here means the agent's own catch couldn't recover.
+    if (result.status === 'rejected') {
+      const err = result.reason
+      if (err instanceof ReviewCancelledError) throw err
+      console.warn(
+        chalk.yellow(`⚠ Agent failed: ${err instanceof Error ? err.message : String(err)}`)
+      )
+    }
+  }
 
   const crossAgentFindings: CrossAgentFinding[] = memory.crossReference()
   const mergedFindings: AgentFinding[] = mergeFindings(memory.getAll())
 
-  let synthesis: any = {
+  let synthesis: SynthesisResult = {
     executiveSummary: 'Synthesis failed or was skipped.',
     priorityFixes: [],
     crossCuttingObservations: [],
@@ -259,7 +284,8 @@ export async function runSwarm(
 
   // Phase: Verdict Mode (Conflict Arbitration)
   const projectRoot = options.projectRoot ?? process.cwd()
-  const finalFindings = mergedFindings
+  // Copy mergedFindings so verdict injection doesn't mutate the original
+  const finalFindings = [...mergedFindings]
 
   if (!options.noVerdict) {
     const conflicts = detectConflicts(memory.getAll())
@@ -346,7 +372,7 @@ export async function runSwarm(
         // Try to figure out the winning vs losing sides from the text so the ADR isn't blank.
         const winningLensMatch = decisionStr.match(/(\w+) says/i)
         const winningLens = winningLensMatch ? winningLensMatch[1] : 'CombinedAgent(Winner)'
-        
+
         const fakeConflict = {
           filePath: finding.filePath || 'unknown',
           lineStart: finding.lineStart || 0,
@@ -369,7 +395,7 @@ export async function runSwarm(
         const verdict = {
           decision: decisionStr,
           tradeoff_accepted: tradeoffStr,
-          confidence: parseInt(confidenceStr, 10),
+          confidence: Number.isNaN(parseInt(confidenceStr, 10)) ? 50 : parseInt(confidenceStr, 10),
           losing_side: losingStr,
         }
         // A reworded/relabeled combined-mode output can fail the "Decision:"/

@@ -7,7 +7,7 @@ import { launchPicker } from '../picker.js'
 import { runPipeline } from '../../orchestrator/pipeline.js'
 import { calculateScore } from '../../scorer/calculator.js'
 import { readHistory, appendEntry, getPreviousScore } from '../../scorer/history.js'
-import { renderBadge, getScoreColor, getBadgeData } from '../../scorer/badge.js'
+import { renderBadge, getBadgeData } from '../../scorer/badge.js'
 import { reportJson } from '../../reporters/json.js'
 import { writeHtmlReport, startLocalServer } from '../../reporters/html.js'
 import { reportMarkdown } from '../../reporters/markdown.js'
@@ -19,7 +19,7 @@ import { theme } from '../../ui/theme.js'
 import { kvTable } from '../../ui/layout.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentName } from '../../agents/base.js'
-import type { ResolvedTarget } from '../../orchestrator/types.js'
+import type { ResolvedTarget, SwarmResult } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import { detectLanguages } from '../../ingestion/walker.js'
@@ -316,7 +316,7 @@ export async function reviewCommand(
   // 8. Run pipeline with progress
   let completedAgents = 0
   const progress = opts.quiet || opts.tui ? undefined : createLiveProgress()
-  let swarmResult: any
+  let swarmResult: SwarmResult
   try {
     swarmResult = await runPipeline({
       projectRoot,
@@ -444,6 +444,7 @@ export async function reviewCommand(
       score: scoreResult.score,
       breakdown: scoreResult.breakdown,
       delta: scoreResult.delta,
+      kind: 'full',
     },
     config.score.maxHistoryEntries
   )

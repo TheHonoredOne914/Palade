@@ -144,8 +144,6 @@ function instantiateProviders(providers: PaladeConfig['providers']): Map<string,
   return map
 }
 
-
-
 let assignment: ProviderAssignment | null = null
 let allProviders: Map<string, IProvider> = new Map()
 
@@ -265,7 +263,15 @@ export class FallbackProvider implements IProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    return this.chain[0].isAvailable()
+    // Check if ANY provider in the chain is available — checking only the
+    // primary (chain[0]) makes the entire FallbackProvider appear dead when
+    // the primary is down (e.g. daily quota exhausted) even though fallbacks
+    // could still serve requests.
+    for (const p of this.chain) {
+      if (this.deadProviders.has(p.name)) continue
+      if (await p.isAvailable()) return true
+    }
+    return false
   }
 }
 

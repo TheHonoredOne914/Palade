@@ -59,14 +59,12 @@ export function kvTable(rows: [string, string][]): string {
   return rows.map(([k, v]) => `  ${theme.dim(k.padEnd(18))} ${v}`).join('\n')
 }
 
-
-
 const BLOCKS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█']
 
 export function sparkline(values: number[], width = 20): string {
   if (values.length === 0) return theme.dim('No history')
-  const min = Math.min(...values)
-  const max = Math.max(...values)
+  const min = values.reduce((a, b) => Math.min(a, b), Infinity)
+  const max = values.reduce((a, b) => Math.max(a, b), -Infinity)
   const range = max - min || 1
   const chars = values.slice(-width).map((v) => {
     const idx = Math.round(((v - min) / range) * (BLOCKS.length - 1))
