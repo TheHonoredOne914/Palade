@@ -69,3 +69,17 @@ export class CliExitError extends Error {
     this.name = 'CliExitError'
   }
 }
+
+/**
+ * Thrown when a review run is stopped by a user-initiated abort (e.g. Ctrl+C
+ * in the TUI) rather than by a provider error. Distinguishing this from
+ * ordinary agent failures lets the caller skip scoring/report generation
+ * instead of writing a report built from whatever partial findings happened
+ * to exist when the cancellation landed.
+ */
+export class ReviewCancelledError extends Error {
+  constructor() {
+    super('Review cancelled')
+    this.name = 'ReviewCancelledError'
+  }
+}

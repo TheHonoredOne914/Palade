@@ -27,7 +27,7 @@ import { buildAnnotationSummary } from '../../ingestion/annotationParser.js'
 import { renderBadge, getBadgeData } from '../../scorer/badge.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentContext, AgentFinding, AgentName, DiffContext } from '../../agents/base.js'
-import { CliExitError } from '../../errors/types.js'
+import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync, writeFileSync, mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
@@ -410,6 +410,10 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     // CliExitError is an intentional exit signal — pass it through untouched.
     // Its message (if any) has already been printed at the throw site.
     if (err instanceof CliExitError) throw err
+    if (err instanceof ReviewCancelledError) {
+      console.log(chalk.dim('\n  Diff review cancelled — no score or report generated.'))
+      throw new CliExitError(0)
+    }
     console.error(theme.error(`\nDiff review failed: ${(err as Error).message}`))
     if ((err as Error).stack && process.env.DEBUG) {
       console.error(chalk.gray((err as Error).stack))

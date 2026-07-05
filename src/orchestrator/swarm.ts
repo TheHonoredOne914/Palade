@@ -14,6 +14,7 @@ import { mergeFindings } from './merger.js'
 import { scheduleBatches } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
+import { ReviewCancelledError } from '../errors/types.js'
 
 // Providers don't expose a structured status/code field on thrown errors —
 // they're plain Errors with the status baked into the message string (see
@@ -39,6 +40,10 @@ export async function runSwarm(
 ): Promise<SwarmResult> {
   const runId = crypto.randomUUID().slice(0, 8)
   const startTime = Date.now()
+
+  if (options.signal?.aborted) {
+    throw new ReviewCancelledError()
+  }
 
   // Pass 1: Triage — reduce 400+ chunks to ~45 high-value chunks (unless exhaustive)
   if (!manifests && !options.exhaustive) {
@@ -166,6 +171,16 @@ export async function runSwarm(
         }
       }
 
+      // A user-initiated cancellation (Ctrl+C) must stop the whole run, not
+      // just get logged as a recoverable per-batch error — otherwise the
+      // swarm finishes "successfully" with whatever partial findings existed
+      // at the moment of cancellation, and the caller has no way to tell a
+      // cancelled run from a clean one.
+      if (options.signal?.aborted) {
+        runAbort.abort()
+        throw new ReviewCancelledError()
+      }
+
       if (fatalError) {
         runAbort.abort()
         throw fatalError
@@ -180,6 +195,11 @@ export async function runSwarm(
       }
     } catch (err: unknown) {
       agentError = err instanceof Error ? err : new Error(String(err))
+
+      if (options.signal?.aborted) {
+        runAbort.abort()
+        throw new ReviewCancelledError()
+      }
 
       if (isFatalAuthError(agentError.message)) {
         runAbort.abort()
