@@ -161,30 +161,37 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
 
     let swarmResult: any
     try {
-      swarmResult = await runSwarm(chunks, context, {
-        onAgentStart: (name: AgentName): void => {
-          console.log(theme.dim(`  [${completedAgents}/${agentCount}] ${name} agent analyzing...`))
-        },
-        onAgentComplete: (name: AgentName, findings: number, durationMs: number): void => {
-          completedAgents++
-          console.log(
-            theme.dim(
-              `  [${completedAgents}/${agentCount}] ${name} complete (${findings} findings, ${(durationMs / 1000).toFixed(1)}s)`
+      swarmResult = await runSwarm(
+        chunks,
+        context,
+        {
+          onAgentStart: (name: AgentName): void => {
+            console.log(
+              theme.dim(`  [${completedAgents}/${agentCount}] ${name} agent analyzing...`)
             )
-          )
+          },
+          onAgentComplete: (name: AgentName, findings: number, durationMs: number): void => {
+            completedAgents++
+            console.log(
+              theme.dim(
+                `  [${completedAgents}/${agentCount}] ${name} complete (${findings} findings, ${(durationMs / 1000).toFixed(1)}s)`
+              )
+            )
+          },
+          onSynthesisStart: (): void => {
+            console.log(theme.dim('  Synthesizing cross-agent findings...'))
+          },
+          onSynthesisComplete: (durationMs: number): void => {
+            console.log(theme.dim(`  Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`))
+          },
+          timeoutMs: config.swarm.timeoutMs,
+          maxReviewTokens: config.swarm.maxReviewTokens,
+          customAgents: customAgentDefs,
+          economyMode: config.swarm.economyMode,
+          signal: opts.signal,
         },
-        onSynthesisStart: (): void => {
-          console.log(theme.dim('  Synthesizing cross-agent findings...'))
-        },
-        onSynthesisComplete: (durationMs: number): void => {
-          console.log(theme.dim(`  Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`))
-        },
-        timeoutMs: config.swarm.timeoutMs,
-        maxReviewTokens: config.swarm.maxReviewTokens,
-        customAgents: customAgentDefs,
-        economyMode: config.swarm.economyMode,
-        signal: opts.signal,
-      }, manifests)
+        manifests
+      )
       console.log(
         theme.success(
           `  Analysis complete — ${swarmResult.findings.length} findings in ${(swarmResult.durationMs / 1000).toFixed(1)}s`
