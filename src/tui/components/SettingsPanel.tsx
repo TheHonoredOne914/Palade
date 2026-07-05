@@ -66,7 +66,7 @@ async function saveApiKey(
   try {
     content = await readFile(configPath, 'utf-8')
   } catch {
-    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: { primary: 'groq', synthesis: 'cerebras', agentCount: 6, timeoutMs: 120000 },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
+    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: { primary: '${providerId}', synthesis: '${providerId}', agentCount: 6 },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
   }
 
   const prov = PROVIDERS.find((p) => p.id === providerId)!

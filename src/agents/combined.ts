@@ -160,10 +160,14 @@ export class CombinedAnalyzer implements IAgent {
         context.modeConfig
       )
       const userPrompt = buildChunkContext(chunks)
+      // A single call has to fit findings for every domain, so the output
+      // budget must scale with how many domains are combined into it — a flat
+      // cap starves runs with more domains and truncates the JSON array.
+      const maxTokens = Math.max(8192, this.domains.length * 1500)
       const response = await provider.complete({
         systemPrompt,
         userPrompt,
-        maxTokens: 8192,
+        maxTokens,
         signal,
       })
       const findings = attributeFindings(

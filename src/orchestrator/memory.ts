@@ -40,8 +40,13 @@ export class AgentMemory {
       { agents: Set<AgentName>; findings: AgentFinding[]; files: Set<string> }
     >()
 
-    for (const [agentName, findings] of this.store) {
+    for (const findings of this.store.values()) {
       for (const finding of findings) {
+        // Bucket by the finding's own agentName, not the outer store key —
+        // in economy mode every finding is recorded under the single
+        // 'combined' agent, so keying off the store's own bucket would never
+        // see >1 distinct agent and cross-referencing would silently no-op.
+        const agentName = finding.agentName
         if (finding.filePath && finding.lineStart !== undefined) {
           const bucket = Math.floor(finding.lineStart / 10) * 10
           const key = `${finding.filePath}:${bucket}`

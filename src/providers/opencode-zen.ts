@@ -1,6 +1,5 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { fetchWithRetry, sleep, createLimiter } from './base.js'
-import chalk from 'chalk'
+import { fetchWithRetry, createLimiter, isDailyLimitError } from './base.js'
 
 const DEFAULT_DEADLINE_MS = 180_000
 
@@ -8,7 +7,7 @@ export class OpenCodeZenProvider implements IProvider {
   readonly name = 'opencode-zen'
   readonly model: string
   private readonly apiKey: string
-  private readonly baseUrl = 'https://opencode.ai/zen/v1'
+  private readonly baseUrl: string
   private readonly deadlineMs: number
   private readonly limiter: ReturnType<typeof createLimiter>
   private dailyLimitExhausted = false
@@ -16,11 +15,13 @@ export class OpenCodeZenProvider implements IProvider {
   constructor(
     apiKey: string,
     model = 'deepseek-v4-flash-free',
-    deadlineMs: number = DEFAULT_DEADLINE_MS,
-    maxConcurrency = 4
+    maxConcurrency = 8,
+    baseUrl = 'https://opencode.ai/zen/v1',
+    deadlineMs: number = DEFAULT_DEADLINE_MS
   ) {
     this.apiKey = apiKey
     this.model = model
+    this.baseUrl = baseUrl
     this.deadlineMs = deadlineMs
     this.limiter = createLimiter(maxConcurrency)
   }
@@ -36,22 +37,18 @@ export class OpenCodeZenProvider implements IProvider {
     // tokens and slow down the request.
     const maxTokens = req.maxTokens ?? 16384
 
-    // One deadline for the whole logical call: internal 500/empty-content
-    // retries share it, so the ceiling holds across attempts instead of
-    // resetting per attempt.
-    const deadline = Date.now() + this.deadlineMs
-    return this.limiter(() =>
-      this.doComplete(req, maxTokens, { serverError: 0, emptyContent: 0 }, deadline)
-    )
+    // One deadline for the whole logical call: internal empty-content retries
+    // share it, so the ceiling holds across attempts instead of resetting per
+    // attempt. The adapter-local 5xx retry loop that used to live here was
+    // removed — the shared fetchWithRetry() below already retries 5xx/network
+    // errors with backoff, so this only needs to handle the empty-content case.
+    return this.limiter(() => this.doComplete(req, maxTokens, 0, Date.now() + this.deadlineMs))
   }
 
   private async doComplete(
     req: CompletionRequest,
     maxTokens: number,
-    // Separate counters per error class — a 5xx or empty-content retry must
-    // not consume budget from the unrelated allowance (or vice versa) when
-    // both occur across the same logical call.
-    attempts: { serverError: number; emptyContent: number },
+    attempt: number,
     deadline: number
   ): Promise<CompletionResponse> {
     const start = Date.now()
@@ -97,32 +94,17 @@ export class OpenCodeZenProvider implements IProvider {
     }
 
     if (res.status === 429) {
-      const body = await res.json().catch(() => ({}))
-      const errorMsg = (body as Record<string, unknown>)?.error as
-        Record<string, unknown> | undefined
-      const msg = typeof errorMsg?.message === 'string' ? errorMsg.message : ''
-
-      if (msg.includes('daily') || msg.includes('per-day')) {
+      const body = await res.text()
+      if (isDailyLimitError(body)) {
         this.dailyLimitExhausted = true
-        throw new Error(`OpenCode Zen daily limit exceeded. ${msg}`)
+        throw new Error(`OpenCode Zen daily limit exceeded. ${body.slice(0, 200)}`)
       }
 
       // fetchWithRetry already retried this request internally using the
       // server's Retry-After header — layering another manual wait-and-retry
       // loop on top just doubles the delay. Surface a retryable error and let
       // the router's fallback chain / backoff handle anything further.
-      throw new Error(`OpenCode Zen rate limited — retries exhausted. ${msg.slice(0, 200)}`)
-    }
-
-    if (res.status >= 500 && attempts.serverError < 2) {
-      console.warn(chalk.yellow(`  OpenCode Zen ${res.status} — retrying in 5s...`))
-      await sleep(5_000, req.signal)
-      return this.doComplete(
-        req,
-        maxTokens,
-        { ...attempts, serverError: attempts.serverError + 1 },
-        deadline
-      )
+      throw new Error(`OpenCode Zen rate limited — retries exhausted. ${body.slice(0, 200)}`)
     }
 
     if (!res.ok) {
@@ -140,19 +122,10 @@ export class OpenCodeZenProvider implements IProvider {
     // If content is empty but tokens were used, reasoning model consumed all tokens
     // Retry with double the tokens (cap at 32768 to avoid runaway — the cap must
     // exceed the 16384 default or the retry re-sends an identical request)
-    if (
-      content.trim().length === 0 &&
-      (usage?.completion_tokens ?? 0) > 0 &&
-      attempts.emptyContent < 2
-    ) {
+    if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
       const newMax = Math.min(maxTokens * 2, 32768)
 
-      return this.doComplete(
-        req,
-        newMax,
-        { ...attempts, emptyContent: attempts.emptyContent + 1 },
-        deadline
-      )
+      return this.doComplete(req, newMax, attempt + 1, deadline)
     }
 
     return {

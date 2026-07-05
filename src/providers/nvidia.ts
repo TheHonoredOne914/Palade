@@ -16,8 +16,8 @@ export class NvidiaProvider implements IProvider {
     apiKey: string,
     model = 'minimaxai/minimax-m3',
     baseUrl = 'https://integrate.api.nvidia.com/v1',
-    deadlineMs: number = DEFAULT_DEADLINE_MS,
-    maxConcurrency = 4
+    maxConcurrency = 8,
+    deadlineMs: number = DEFAULT_DEADLINE_MS
   ) {
     this.apiKey = apiKey
     this.model = model

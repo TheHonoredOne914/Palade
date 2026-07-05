@@ -97,6 +97,11 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   const ignoredSet = new Set(annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, '')))
   let activeChunks = chunks.filter((c) => !ignoredSet.has(c.filePath.replace(/^\.?\/+/, '')))
 
+  // Triage should rank/consider the same file set the swarm actually reviews
+  // — a manifest for an @palade-ignored file would otherwise still compete
+  // for the token budget even though its chunks are dropped from review.
+  const triageManifests = manifests.filter((m) => !ignoredSet.has(m.path.replace(/^\.?\/+/, '')))
+
   // Line-level ignores are applied to FINDINGS after the swarm runs (see
   // below), not by dropping chunks here — removing a whole chunk because one
   // line inside it carries `@palade ignore` would silently hide up to a few
@@ -166,8 +171,8 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
 
   if (opts.dryRunConfig) {
     const reviewChunks =
-      manifests && !opts.swarmOptions?.exhaustive
-        ? await triageFiles(manifests, activeChunks, {
+      triageManifests && !opts.swarmOptions?.exhaustive
+        ? await triageFiles(triageManifests, activeChunks, {
             maxReviewTokens: opts.swarmOptions?.maxReviewTokens,
             strictTriage: opts.swarmOptions?.strictTriage,
           })
@@ -205,7 +210,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     activeChunks,
     context,
     { ...opts.swarmOptions, projectRoot: opts.projectRoot },
-    manifests
+    triageManifests
   )
 
   // Apply line-level `@palade ignore` annotations: suppress findings anchored

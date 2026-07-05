@@ -8,7 +8,7 @@ export default class OllamaProvider implements IProvider {
   private baseUrl: string
   private readonly limiter: ReturnType<typeof createLimiter>
 
-  constructor(model?: string, baseUrl?: string, maxConcurrency = 2) {
+  constructor(model?: string, baseUrl?: string, maxConcurrency = 4) {
     this.model = model ?? 'codellama:13b'
     this.baseUrl = baseUrl ?? 'http://localhost:11434'
     this.limiter = createLimiter(maxConcurrency)
@@ -30,6 +30,7 @@ export default class OllamaProvider implements IProvider {
       stream: false,
       options: {
         temperature: req.temperature ?? 0.0,
+        num_predict: req.maxTokens ?? 4096,
       },
     }
 
@@ -71,7 +72,7 @@ export default class OllamaProvider implements IProvider {
     try {
       const res = await fetch(`${this.baseUrl}/api/tags`, {
         method: 'GET',
-        signal: AbortSignal.timeout(2000),
+        signal: AbortSignal.timeout(1500),
       })
       return res.ok
     } catch {

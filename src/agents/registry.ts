@@ -1,5 +1,6 @@
 import type { IAgent, ReviewMode, AgentName } from './base.js'
 import { PaladeConfigError } from '../errors/types.js'
+import { GHOST_MODE } from '../modes/ghost.js'
 import { SecurityAgent } from './specialist/security.js'
 import { ArchitectureAgent } from './specialist/architecture.js'
 import { PerformanceAgent } from './specialist/performance.js'
@@ -53,6 +54,14 @@ export function getAgentsForMode(
     }
     return agents
   }
-  if (mode === 'ghost') return [allAgents.get('deadCode') ?? BUILTIN_AGENTS.get('deadCode')!]
+  // In practice swarm.ts always threads context.modeConfig.agentOverrides
+  // through as `agentOverrides` above, so this only fires for direct callers
+  // that skip modeConfig (e.g. tests). Derive the agent list from
+  // GHOST_MODE.agentOverrides itself rather than a separately hardcoded name,
+  // so there's a single source of truth for "what agents ghost mode runs".
+  if (mode === 'ghost') {
+    const ghostAgentName = GHOST_MODE.agentOverrides?.[0] ?? 'deadCode'
+    return [allAgents.get(ghostAgentName) ?? BUILTIN_AGENTS.get('deadCode')!]
+  }
   return [...AGENT_REGISTRY, ...customAgents.values()]
 }

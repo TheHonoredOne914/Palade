@@ -5,20 +5,21 @@ const ProviderConfigSchema = z.object({
   apiKeys: z.array(z.string().min(1)).optional(),
   model: z.string().optional(),
   maxConcurrency: z.number().int().min(1).max(20).optional(),
+  // Optional per-provider overrides. baseUrl was previously only exposed for
+  // nvidia/ollama; every adapter now accepts one (defaults to its hardcoded
+  // URL when absent). timeoutMs threads into each adapter's request deadline.
+  baseUrl: z.string().url().optional(),
+  timeoutMs: z.number().int().min(1000).optional(),
 })
 
 export const PaladeConfigSchema = z.object({
   providers: z.object({
     groq: ProviderConfigSchema.optional(),
     cerebras: ProviderConfigSchema.optional(),
-    nvidia: ProviderConfigSchema.extend({
-      baseUrl: z.string().url().optional(),
-    }).optional(),
+    nvidia: ProviderConfigSchema.optional(),
     openrouter: ProviderConfigSchema.optional(),
     'opencode-zen': ProviderConfigSchema.optional(),
-    ollama: ProviderConfigSchema.extend({
-      baseUrl: z.string().url().optional(),
-    }).optional(),
+    ollama: ProviderConfigSchema.optional(),
   }),
   swarm: z
     .object({
@@ -38,6 +39,11 @@ export const PaladeConfigSchema = z.object({
       // lower-latency and gives each domain its own dedicated system prompt, so
       // users opt into economy mode when token cost matters more than latency.
       economyMode: z.boolean().default(false),
+      // Whether to append the built-in Ponytail/Karpathy/GStack skills block
+      // (~3.5KB) to every agent's system prompt on every batch. Default true
+      // keeps existing behavior; disable to save tokens if you don't rely on
+      // those review lenses.
+      includeSkills: z.boolean().default(true),
       specPath: z.string().default('palade.spec.md'),
       constitutionPath: z.string().default('.palade/constitution.md'),
     })

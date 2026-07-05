@@ -25,13 +25,13 @@ Example output:
 [
   {
     "severity": "high",
-    "title": "SQL query built with string concatenation",
-    "description": "The getUserById function builds a SQL query by concatenating user input directly into the query string. This allows SQL injection. Use parameterized queries instead.",
-    "filePath": "src/db/users.ts",
-    "lineStart": 34,
-    "lineEnd": 38,
-    "symbolName": "getUserById",
-    "tags": ["sql", "injection", "security"]
+    "title": "N+1 query fetching order items in a loop",
+    "description": "listOrders fetches all orders, then calls getItemsForOrder(order.id) inside a for-loop for each one, issuing one database round-trip per order. Batch-load items with a single query using an IN clause instead.",
+    "filePath": "src/services/orderService.ts",
+    "lineStart": 40,
+    "lineEnd": 47,
+    "symbolName": "listOrders",
+    "tags": ["performance", "n+1"]
   }
 ]
 
@@ -47,7 +47,6 @@ Additional performance focus:
 
 export class PerformanceAgent extends BaseSpecialistAgent {
   name: AgentName = 'performance'
-  domain = 'performance'
 
   protected getSystemPrompt(): string {
     return SYSTEM_PROMPT

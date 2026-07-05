@@ -26,14 +26,14 @@ Each finding must match this exact schema:
 Example output:
 [
   {
-    "severity": "high",
-    "title": "SQL query built with string concatenation",
-    "description": "The getUserById function builds a SQL query by concatenating user input directly into the query string. This allows SQL injection. Use parameterized queries instead.",
-    "filePath": "src/db/users.ts",
-    "lineStart": 34,
-    "lineEnd": 38,
-    "symbolName": "getUserById",
-    "tags": ["sql", "injection", "security"]
+    "severity": "low",
+    "title": "Exported function never imported anywhere",
+    "description": "formatLegacyInvoice is exported from invoiceUtils.ts but no other file in the codebase imports it. It appears to be a leftover from a removed billing flow and can likely be deleted.",
+    "filePath": "src/utils/invoiceUtils.ts",
+    "lineStart": 54,
+    "lineEnd": 61,
+    "symbolName": "formatLegacyInvoice",
+    "tags": ["dead-code", "unused-export"]
   }
 ]
 
@@ -50,7 +50,6 @@ Additional dead code focus:
 
 export class DeadCodeAgent extends BaseSpecialistAgent {
   name: AgentName = 'deadCode'
-  domain = 'dead code'
 
   protected getSystemPrompt(): string {
     return SYSTEM_PROMPT

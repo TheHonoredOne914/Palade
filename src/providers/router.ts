@@ -31,15 +31,21 @@ const RETRYABLE_KEYWORDS = [
   'econnrefused',
   'fetch failed',
   'rate limit',
-  'daily limit',
-  'quota exhausted',
 ]
 
+// Bare 'daily' / 'quota' used to be fatal keywords, which meant an incidental
+// occurrence of either word in an unrelated error body (or in the now-removed
+// 'daily limit' / 'quota exhausted' RETRYABLE_KEYWORDS entries above) would
+// permanently mark a provider dead. Tightened to the specific phrases our
+// adapters actually throw (see groq.ts/cerebras.ts/nvidia.ts/openrouter.ts/
+// opencode-zen.ts daily-limit messages) so a stray 'daily' or 'quota'
+// substring elsewhere in a body can't trip this.
 const FATAL_KEYWORDS = [
   'per day',
   'per-day',
-  'daily',
-  'quota',
+  'daily limit',
+  'quota exceeded',
+  'out of quota',
   'insufficient_quota',
   'monthly limit',
 ]
@@ -67,6 +73,7 @@ interface ProviderConfig {
   model?: string
   maxConcurrency?: number
   baseUrl?: string
+  timeoutMs?: number
 }
 
 function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[] {
@@ -76,21 +83,29 @@ function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[]
   for (const key of allKeys) {
     switch (name) {
       case 'groq':
-        instances.push(new GroqProvider(key, cfg.model, cfg.maxConcurrency))
+        instances.push(
+          new GroqProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
+        )
         break
       case 'cerebras':
-        instances.push(new CerebrasProvider(key, cfg.model, cfg.maxConcurrency))
+        instances.push(
+          new CerebrasProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
+        )
         break
       case 'nvidia':
         instances.push(
-          new NvidiaProvider(key, cfg.model, cfg.baseUrl, undefined, cfg.maxConcurrency)
+          new NvidiaProvider(key, cfg.model, cfg.baseUrl, cfg.maxConcurrency, cfg.timeoutMs)
         )
         break
       case 'openrouter':
-        instances.push(new OpenRouterProvider(key, cfg.model, cfg.maxConcurrency))
+        instances.push(
+          new OpenRouterProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
+        )
         break
       case 'opencode-zen':
-        instances.push(new OpenCodeZenProvider(key, cfg.model, undefined, cfg.maxConcurrency))
+        instances.push(
+          new OpenCodeZenProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
+        )
         break
       case 'ollama':
         instances.push(new OllamaProvider(cfg.model, cfg.baseUrl, cfg.maxConcurrency))

@@ -1,5 +1,10 @@
 import type { ModeConfig } from './index.js'
 
+// Unlike onboard/ghost, this mode intentionally does NOT set `agentOverrides`
+// to narrow the agent list. All 8 specialists still run, but every finding
+// gets quantified in developer-hours via `systemPromptSuffix` below, so the
+// debt register covers every domain rather than a single lens. Deliberate
+// choice, not an oversight.
 export const DEBT_MODE: ModeConfig = {
   mode: 'debt',
   systemPromptSuffix: `

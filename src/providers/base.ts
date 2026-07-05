@@ -29,9 +29,25 @@ export interface IProvider {
   isAvailable(): Promise<boolean>
 }
 
+// Intentionally fixed: these govern the low-level HTTP retry loop shared by
+// every adapter. They're not exposed via config because tuning them per-run
+// would change retry timing underneath the router's own backoff/fallback
+// logic in unpredictable ways; see CLAUDE.md's "Performance Tuning Knobs".
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 500
 const MAX_DELAY_MS = 8000
+
+const DAILY_LIMIT_PATTERN = /daily|per-day/i
+
+/**
+ * Scans a raw response body for daily/per-day rate-limit language. Shared by
+ * every adapter so daily-limit detection is a plain text scan regardless of
+ * whether a provider's error body is JSON, wraps the message in `error.message`,
+ * or isn't parseable JSON at all.
+ */
+export function isDailyLimitError(body: string): boolean {
+  return DAILY_LIMIT_PATTERN.test(body)
+}
 
 export async function fetchWithRetry(
   url: string,

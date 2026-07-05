@@ -1,5 +1,11 @@
 import type { ModeConfig } from './index.js'
 
+// Unlike onboard/ghost, this mode intentionally does NOT set `agentOverrides`
+// to narrow the agent list. All 8 specialists still run, but every agent's
+// system prompt is reframed through `systemPromptSuffix` below to apply a
+// security lens (e.g. maintainability/performance findings should still
+// surface, but severity leans toward exploitability). This is a deliberate
+// choice, not an oversight.
 export const SECURITY_MODE: ModeConfig = {
   mode: 'security',
   systemPromptSuffix: `

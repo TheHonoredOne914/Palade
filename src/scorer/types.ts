@@ -31,6 +31,10 @@ export interface ScoreHistoryEntry {
   score: number
   breakdown: ScoreBreakdown
   delta: number
+  // 'full' = whole-repo `palade review` run, 'diff' = changed-files-only
+  // `palade diff` run. Absent (older entries) is treated as 'full' for
+  // backward compatibility.
+  kind?: 'full' | 'diff'
 }
 
 export type BadgeColor = 'brightgreen' | 'green' | 'yellow' | 'orange' | 'red'

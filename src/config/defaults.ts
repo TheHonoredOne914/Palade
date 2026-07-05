@@ -8,6 +8,7 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     timeoutMs: 600000,
     maxReviewTokens: 200_000,
     economyMode: false,
+    includeSkills: true,
     specPath: 'palade.spec.md',
     constitutionPath: '.palade/constitution.md',
   },

@@ -2,7 +2,6 @@ import { BaseSpecialistAgent, type AgentContext } from '../base.js'
 
 export class LogicAgent extends BaseSpecialistAgent {
   name = 'logic' as const
-  domain = 'Logic & Correctness'
 
   getSystemPrompt(context: AgentContext): string {
     let prompt = `You are a Logic & Correctness expert reviewing source code.
