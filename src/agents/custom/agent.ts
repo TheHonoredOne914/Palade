@@ -43,7 +43,11 @@ export class CustomAgent implements IAgent {
       const provider = getProvider('primary')
       // Inject the domain label so the LLM knows its specialization area
       const domainPrefix = `You are reviewing code in the '${this.domain}' domain.\n\n`
-      const systemPrompt = buildSystemPrompt(domainPrefix + this.systemPrompt, context, context.modeConfig)
+      const systemPrompt = buildSystemPrompt(
+        domainPrefix + this.systemPrompt,
+        context,
+        context.modeConfig
+      )
       const userPrompt = buildChunkContext(chunks)
       const response = await provider.complete({
         systemPrompt,

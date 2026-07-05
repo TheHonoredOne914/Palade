@@ -144,8 +144,6 @@ function instantiateProviders(providers: PaladeConfig['providers']): Map<string,
   return map
 }
 
-
-
 let assignment: ProviderAssignment | null = null
 let allProviders: Map<string, IProvider> = new Map()
 

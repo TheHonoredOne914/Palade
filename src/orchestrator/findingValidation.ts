@@ -73,7 +73,9 @@ export function validateAndFingerprintFindings(
 
     const matchingChunk = candidateChunks.find((chunk) => lineIsInsideChunk(finding, chunk))
     if (!matchingChunk) {
-      console.warn(`[validation] Finding at ${normalizedPath}:${finding.lineStart}-${finding.lineEnd} falls outside all known chunks — dropping`)
+      console.warn(
+        `[validation] Finding at ${normalizedPath}:${finding.lineStart}-${finding.lineEnd} falls outside all known chunks — dropping`
+      )
       continue
     }
 

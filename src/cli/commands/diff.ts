@@ -331,7 +331,9 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                   console.log(theme.dim(`  [base] Conflict: ${sideA} vs ${sideB} in ${filePath}`))
                 },
                 onVerdictDecided: (decision: string, confidence: number): void => {
-                  console.log(theme.success(`  ✓ [base] Verdict decided (${confidence}% confidence)`))
+                  console.log(
+                    theme.success(`  ✓ [base] Verdict decided (${confidence}% confidence)`)
+                  )
                 },
               })
               baseFindings = baseSwarmResult.findings

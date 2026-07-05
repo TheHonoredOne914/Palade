@@ -1,5 +1,3 @@
-
-
 export type ScoreCategory = string
 
 export interface CategoryScore {

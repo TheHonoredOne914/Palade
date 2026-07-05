@@ -19,8 +19,6 @@ const SEVERITY_CLASSES: Record<Severity, string> = {
   info: 'severity-low',
 }
 
-
-
 function getScoreGradeClass(score: number): string {
   if (score >= 90) return 'grade-a-plus'
   if (score >= 80) return 'grade-a'

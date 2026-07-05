@@ -94,9 +94,11 @@ function buildCombinedSystemPrompt(domains: DomainSpec[]): string {
     .map((d) => {
       let extra = ''
       if (d.name === 'deadCode') {
-        extra = ' (NOTE: You are reviewing partial chunks. Do NOT report exports as unused unless you are certain they are dead. Assume public exports are used elsewhere.)'
+        extra =
+          ' (NOTE: You are reviewing partial chunks. Do NOT report exports as unused unless you are certain they are dead. Assume public exports are used elsewhere.)'
       } else if (d.name === 'testIntelligence') {
-        extra = ' (NOTE: You are reviewing partial chunks. Only flag missing tests if the chunk clearly contains complex logic lacking coverage, not just because a test file isn\'t visible.)'
+        extra =
+          " (NOTE: You are reviewing partial chunks. Only flag missing tests if the chunk clearly contains complex logic lacking coverage, not just because a test file isn't visible.)"
       }
       return `### ${d.label} (agentName: "${d.name}")\nLook for: ${d.focus}.${extra}`
     })

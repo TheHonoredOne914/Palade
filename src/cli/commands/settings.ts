@@ -209,7 +209,7 @@ async function applySets(projectRoot: string, sets: string[]): Promise<void> {
       console.error(chalk.red(`  Invalid value for ${key}: ${msg}`))
       continue
     }
-    
+
     currentConfig = testConfig
 
     const old = configContent

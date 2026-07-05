@@ -74,19 +74,21 @@ export async function runSwarm(
     context.modeConfig?.agentOverrides,
     options.customAgents
   )
-  
+
   let agents: IAgent[] = modeAgents
   if (options.economyMode) {
     const builtInAgents = modeAgents.filter((a) => !(a instanceof CustomAgent))
     const customAgents = modeAgents.filter((a) => a instanceof CustomAgent)
-    
+
     // Ghost mode or heavily filtered modes might only have 1 built-in agent.
     // Combining 1 agent defeats the purpose of economy mode (which is to batch N domains)
     // and just degrades prompt quality. So if <= 1 built-in agent, just run standard mode.
     if (builtInAgents.length > 1) {
       const activeDomains = builtInAgents.map((a) => {
         const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
-        return defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
+        return (
+          defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
+        )
       })
       agents = [new CombinedAnalyzer(activeDomains), ...customAgents]
     }
@@ -107,9 +109,10 @@ export async function runSwarm(
   // token limit without requiring a type change here.
   const rawBatchTokenLimit = (options as SwarmOptions & { batchTokenLimit?: number })
     .batchTokenLimit
-  const batchTokenLimit = typeof rawBatchTokenLimit === 'number' && rawBatchTokenLimit > 0
-    ? rawBatchTokenLimit
-    : undefined
+  const batchTokenLimit =
+    typeof rawBatchTokenLimit === 'number' && rawBatchTokenLimit > 0
+      ? rawBatchTokenLimit
+      : undefined
 
   // Batch scheduling is deterministic — compute once, not per-agent
   const batches = scheduleBatches(reviewChunks, batchTokenLimit)
@@ -263,7 +266,9 @@ export async function runSwarm(
     if (result.status === 'rejected') {
       const err = result.reason
       if (err instanceof ReviewCancelledError) throw err
-      console.warn(chalk.yellow(`⚠ Agent failed: ${err instanceof Error ? err.message : String(err)}`))
+      console.warn(
+        chalk.yellow(`⚠ Agent failed: ${err instanceof Error ? err.message : String(err)}`)
+      )
     }
   }
 
@@ -367,7 +372,7 @@ export async function runSwarm(
         // Try to figure out the winning vs losing sides from the text so the ADR isn't blank.
         const winningLensMatch = decisionStr.match(/(\w+) says/i)
         const winningLens = winningLensMatch ? winningLensMatch[1] : 'CombinedAgent(Winner)'
-        
+
         const fakeConflict = {
           filePath: finding.filePath || 'unknown',
           lineStart: finding.lineStart || 0,

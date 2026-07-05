@@ -112,7 +112,9 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
             title: f.title as string,
             rationale: f.rationale as string,
             estimatedHours: hours,
-            affectedFiles: Array.isArray(f.affectedFiles) ? f.affectedFiles.filter((x): x is string => typeof x === 'string') : [],
+            affectedFiles: Array.isArray(f.affectedFiles)
+              ? f.affectedFiles.filter((x): x is string => typeof x === 'string')
+              : [],
           }
         })
     : []

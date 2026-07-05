@@ -1,4 +1,12 @@
-import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, copyFileSync, unlinkSync } from 'node:fs'
+import {
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  mkdirSync,
+  existsSync,
+  copyFileSync,
+  unlinkSync,
+} from 'node:fs'
 import { dirname } from 'node:path'
 import type { ScoreHistoryEntry, ScoreBreakdown, CategoryScore } from './types.js'
 

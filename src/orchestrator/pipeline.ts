@@ -177,13 +177,12 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   }
 
   if (opts.dryRunConfig) {
-    const reviewChunks =
-      !opts.swarmOptions?.exhaustive
-        ? await triageFiles(triageManifests, activeChunks, {
-            maxReviewTokens: opts.swarmOptions?.maxReviewTokens,
-            strictTriage: opts.swarmOptions?.strictTriage,
-          })
-        : activeChunks
+    const reviewChunks = !opts.swarmOptions?.exhaustive
+      ? await triageFiles(triageManifests, activeChunks, {
+          maxReviewTokens: opts.swarmOptions?.maxReviewTokens,
+          strictTriage: opts.swarmOptions?.strictTriage,
+        })
+      : activeChunks
 
     const estimate = estimateRunCost(reviewChunks, opts.dryRunConfig)
 

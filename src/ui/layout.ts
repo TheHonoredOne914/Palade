@@ -59,8 +59,6 @@ export function kvTable(rows: [string, string][]): string {
   return rows.map(([k, v]) => `  ${theme.dim(k.padEnd(18))} ${v}`).join('\n')
 }
 
-
-
 const BLOCKS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█']
 
 export function sparkline(values: number[], width = 20): string {

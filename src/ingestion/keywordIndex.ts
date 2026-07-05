@@ -50,7 +50,8 @@ export function getKeywordContext(
     .filter((c) => c.id !== chunk.id)
     .map((c) => {
       // Use pre-computed word list if available, otherwise fall back to extraction
-      const chunkWords = (c as any)._words ?? (c.content.toLowerCase().match(/\b[a-z]{4,}\b/g) || [])
+      const chunkWords =
+        (c as any)._words ?? (c.content.toLowerCase().match(/\b[a-z]{4,}\b/g) || [])
       const chunkWordCount = chunkWords.length
 
       let queryWordCount = 0

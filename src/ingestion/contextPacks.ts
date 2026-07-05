@@ -9,7 +9,10 @@ function toPosix(path: string): string {
 }
 
 function withoutExtension(path: string): string {
-  return path.replace(/\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|cs|cpp|cc|c|h|hpp|rb|php|swift|kt|dart)$/, '')
+  return path.replace(
+    /\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|cs|cpp|cc|c|h|hpp|rb|php|swift|kt|dart)$/,
+    ''
+  )
 }
 
 function resolveRelativeImport(fromFile: string, specifier: string): string | null {
@@ -103,7 +106,10 @@ export function buildRetrievedContext(subject: CodeChunk, allChunks: CodeChunk[]
   const subjectTestBases = expectedTestBases(subject.filePath)
 
   const related = allChunks
-    .map((chunk) => ({ chunk, score: scoreRelatedChunk(subject, chunk, subjectImports, subjectTerms, subjectTestBases) }))
+    .map((chunk) => ({
+      chunk,
+      score: scoreRelatedChunk(subject, chunk, subjectImports, subjectTerms, subjectTestBases),
+    }))
     .filter((entry) => entry.score >= 4)
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_RESULTS)

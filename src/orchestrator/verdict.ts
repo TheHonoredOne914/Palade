@@ -154,8 +154,14 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
 }
 
 const VerdictSchema = z.object({
-  is_conflict: z.boolean().describe('True ONLY if the two recommendations are mutually exclusive and cannot both be applied.'),
-  decision: z.string().describe('What to actually do (if conflict) or how to combine them (if no conflict)'),
+  is_conflict: z
+    .boolean()
+    .describe(
+      'True ONLY if the two recommendations are mutually exclusive and cannot both be applied.'
+    ),
+  decision: z
+    .string()
+    .describe('What to actually do (if conflict) or how to combine them (if no conflict)'),
   tradeoff_accepted: z.string().describe('The explicit cost being accepted'),
   confidence: z.coerce.number().describe('0-100 score of how confident you are in this tradeoff'),
   losing_side: z.string().describe('Which agent recommendation was NOT taken, and why (or N/A)'),
