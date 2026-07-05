@@ -126,11 +126,7 @@ export async function runSwarm(
     const allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
     try {
-      const batches = scheduleBatches(
-        reviewChunks,
-        options.softTokenLimit,
-        options.hardChunkLimit
-      )
+      const batches = scheduleBatches(reviewChunks, options.softTokenLimit, options.hardChunkLimit)
       const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>

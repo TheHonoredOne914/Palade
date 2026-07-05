@@ -128,10 +128,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   // earlier chunk's injected foreign-code block would leak into the retrieved
   // context of later chunks, making the result order-dependent.
   // Merge context from both sources, dedup by chunk id to avoid duplicates.
-  function mergeContexts(
-    retrieved: string,
-    keyword: string
-  ): string {
+  function mergeContexts(retrieved: string, keyword: string): string {
     if (!retrieved) return keyword
     if (!keyword) return retrieved
     const seen = new Set<string>()
@@ -165,8 +162,8 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     if (blocks.length === 0) return ''
     return `\n\n/* [REPOSITORY CONTEXT] */\n${blocks.join('\n\n')}\n/* [END REPOSITORY CONTEXT] */\n\n`
   }
-  const contextPrefixes = activeChunks.map(
-    (chunk) => mergeContexts(buildRetrievedContext(chunk, chunks), getKeywordContext(chunk, keywordIndex))
+  const contextPrefixes = activeChunks.map((chunk) =>
+    mergeContexts(buildRetrievedContext(chunk, chunks), getKeywordContext(chunk, keywordIndex))
   )
   activeChunks.forEach((chunk, i) => {
     const contextPrefix = contextPrefixes[i]
