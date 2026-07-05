@@ -20,7 +20,9 @@ const PRICING_TABLE: Record<string, { input: number; output: number }> = {
   'groq:llama-3.1-8b-instant': { input: 0.05, output: 0.08 },
   'cerebras:llama3.1-8b': { input: 0.1, output: 0.1 },
   'cerebras:llama-3.3-70b': { input: 0.6, output: 0.6 },
+  'cerebras:gpt-oss-120b': { input: 0.25, output: 0.69 },
   'openrouter:deepseek/deepseek-r1': { input: 0.55, output: 2.19 },
+  'openrouter:nvidia/nemotron-3-super-120b-a12b:free': { input: 0, output: 0 },
   'nvidia:minimaxai/minimax-m3': { input: 0.0, output: 0.0 }, // free tier example
   'ollama:': { input: 0, output: 0 },
 }
@@ -30,9 +32,9 @@ function getProviderModelKey(providerName: string, providerConfig?: { model?: st
   if (providerName === 'opencode-zen')
     return `opencode-zen:${providerConfig?.model || 'deepseek-v4-flash-free'}`
   if (providerName === 'groq') return `groq:${providerConfig?.model || 'llama-3.3-70b-versatile'}`
-  if (providerName === 'cerebras') return `cerebras:${providerConfig?.model || 'llama-3.3-70b'}`
+  if (providerName === 'cerebras') return `cerebras:${providerConfig?.model || 'gpt-oss-120b'}`
   if (providerName === 'openrouter')
-    return `openrouter:${providerConfig?.model || 'deepseek/deepseek-r1'}`
+    return `openrouter:${providerConfig?.model || 'nvidia/nemotron-3-super-120b-a12b:free'}`
   if (providerName === 'nvidia') return `nvidia:${providerConfig?.model || 'minimaxai/minimax-m3'}`
   return `${providerName}:${providerConfig?.model || 'unknown'}`
 }
@@ -72,29 +74,35 @@ export function estimateRunCost(chunks: CodeChunk[], config: PaladeConfig): Esti
   const primaryPrice = PRICING_TABLE[primaryKey]
   const synthesisPrice = PRICING_TABLE[synthesisKey]
 
-  const costMap: Record<string, number | null> = {}
-
+  let primaryCost: number | null = null
   if (primaryPrice) {
-    const cost =
+    primaryCost =
       ((totalInputTokens * agentCount) / 1_000_000) * primaryPrice.input +
       (estimatedOutputTokens / 1_000_000) * primaryPrice.output
-    costMap[primaryName] = (costMap[primaryName] || 0) + cost
-  } else {
-    costMap[primaryName] = null
   }
 
   // Synthesis takes findings as input, maybe 2000 tokens, output 1000
   const synthesisInput = 2000
   const synthesisOutput = 1000
+  let synthesisCost: number | null = null
   if (synthesisPrice) {
-    const cost =
+    synthesisCost =
       (synthesisInput / 1_000_000) * synthesisPrice.input +
       (synthesisOutput / 1_000_000) * synthesisPrice.output
-    if (costMap[synthesisName] !== null) {
-      costMap[synthesisName] = (costMap[synthesisName] || 0) + cost
+  }
+
+  const costMap: Record<string, number | null> = {}
+  costMap[primaryName] = primaryCost
+  if (synthesisName === primaryName) {
+    // Merge independently computed costs — a known synthesis price should
+    // never be discarded just because the primary price was unknown (or vice versa).
+    if (primaryCost !== null || synthesisCost !== null) {
+      costMap[synthesisName] = (primaryCost ?? 0) + (synthesisCost ?? 0)
+    } else {
+      costMap[synthesisName] = null
     }
   } else {
-    costMap[synthesisName] = null
+    costMap[synthesisName] = synthesisCost
   }
 
   let warningLevel: 'low' | 'medium' | 'high' = 'low'

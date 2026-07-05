@@ -69,10 +69,6 @@ export interface SwarmOptions {
    */
   economyMode?: boolean
   /**
-   * Exhaustive mode: bypass the triage filter phase and review all files in the project.
-   */
-  exhaustive?: boolean
-  /**
    * Strict Triage mode: Throw an error if any file is dropped due to maxReviewTokens limit.
    */
   strictTriage?: boolean
@@ -89,4 +85,8 @@ export interface SwarmOptions {
    * Max number of batches processed concurrently per agent. Defaults to 5.
    */
   maxConcurrentBatches?: number
+  /** Soft cap (in estimated tokens) on the total size of a single agent batch. Defaults to 16_000. */
+  softTokenLimit?: number
+  /** Hard cap (in estimated tokens) on a single chunk before it is recursively split. Defaults to 6_000. */
+  hardChunkLimit?: number
 }
