@@ -45,9 +45,17 @@ export function SettingsPanel({
   const [modelIdx, setModelIdx] = useState(0)
   const [localModels, setLocalModels] = useState<Record<string, string>>(currentModels)
 
-  const [swarmIdx, setSwarmIdx] = useState(() => Math.max(0, PROVIDERS.findIndex((p) => p.id === swarmPrimary)))
+  const [swarmIdx, setSwarmIdx] = useState(() =>
+    Math.max(
+      0,
+      PROVIDERS.findIndex((p) => p.id === swarmPrimary)
+    )
+  )
   const [synthesisIdx, setSynthesisIdx] = useState(() =>
-    Math.max(0, PROVIDERS.findIndex((p) => p.id === swarmSynthesis))
+    Math.max(
+      0,
+      PROVIDERS.findIndex((p) => p.id === swarmSynthesis)
+    )
   )
   const [localSwarmPrimary, setLocalSwarmPrimary] = useState(swarmPrimary)
   const [localSwarmSynthesis, setLocalSwarmSynthesis] = useState(swarmSynthesis)
@@ -141,7 +149,9 @@ export function SettingsPanel({
 
   useInput((_input, key) => {
     if (key.upArrow) {
-      setFocusField((f) => FOCUS_ORDER[(FOCUS_ORDER.indexOf(f) - 1 + FOCUS_ORDER.length) % FOCUS_ORDER.length])
+      setFocusField(
+        (f) => FOCUS_ORDER[(FOCUS_ORDER.indexOf(f) - 1 + FOCUS_ORDER.length) % FOCUS_ORDER.length]
+      )
       return
     }
     if (key.downArrow) {
@@ -197,7 +207,7 @@ export function SettingsPanel({
     ? modelEntry!.models[modelIdx]
     : modelEntry?.status === 'loading'
       ? 'loading models…'
-      : localModels[selectedProvider.id] ?? '(type a model id below)'
+      : (localModels[selectedProvider.id] ?? '(type a model id below)')
 
   return (
     <Box
@@ -272,7 +282,9 @@ export function SettingsPanel({
               onChange={setInputValue}
               onSubmit={handleSubmit}
               placeholder={
-                saving ? 'Saving...' : `Paste ${selectedProvider.label} API key, press Enter to save`
+                saving
+                  ? 'Saving...'
+                  : `Paste ${selectedProvider.label} API key, press Enter to save`
               }
               mask="*"
             />
@@ -311,7 +323,9 @@ export function SettingsPanel({
           {focusField === 'swarm' ? '▸ ' : '  '}
           Swarm provider: {'< '}
         </Text>
-        <Text color={focusField === 'swarm' ? '#00D0FF' : '#D1D5DB'}>{PROVIDERS[swarmIdx].label}</Text>
+        <Text color={focusField === 'swarm' ? '#00D0FF' : '#D1D5DB'}>
+          {PROVIDERS[swarmIdx].label}
+        </Text>
         <Text color={focusField === 'swarm' ? '#FF3366' : '#9CA3AF'}>{' >'}</Text>
         <Text color="#4B5563" dimColor>
           {'  (current: '}
@@ -322,7 +336,10 @@ export function SettingsPanel({
 
       {/* Synthesis provider field */}
       <Box marginBottom={1}>
-        <Text color={focusField === 'synthesis' ? '#FF3366' : '#9CA3AF'} bold={focusField === 'synthesis'}>
+        <Text
+          color={focusField === 'synthesis' ? '#FF3366' : '#9CA3AF'}
+          bold={focusField === 'synthesis'}
+        >
           {focusField === 'synthesis' ? '▸ ' : '  '}
           Synthesis provider: {'< '}
         </Text>

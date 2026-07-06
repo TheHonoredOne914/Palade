@@ -102,7 +102,9 @@ export function App({
   const [showSettings, setShowSettings] = useState(false)
   const [settingsProviderIdx, setSettingsProviderIdx] = useState(0)
   const [settingsKeys, setSettingsKeys] = useState<Record<string, string>>({})
-  const [settingsSwarmPrimary, setSettingsSwarmPrimary] = useState(config?.swarm?.primary ?? 'opencode-zen')
+  const [settingsSwarmPrimary, setSettingsSwarmPrimary] = useState(
+    config?.swarm?.primary ?? 'opencode-zen'
+  )
   const [settingsSwarmSynthesis, setSettingsSwarmSynthesis] = useState(
     config?.swarm?.synthesis ?? 'nvidia'
   )

@@ -236,7 +236,7 @@ export async function loadConfig(): Promise<PaladeConfig> {
     console.warn(
       chalk.yellow(
         `[config] swarm.primary is "${result.data.swarm.primary}" but no API key is configured for any provider. ` +
-          'Set the provider\'s env var (e.g. GROQ_API_KEY) or configure apiKey in palade.config.ts.'
+          "Set the provider's env var (e.g. GROQ_API_KEY) or configure apiKey in palade.config.ts."
       )
     )
   }

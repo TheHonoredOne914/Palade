@@ -5,7 +5,13 @@ import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
 import type { ScopeOptions, CodeChunk, FileManifest } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
-import { chunkFiles, estimateTokens, splitLargeChunk, CHARS_PER_TOKEN, MAX_TOKENS } from '../ingestion/chunker.js'
+import {
+  chunkFiles,
+  estimateTokens,
+  splitLargeChunk,
+  CHARS_PER_TOKEN,
+  MAX_TOKENS,
+} from '../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../ingestion/contextPacks.js'
 import { buildAnnotationSummary } from '../ingestion/annotationParser.js'

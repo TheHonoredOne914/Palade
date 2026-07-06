@@ -199,9 +199,7 @@ function salvageTruncatedArray(text: string): unknown[] {
   }
 
   if (skipped > 0) {
-    console.warn(
-      chalk.yellow(`  salvageTruncatedArray: skipped ${skipped} malformed fragment(s)`)
-    )
+    console.warn(chalk.yellow(`  salvageTruncatedArray: skipped ${skipped} malformed fragment(s)`))
   }
   return salvaged
 }
@@ -434,9 +432,9 @@ export async function verifyCriticalHighFindings(
     const codeChunk = f.filePath
       ? chunks.find(
           (c) =>
-              c.filePath === f.filePath &&
-              (typeof f.lineStart !== 'number' ||
-                (c.startLine <= f.lineStart && c.endLine >= f.lineStart))
+            c.filePath === f.filePath &&
+            (typeof f.lineStart !== 'number' ||
+              (c.startLine <= f.lineStart && c.endLine >= f.lineStart))
         )
       : undefined
     if (!codeChunk) return f

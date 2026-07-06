@@ -184,7 +184,11 @@ export async function initCommand(opts?: {
     )
     if (configuredProviders.length === 0) {
       console.log(chalk.yellow(`\n⚠ No API keys detected.`))
-      console.log(chalk.dim(`   Set environment variables like GROQ_API_KEY or add apiKey to palade.config.ts`))
+      console.log(
+        chalk.dim(
+          `   Set environment variables like GROQ_API_KEY or add apiKey to palade.config.ts`
+        )
+      )
     } else {
       console.log(chalk.cyan(`\nProviders initialized (${configuredProviders.length}):`))
       for (const [name] of configuredProviders) {

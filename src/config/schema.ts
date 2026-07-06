@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import { DEFAULT_BADGE_PATH, DEFAULT_CONSTITUTION_PATH, DEFAULT_SPEC_PATH, DEFAULT_CONFIG } from './defaults.js'
+import {
+  DEFAULT_BADGE_PATH,
+  DEFAULT_CONSTITUTION_PATH,
+  DEFAULT_SPEC_PATH,
+  DEFAULT_CONFIG,
+} from './defaults.js'
 import { SEVERITY_PENALTY } from '../agents/base.js'
 import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS } from '../scorer/calculator.js'
 

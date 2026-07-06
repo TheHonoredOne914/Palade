@@ -4,7 +4,9 @@ import { mountOutputAdapter, unmountOutputAdapter } from './outputAdapter.js'
 
 const collectAppend = () => {
   const lines: OutputLine[] = []
-  const append = (line: OutputLine) => { lines.push(line) }
+  const append = (line: OutputLine) => {
+    lines.push(line)
+  }
   return { lines, append }
 }
 
@@ -70,7 +72,9 @@ describe('mountOutputAdapter', () => {
     mountOutputAdapter(append)
 
     const lines2: OutputLine[] = []
-    mountOutputAdapter((line) => { lines2.push(line) })
+    mountOutputAdapter((line) => {
+      lines2.push(line)
+    })
 
     console.log('test')
     expect(lines).toHaveLength(1)

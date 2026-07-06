@@ -65,7 +65,7 @@ async function interactiveSettings(projectRoot: string): Promise<void> {
   }
 
   const providerIds: string[] = PROVIDERS.map((p) => p.id)
-  const provider = await askList('Select a provider:', providerIds) as ProviderId
+  const provider = (await askList('Select a provider:', providerIds)) as ProviderId
 
   const key = await askQuestion(`Enter your API key for ${provider}: `)
   if (!key.trim()) {
