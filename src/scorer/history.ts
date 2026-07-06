@@ -124,6 +124,12 @@ export function writeHistory(
 // other's entry. `wx` fails if the lockfile already exists, giving us
 // exclusive-create semantics without a locking dependency.
 function acquireLock(historyPath: string): string {
+  const dir = dirname(historyPath)
+  try {
+    mkdirSync(dir, { recursive: true })
+  } catch {
+    // ignore
+  }
   const lockPath = `${historyPath}.lock`
   if (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test') {
     return lockPath

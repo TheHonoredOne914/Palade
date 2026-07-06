@@ -263,12 +263,32 @@ export async function saveConfigValue(
 }
 
 export async function readCurrentKeys(projectRoot: string): Promise<Record<string, string>> {
-  const configPath = resolveConfigPath(projectRoot)
   const result: Record<string, string> = {}
+  
+  for (const p of PROVIDERS) {
+    if (process.env[p.env]) {
+      result[p.id] = process.env[p.env]!
+    }
+  }
+
+  try {
+    const envPath = join(projectRoot, '.env')
+    const envContent = await readFile(envPath, 'utf-8')
+    for (const p of PROVIDERS) {
+      if (!result[p.id]) {
+        const envLineRe = new RegExp(`^${p.env}=(.*)$`, 'm')
+        const match = envContent.match(envLineRe)
+        if (match) result[p.id] = match[1]
+      }
+    }
+  } catch {}
+
+  const configPath = resolveConfigPath(projectRoot)
   if (!existsSync(configPath)) return result
   try {
     const content = await readFile(configPath, 'utf-8')
     for (const p of PROVIDERS) {
+      if (result[p.id]) continue
       const re = new RegExp(`${p.id}[\\s\\S]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
       const m = content.match(re)
       if (m) result[p.id] = m[1]
@@ -280,56 +300,15 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
 }
 
 /**
- * Single source of truth for "save an API key" — writes to both
- * palade.config.ts AND .env so every entry point (TUI settings panel, CLI
- * `settings` command) leaves the config in the same resulting state.
+ * Single source of truth for "save an API key" — now only writes to .env
+ * to prevent leaking secrets into version control.
  */
 export async function saveApiKey(
   projectRoot: string,
   providerId: ProviderId,
   apiKey: string
 ): Promise<void> {
-  const configPath = resolveConfigPath(projectRoot)
-  const paladeDir = join(projectRoot, '.palade')
-  if (!existsSync(paladeDir)) await mkdir(paladeDir, { recursive: true })
-
-  let content: string
-  try {
-    content = await readFile(configPath, 'utf-8')
-  } catch {
-    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: {\n    primary: '${providerId}',\n    synthesis: '${providerId}',\n    agentCount: 6\n  },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
-  }
-
   const prov = PROVIDERS.find((p) => p.id === providerId)!
-  const escapedApiKey = apiKey
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-  const updateRe = new RegExp(`(${providerId}[\\s\\S]{0,200}?apiKey:\\s*)(['"])([^'"]*)(\\2)`)
-  if (updateRe.test(content)) {
-    content = content.replace(
-      updateRe,
-      (_match, p1, p2, _p3, p4) => `${p1}${p2}${escapedApiKey}${p4}`
-    )
-  } else {
-    const provBlock = `    '${providerId}': {\n      apiKey: '${escapedApiKey}',\n      model: '${prov.model}'\n    },\n`
-    const providersRe = /(providers\s*:\s*\{)/
-    if (providersRe.test(content)) {
-      content = content.replace(providersRe, `$1\n${provBlock}`)
-    } else {
-      const exportRe = /(export default\s*\{)/
-      if (!exportRe.test(content)) {
-        throw new Error(`Could not find an insertion point in ${configPath}`)
-      }
-      content = content.replace(exportRe, `$1\n  providers: {\n${provBlock}  },`)
-    }
-  }
-
-  await writeFile(configPath, content, 'utf-8')
-
-  // Also persist to .env so dotenv picks it up on next launch, and inject
-  // into process.env immediately so this session uses the key right away.
   const envKey = prov.env
   process.env[envKey] = apiKey
 

@@ -238,8 +238,6 @@ export function attributeFindings(
     }
     f.provider = provider
     f.model = model
-    const penalty = SEVERITY_PENALTY[f.severity as Severity]
-    if (typeof penalty === 'number') f.scorePenalty = penalty
     attributed.push(f)
   }
   return attributed

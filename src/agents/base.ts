@@ -31,7 +31,7 @@ export interface AgentFinding {
   lineEnd?: number
   symbolName?: string
   tags: string[]
-  scorePenalty: number
+  scorePenalty?: number
   findingFingerprint?: string
   estimatedHours?: number
   hoursWasted?: number
@@ -128,7 +128,8 @@ export function buildChunkContext(chunks: CodeChunk[]): string {
         .split('\n')
         .map((line, i) => `${c.startLine + i} | ${line}`)
         .join('\n')
-      return `=== FILE: ${c.filePath} (lines ${c.startLine}–${c.endLine}) ===\n${numberedContent}`
+      const prefix = c.contextPrefix || ''
+      return `${prefix}=== FILE: ${c.filePath} (lines ${c.startLine}–${c.endLine}) ===\n${numberedContent}`
     })
     .join('\n\n')
 }
@@ -329,7 +330,6 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
         lineEnd,
         symbolName: typeof obj.symbolName === 'string' ? obj.symbolName : undefined,
         tags,
-        scorePenalty: SEVERITY_PENALTY[severity],
         estimatedHours: typeof obj.estimatedHours === 'number' ? obj.estimatedHours : undefined,
         hoursWasted: typeof obj.hoursWasted === 'number' ? obj.hoursWasted : undefined,
       })

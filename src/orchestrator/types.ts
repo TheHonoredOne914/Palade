@@ -77,6 +77,7 @@ export interface SwarmOptions {
    */
   projectRoot?: string
   noVerdict?: boolean
+  noSynthesis?: boolean
   signal?: AbortSignal
   specPath?: string
   constitutionPath?: string

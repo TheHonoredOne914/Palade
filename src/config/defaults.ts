@@ -10,7 +10,7 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
   swarm: {
     primary: 'opencode-zen',
     synthesis: 'nvidia',
-    agentCount: 6,
+    agentCount: 8,
     timeoutMs: 600000,
     maxReviewTokens: 200_000,
     economyMode: false,
