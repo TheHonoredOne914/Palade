@@ -3,13 +3,13 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const PROVIDERS = [
-  { id: 'groq', label: 'Groq', env: 'GROQ_API_KEY', model: 'llama-3.3-70b-versatile' },
+  { id: 'groq', label: 'Groq', env: 'GROQ_API_KEY', model: 'openai/gpt-oss-120b' },
   { id: 'cerebras', label: 'Cerebras', env: 'CEREBRAS_API_KEY', model: 'gpt-oss-120b' },
   {
     id: 'openrouter',
     label: 'OpenRouter',
     env: 'OPENROUTER_API_KEY',
-    model: 'deepseek/deepseek-chat-v3-0324:free',
+    model: 'openrouter/free',
   },
   { id: 'nvidia', label: 'NVIDIA', env: 'NVIDIA_API_KEY', model: 'minimaxai/minimax-m3' },
   {

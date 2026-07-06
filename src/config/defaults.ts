@@ -8,6 +8,9 @@ export const DEFAULT_SPEC_PATH = 'palade.spec.md'
 
 export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
   swarm: {
+    // primary/synthesis below are unreachable placeholders: loadConfig always
+    // overwrites them with its auto-detected defaultPrimary/defaultSynthesis
+    // (see src/config/loader.ts), regardless of the values set here.
     primary: 'opencode-zen',
     synthesis: 'nvidia',
     agentCount: 6,

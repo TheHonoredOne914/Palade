@@ -6,8 +6,11 @@ import { initRouter } from '../../providers/router.js'
 import { walkProject, buildIgnoreFilter } from '../../ingestion/walker.js'
 import { chunkFiles } from '../../ingestion/chunker.js'
 import { scheduleBatches } from '../../orchestrator/scheduler.js'
-import type { AgentFinding, AgentContext } from '../../agents/base.js'
+import type { AgentFinding, AgentContext, AgentName, IAgent } from '../../agents/base.js'
 import { getAgentsForMode } from '../../agents/registry.js'
+import { loadCustomAgents } from '../../agents/custom/loader.js'
+import { CombinedAnalyzer, DEFAULT_DOMAINS } from '../../agents/combined.js'
+import { CustomAgent } from '../../agents/custom/agent.js'
 import { theme } from '../../ui/theme.js'
 import { formatDriftAlert } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
@@ -30,12 +33,33 @@ export async function watchCommand(opts: {
   const isContinuous = opts.continuous === true
 
   let config
+  let customAgentDefs: Awaited<ReturnType<typeof loadCustomAgents>>
   try {
     config = await loadConfig()
     await initRouter(config)
+    customAgentDefs = await loadCustomAgents(projectRoot)
   } catch (err) {
     console.error(chalk.red(`Failed to initialise: ${(err as Error).message}`))
     throw new CliExitError(1)
+  }
+
+  // Mirror swarm.ts's economy-mode routing: replace the N parallel built-in
+  // agents with a single combined multi-domain analyzer per batch. Custom
+  // agents still run as separate per-domain calls, same as review/diff.
+  const modeAgents = getAgentsForMode('standard', undefined, customAgentDefs)
+  let watchAgents: IAgent[] = modeAgents
+  if (config.swarm.economyMode) {
+    const builtInAgents = modeAgents.filter((a) => !(a instanceof CustomAgent))
+    const customAgents = modeAgents.filter((a) => a instanceof CustomAgent)
+    if (builtInAgents.length > 1) {
+      const activeDomains = builtInAgents.map((a) => {
+        const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
+        return (
+          defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
+        )
+      })
+      watchAgents = [new CombinedAnalyzer(activeDomains), ...customAgents]
+    }
   }
 
   console.log(
@@ -134,8 +158,10 @@ export async function watchCommand(opts: {
         mode: 'standard',
       }
 
-      // Run the full agent set for the current mode/config, mirroring review.
-      const agents = getAgentsForMode('standard')
+      // Run the full agent set for the current mode/config, mirroring review
+      // (including custom agents and economy-mode combined-analyzer routing,
+      // both resolved once above into `watchAgents`).
+      const agents = watchAgents
       const allFindings: AgentFinding[] = []
       const batches = scheduleBatches(chunks)
 

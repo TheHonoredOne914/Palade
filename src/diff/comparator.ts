@@ -99,19 +99,26 @@ export function scopeToDiff(findings: AgentFinding[], changedFiles: ChangedFile[
 
 export function compareFindings(
   headFindings: AgentFinding[],
-  baseFindings: AgentFinding[],
+  // `undefined` means the base-branch scan never ran (no data available at
+  // all); `[]` means the scan ran and legitimately found nothing. These are
+  // NOT the same case — conflating them made a clean base silently
+  // under-report introduced findings that fall outside added diff lines.
+  baseFindings: AgentFinding[] | undefined,
   changedFiles: ChangedFile[]
 ): FindingDiff {
   const changedPaths = new Set(changedFiles.map((f) => f.path))
 
   const headInScope = headFindings.filter((f) => f.filePath && changedPaths.has(f.filePath))
 
-  // If no base findings were provided, we can't determine unchanged/resolved.
-  // Scope head findings to the actual diff regions for a meaningful
-  // "introduced" set, instead of marking every finding as new.
+  // If the base-branch scan didn't run at all, we can't determine
+  // unchanged/resolved. Scope head findings to the actual diff regions for a
+  // meaningful "introduced" set, instead of marking every finding as new.
   // Fall back to treating all in-scope findings as introduced when no diff
   // content is available (e.g. callers that only provide file-level metadata).
-  if (baseFindings.length === 0) {
+  // A scan that DID run and found zero base findings falls through to the
+  // normal matching path below, which naturally yields "introduced = all of
+  // headInScope" when baseInScope is empty.
+  if (baseFindings === undefined) {
     const hasDiffContent = changedFiles.some((cf) => cf.diff && cf.diff.length > 0)
     const introduced = hasDiffContent ? scopeToDiff(headInScope, changedFiles) : headInScope
     return { introduced, resolved: [], unchanged: [] }

@@ -34,7 +34,14 @@ const BUILTIN_AGENTS = new Map<AgentName, IAgent>([
   ['logic', new LogicAgent()],
 ])
 
-/** Derived from BUILTIN_AGENTS for backward compatibility. */
+/**
+ * Derived from BUILTIN_AGENTS for backward compatibility.
+ *
+ * Array order IS the intentional priority order: when agentCount trims this
+ * list down to a prefix (see getAgentsForMode below), security/architecture/
+ * performance are prioritized and kept, while logic/pragmatism/testIntelligence
+ * are the first to be dropped.
+ */
 export const AGENT_REGISTRY: IAgent[] = Array.from(BUILTIN_AGENTS.values())
 
 export function getAgentsForMode(
@@ -63,6 +70,15 @@ export function getAgentsForMode(
         'agentOverrides',
         `Available agents: ${[...allAgents.keys()].join(', ')}`
       )
+    }
+    // Custom agents are additive here too, matching the default branch below —
+    // otherwise a mode with agentOverrides set (e.g. ghost/onboard via
+    // modeConfig) silently drops every custom agent the user configured.
+    // Skip any custom agent already present via an explicit override name to
+    // avoid double-including it.
+    const overriddenNames = new Set(agents.map((a) => a.name))
+    for (const customAgent of customAgents.values()) {
+      if (!overriddenNames.has(customAgent.name)) agents.push(customAgent)
     }
     return agents
   }

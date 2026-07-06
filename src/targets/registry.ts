@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
-import type { TargetDefinition } from './schema.js'
+import { TargetDefinitionSchema, type TargetDefinition } from './schema.js'
 
 const NPM_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search'
 const NPM_REGISTRY_URL = 'https://registry.npmjs.org'
@@ -115,18 +115,34 @@ export async function getTargetFromRegistry(packageName: string): Promise<Target
   const description = paladeTarget.description
   const entry = paladeTarget.entry
   const focus = paladeTarget.focus
+  const scope = paladeTarget.scope
 
   if (typeof name !== 'string' || typeof description !== 'string') {
     console.warn(`[registry] ${packageName} paladeTarget missing required fields`)
     return null
   }
 
-  return {
+  const built: TargetDefinition = {
     name,
     description,
     entry: typeof entry === 'string' ? entry : Array.isArray(entry) ? entry : '.',
     focus: Array.isArray(focus) ? focus : undefined,
+    scope: scope && typeof scope === 'object' ? (scope as TargetDefinition['scope']) : undefined,
   }
+
+  // Validate before handing it to appendTargetToFile — an invalid target
+  // (e.g. an empty entry array) would otherwise get written to
+  // palade.targets.ts, report "installed" to the user, and then be silently
+  // dropped later by loadTargets' own schema parse.
+  const validated = TargetDefinitionSchema.safeParse(built)
+  if (!validated.success) {
+    console.warn(
+      `[registry] ${packageName} paladeTarget failed validation: ${validated.error.issues.map((i) => i.message).join(', ')}`
+    )
+    return null
+  }
+
+  return validated.data
 }
 
 export function appendTargetToFile(projectRoot: string, target: TargetDefinition): void {
@@ -154,6 +170,9 @@ export function appendTargetToFile(projectRoot: string, target: TargetDefinition
   lines.push(`  entry: ${entryStr},`)
   if (target.focus && target.focus.length > 0) {
     lines.push(`  focus: ${JSON.stringify(target.focus)},`)
+  }
+  if (target.scope) {
+    lines.push(`  scope: ${JSON.stringify(target.scope)},`)
   }
   lines.push(`},`)
 

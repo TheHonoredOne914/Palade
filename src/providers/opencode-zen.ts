@@ -2,7 +2,7 @@ import type { IProvider, CompletionRequest, CompletionResponse } from './base.js
 import { fetchWithRetry, createLimiter, isDailyLimitError } from './base.js'
 import { AuthError } from '../errors/types.js'
 
-const DEFAULT_DEADLINE_MS = 180_000
+const DEFAULT_DEADLINE_MS = 300_000
 
 export class OpenCodeZenProvider implements IProvider {
   readonly name = 'opencode-zen'
@@ -111,7 +111,11 @@ export class OpenCodeZenProvider implements IProvider {
     if (!res.ok) {
       const body = await res.text()
       if (res.status === 401 || res.status === 403) {
-        throw new AuthError(`OpenCode Zen error ${res.status}: ${body.slice(0, 200)}`, res.status, this.name)
+        throw new AuthError(
+          `OpenCode Zen error ${res.status}: ${body.slice(0, 200)}`,
+          res.status,
+          this.name
+        )
       }
       throw new Error(`OpenCode Zen error ${res.status}: ${body.slice(0, 200)}`)
     }
@@ -141,6 +145,9 @@ export class OpenCodeZenProvider implements IProvider {
     }
   }
 
+  // Quota-only check: reflects whether we have locally observed a daily-limit
+  // response, not a live connectivity/auth probe. An invalid API key or an
+  // unreachable endpoint will still report available=true here.
   async isAvailable(): Promise<boolean> {
     if (this.dailyLimitExhausted) return false
     return true

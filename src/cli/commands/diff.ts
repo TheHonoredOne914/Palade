@@ -264,7 +264,8 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       {
         severityWeights: config.score.severityWeights,
         crossAgentPenalty: config.score.crossAgentPenalty,
-      }
+      },
+      swarmResult.agentsRun
     )
 
     const updatedHistory = appendEntry(
@@ -297,7 +298,12 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     // only the modified changed files (added files have no base version, and
     // deleted files aren't reviewable on either side) to keep the extra scan
     // proportional to the size of this diff rather than the whole project.
-    let baseFindings: AgentFinding[] = []
+    // `undefined` means the base-branch scan never ran (no merge-base, no
+    // modified files, provider error, etc.) — compareFindings falls back to
+    // scoping head findings to the diff's added lines in that case. `[]` means
+    // the scan DID run and legitimately found zero issues, in which case every
+    // in-scope head finding is genuinely introduced.
+    let baseFindings: AgentFinding[] | undefined = undefined
     try {
       const mergeBase = await getMergeBase(base, projectRoot)
       const modifiedFiles = changedFiles.filter((f) => f.status === 'modified')
@@ -306,7 +312,11 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
         try {
           const writtenPaths: string[] = []
           for (const f of modifiedFiles) {
-            const oldContent = getFileContentAtRef(mergeBase, f.path, projectRoot)
+            // Renamed/copied files (git status R/C) don't exist at the
+            // merge-base under their new `f.path` — look them up at their
+            // pre-rename path so their base-branch findings are found instead
+            // of every finding in the file reading as newly introduced.
+            const oldContent = getFileContentAtRef(mergeBase, f.oldPath ?? f.path, projectRoot)
             if (oldContent === null) continue
             const dest = join(baseTempDir, f.path)
             mkdirSync(dirname(dest), { recursive: true })
@@ -328,22 +338,27 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                 totalChunks: baseChunks.length,
                 mode: 'standard',
               }
-              const baseSwarmResult = await runSwarm(baseChunks, baseContext, {
-                timeoutMs: config.swarm.timeoutMs,
-                maxReviewTokens: config.swarm.maxReviewTokens,
-                customAgents: customAgentDefs,
-                agentCount: config.swarm.agentCount,
-                economyMode: config.swarm.economyMode,
-                signal: opts.signal,
-                onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
-                  console.log(theme.dim(`  [base] Conflict: ${sideA} vs ${sideB} in ${filePath}`))
+              const baseSwarmResult = await runSwarm(
+                baseChunks,
+                baseContext,
+                {
+                  timeoutMs: config.swarm.timeoutMs,
+                  maxReviewTokens: config.swarm.maxReviewTokens,
+                  customAgents: customAgentDefs,
+                  agentCount: config.swarm.agentCount,
+                  economyMode: config.swarm.economyMode,
+                  signal: opts.signal,
+                  onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
+                    console.log(theme.dim(`  [base] Conflict: ${sideA} vs ${sideB} in ${filePath}`))
+                  },
+                  onVerdictDecided: (decision: string, confidence: number): void => {
+                    console.log(
+                      theme.success(`  ✓ [base] Verdict decided (${confidence}% confidence)`)
+                    )
+                  },
                 },
-                onVerdictDecided: (decision: string, confidence: number): void => {
-                  console.log(
-                    theme.success(`  ✓ [base] Verdict decided (${confidence}% confidence)`)
-                  )
-                },
-              })
+                baseManifests
+              )
               baseFindings = baseSwarmResult.findings
             }
           }
@@ -360,7 +375,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           `  ⚠ Base branch scan failed, resolved findings will not be reported: ${err instanceof Error ? err.message : String(err)}`
         )
       )
-      baseFindings = []
+      baseFindings = undefined
     }
 
     const findingDiff = compareFindings(swarmResult.findings, baseFindings, changedFiles)

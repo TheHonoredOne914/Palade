@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve, relative, dirname, sep } from 'node:path'
 import { existsSync } from 'node:fs'
-import ts from 'typescript'
+import { extractImportSpecifiers } from './importExtractor.js'
 
 function normalizePath(p: string): string {
   return p.replace(/\\/g, '/')
@@ -149,33 +149,13 @@ function extractLocalImports(content: string, filePath: string): string[] {
     return imports
   }
 
-  // Use typescript for .ts, .js, .tsx, .jsx
-  const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
-
-  function visit(node: ts.Node) {
-    if (ts.isImportDeclaration(node)) {
-      const moduleSpecifier = node.moduleSpecifier
-      if (ts.isStringLiteral(moduleSpecifier)) {
-        if (moduleSpecifier.text.startsWith('.')) {
-          imports.push(moduleSpecifier.text)
-        }
-      }
-    } else if (
-      ts.isCallExpression(node) &&
-      node.expression.getText(sourceFile) === 'require' &&
-      node.arguments.length === 1
-    ) {
-      const arg = node.arguments[0]
-      if (ts.isStringLiteral(arg) && arg.text.startsWith('.')) {
-        imports.push(arg.text)
-      }
+  // Use the shared AST-based extractor for .ts, .js, .tsx, .jsx (etc.), keeping
+  // only local (relative) specifiers — dependency tracing only follows local files.
+  for (const specifier of extractImportSpecifiers(content, filePath)) {
+    if (specifier.startsWith('.') && !imports.includes(specifier)) {
+      imports.push(specifier)
     }
-
-    ts.forEachChild(node, visit)
   }
 
-  visit(sourceFile)
-
-  // Deduplicate
-  return Array.from(new Set(imports))
+  return imports
 }

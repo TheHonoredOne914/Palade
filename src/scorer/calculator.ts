@@ -7,6 +7,11 @@ import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from '
 // sink further (floor 10, cap 90) than the blended overall score (floor 5,
 // cap 95), so one bad category can hurt the total without a single agent
 // being able to zero it out entirely.
+//
+// These constants (and the 60/40 average-vs-penalty blend ratio below) are
+// intentional fixed safety rails, not tunable knobs like severityWeights or
+// crossAgentPenalty — they bound how the score can move regardless of config,
+// so they're deliberately not exposed via config.score.
 const CATEGORY_SCORE_FLOOR = 10
 const CATEGORY_PENALTY_CAP = 90
 const TOTAL_SCORE_FLOOR = 5
@@ -125,7 +130,7 @@ export function calculateCrossAgentPenalty(
     // Scale by blast radius (files/scope affected) so a conflict touching many
     // files scores worse than one touching a single file, with diminishing
     // returns via log2 so a huge blast radius doesn't blow up the score.
-    const blastMultiplier = Math.min(1 + Math.log2(cf.blastRadius || 1) * 0.2, 3)
+    const blastMultiplier = Math.min(1 + Math.log2(Math.max(1, cf.blastRadius)) * 0.2, 3)
     penalty += base * blastMultiplier
   }
   return penalty
@@ -140,7 +145,16 @@ export function calculateScore(
   findings: AgentFinding[],
   crossAgentFindings: CrossAgentFinding[],
   previousScore: number | null = null,
-  scoreConfig?: ScoreWeightsConfig
+  scoreConfig?: ScoreWeightsConfig,
+  /**
+   * Categories that actually ran this review (e.g. via context.modeConfig's
+   * agentOverrides, or a swarm's agentsRun list). When omitted, defaults to
+   * "all categories" — matching the historical behavior for callers that run
+   * every built-in agent. When provided, only these categories are averaged
+   * into the score: an agent that never ran must not silently contribute a
+   * free 100 and dilute the real score (scorer-001).
+   */
+  executedCategories?: ScoreCategory[]
 ): ScoreResult {
   const severityWeights: SeverityWeights = {
     ...SEVERITY_PENALTY,
@@ -151,7 +165,7 @@ export function calculateScore(
     ...scoreConfig?.crossAgentPenalty,
   }
 
-  const baseCategories: ScoreCategory[] = [
+  const allBaseCategories: ScoreCategory[] = [
     'security',
     'architecture',
     'performance',
@@ -159,6 +173,10 @@ export function calculateScore(
     'deadCode',
     'testIntelligence',
   ]
+  const baseCategories =
+    executedCategories && executedCategories.length > 0
+      ? allBaseCategories.filter((c) => executedCategories.includes(c))
+      : allBaseCategories
 
   const uniqueAgents = Array.from(new Set(findings.map((f) => f.agentName)))
   const categories = Array.from(new Set([...baseCategories, ...uniqueAgents]))

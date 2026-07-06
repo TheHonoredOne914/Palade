@@ -8,16 +8,19 @@ const FOCUS_RE = /\/\/\s*@palade\s+focus\s*:\s*(.+)/i
 // `// @palade ignore-file` also matches the looser line-level IGNORE_RE.
 const FILE_IGNORE_RE = /\/\/\s*@palade\s+ignore-file\b/i
 const IGNORE_RE = /\/\/\s*@palade\s+ignore\b/i
-const PY_REVIEW_RE = /#\s*@palade\s+review\s*:\s*(.+)/i
-const PY_FOCUS_RE = /#\s*@palade\s+focus\s*:\s*(.+)/i
-const PY_FILE_IGNORE_RE = /#\s*@palade\s+ignore-file\b/i
-const PY_IGNORE_RE = /#\s*@palade\s+ignore\b/i
+const HASH_REVIEW_RE = /#\s*@palade\s+review\s*:\s*(.+)/i
+const HASH_FOCUS_RE = /#\s*@palade\s+focus\s*:\s*(.+)/i
+const HASH_FILE_IGNORE_RE = /#\s*@palade\s+ignore-file\b/i
+const HASH_IGNORE_RE = /#\s*@palade\s+ignore\b/i
 
-export function parseFile(absolutePath: string, isPython: boolean = false): Promise<Annotation[]> {
-  return parseFileAsync(absolutePath, isPython)
+export function parseFile(
+  absolutePath: string,
+  isHashComment: boolean = false
+): Promise<Annotation[]> {
+  return parseFileAsync(absolutePath, isHashComment)
 }
 
-async function parseFileAsync(absolutePath: string, isPython: boolean): Promise<Annotation[]> {
+async function parseFileAsync(absolutePath: string, isHashComment: boolean): Promise<Annotation[]> {
   let content: string
   try {
     content = await readFile(absolutePath, 'utf-8')
@@ -32,27 +35,27 @@ async function parseFileAsync(absolutePath: string, isPython: boolean): Promise<
     const line = lines[i]
     const lineNum = i + 1
 
-    if (isPython) {
-      const reviewMatch = line.match(PY_REVIEW_RE)
+    if (isHashComment) {
+      const reviewMatch = line.match(HASH_REVIEW_RE)
       if (reviewMatch) {
         annotations.push({ type: 'review', value: reviewMatch[1].trim(), line: lineNum })
         continue
       }
-      const focusMatch = line.match(PY_FOCUS_RE)
+      const focusMatch = line.match(HASH_FOCUS_RE)
       if (focusMatch) {
         annotations.push({ type: 'focus', value: focusMatch[1].trim(), line: lineNum })
         continue
       }
-      if (line.match(PY_FILE_IGNORE_RE)) {
+      if (line.match(HASH_FILE_IGNORE_RE)) {
         annotations.push({ type: 'ignore', line: lineNum, fileLevel: true })
         continue
       }
-      if (line.match(PY_IGNORE_RE)) {
+      if (line.match(HASH_IGNORE_RE)) {
         annotations.push({ type: 'ignore', line: lineNum })
         continue
       }
-      // No Python annotation matched — skip the JS-style patterns below
-      // so that e.g. a Python string `// @palade review: x` is not falsely
+      // No hash-comment annotation matched — skip the JS-style patterns below
+      // so that e.g. a Python/Ruby string `// @palade review: x` is not falsely
       // matched by the JS-style regexes.
       continue
     }
@@ -90,8 +93,8 @@ async function parseAnnotationsAsync(
   // Parse all files concurrently instead of sequentially
   const results = await Promise.all(
     manifests.map(async (manifest) => {
-      const isPython = manifest.language === 'python'
-      const annotations = await parseFileAsync(manifest.absolutePath, isPython)
+      const isHashComment = manifest.language === 'python' || manifest.language === 'ruby'
+      const annotations = await parseFileAsync(manifest.absolutePath, isHashComment)
       return { path: manifest.path, annotations }
     })
   )

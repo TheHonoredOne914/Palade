@@ -8,7 +8,7 @@ export const SEVERITY_RANK: Record<Severity, number> = {
   info: 4,
 }
 
-function jaccardSimilarity(a: string, b: string): number {
+export function jaccardSimilarity(a: string, b: string): number {
   const getWords = (str: string) =>
     new Set(
       str
@@ -46,13 +46,21 @@ function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
       if (a.lineStart === b.lineStart) {
         if (jaccardSimilarity(a.title, b.title) > 0.4) return true
       }
-      // Same agent, nearby lines: only merge when the titles actually describe
-      // the same issue — proximity alone collapses unrelated findings and loses
-      // one of them. The 60-line window (not 5) covers duplicates produced by
-      // the chunk splitter, whose halves overlap by up to 50 lines
-      // (scheduler.ts), so the same defect can be reported from both halves.
-      if (a.agentName === b.agentName && Math.abs(a.lineStart - b.lineStart) <= 60) {
-        if (jaccardSimilarity(a.title, b.title) > 0.5) return true
+      // Nearby lines: only merge when the titles actually describe the same
+      // issue — proximity alone collapses unrelated findings and loses one of
+      // them. The 60-line window (not 5) covers duplicates produced by the
+      // chunk splitter, whose halves overlap by up to 50 lines (scheduler.ts),
+      // so the same defect can be reported from both halves.
+      //
+      // Different agents can also flag the exact same defect near the same
+      // lines (e.g. security and architecture both catching a hardcoded
+      // secret) — allow the proximity merge across agents too, but require a
+      // stricter title-similarity bar (0.7 vs 0.5) to stay conservative, since
+      // cross-agent titles are less likely to coincidentally share wording
+      // than two passes of the same agent.
+      if (Math.abs(a.lineStart - b.lineStart) <= 60) {
+        const threshold = a.agentName === b.agentName ? 0.5 : 0.7
+        if (jaccardSimilarity(a.title, b.title) > threshold) return true
       }
     }
   }

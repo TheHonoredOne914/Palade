@@ -54,9 +54,12 @@ export async function getChangedFiles(baseBranch: string, cwd: string): Promise<
     const status = GIT_STATUS_MAP[statusChar] ?? 'modified'
 
     // Rename (R) and Copy (C) lines carry a score suffix and three columns:
-    // `<status><score>\told\tnew`. The destination path is parts[2].
-    const filePath = statusChar === 'R' || statusChar === 'C' ? parts[2] : parts[1]
-    const oldPath = statusChar === 'R' || statusChar === 'C' ? parts[1] : undefined
+    // `<status><score>\told\tnew`. The destination path is parts[2]; the
+    // source path (parts[1]) is what exists at the merge-base ref, needed to
+    // fetch pre-change content for a renamed/copied file.
+    const isRenameOrCopy = statusChar === 'R' || statusChar === 'C'
+    const filePath = isRenameOrCopy ? parts[2] : parts[1]
+    const oldPath = isRenameOrCopy ? parts[1] : undefined
     if (!filePath) continue
 
     let additions = 0
@@ -65,11 +68,7 @@ export async function getChangedFiles(baseBranch: string, cwd: string): Promise<
 
     if (status !== 'deleted') {
       try {
-        // For rename/copy, pass both old and new paths as pathspecs so git
-        // shows the rename relationship instead of treating the whole file as
-        // newly added (which produces false-positive "introduced" findings).
-        const diffPaths = oldPath ? [oldPath, filePath] : [filePath]
-        diff = execFileSync('git', ['diff', `${baseBranch}...HEAD`, '--', ...diffPaths], {
+        diff = execFileSync('git', ['diff', `${baseBranch}...HEAD`, '--', filePath], {
           cwd,
           encoding: 'utf-8',
         })
@@ -87,6 +86,7 @@ export async function getChangedFiles(baseBranch: string, cwd: string): Promise<
 
     changedFiles.push({
       path: filePath,
+      oldPath,
       status,
       additions,
       deletions,

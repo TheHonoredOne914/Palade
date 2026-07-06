@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { readFile, writeFile, mkdir, appendFile } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { theme } from '../../ui/theme.js'
@@ -43,6 +43,19 @@ export async function settingsCommand(opts: SettingsOptions): Promise<void> {
 }
 
 async function interactiveSettings(projectRoot: string): Promise<void> {
+  // Mirrors picker.ts's guard: readline prompts below never resolve without a
+  // real terminal, so a non-TTY invocation (CI, piped input, etc.) would hang
+  // forever instead of failing fast.
+  if (!process.stdin.isTTY) {
+    console.error(
+      chalk.red(
+        '  Interactive settings require a terminal (no stdin TTY detected). ' +
+          'Use `palade settings --set key=value` or `palade settings --list` instead.'
+      )
+    )
+    throw new CliExitError(1)
+  }
+
   await showCurrentConfig(projectRoot)
 
   console.log()

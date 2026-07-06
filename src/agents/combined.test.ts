@@ -6,7 +6,6 @@ import {
   type DomainSpec,
 } from './combined.js'
 import type { AgentFinding } from './base.js'
-import { SEVERITY_PENALTY } from './base.js'
 
 function makeFinding(agentName: string, severity: AgentFinding['severity']): AgentFinding {
   return {
@@ -16,8 +15,8 @@ function makeFinding(agentName: string, severity: AgentFinding['severity']): Age
     title: 'x',
     description: '',
     tags: [],
-    // parseFindingsResponse sets this; attributeFindings overwrites it.
-    scorePenalty: SEVERITY_PENALTY[severity],
+    // parseFindingsResponse leaves scorePenalty unset; attributeFindings must
+    // not bake one in either, so calculateScore's configured severityWeights apply.
   }
 }
 
@@ -71,13 +70,13 @@ describe('agents/combined — attributeFindings', () => {
     expect(out[0].agentName).toBe('security')
   })
 
-  it('applies SEVERITY_PENALTY to each attributed finding', () => {
+  it('leaves scorePenalty unset so configured severityWeights apply', () => {
     const out = attributeFindings(
       [makeFinding('performance', 'critical'), makeFinding('deadCode', 'low')],
       DEFAULT_DOMAINS
     )
-    expect(out[0].scorePenalty).toBe(SEVERITY_PENALTY.critical)
-    expect(out[1].scorePenalty).toBe(SEVERITY_PENALTY.low)
+    expect(out[0].scorePenalty).toBeUndefined()
+    expect(out[1].scorePenalty).toBeUndefined()
   })
 
   it('returns [] when no findings match a domain', () => {

@@ -11,10 +11,6 @@ import { sanitizeForLog } from '../utils/sanitize.js'
 import { AllProvidersExhaustedError } from '../providers/router.js'
 
 export function formatErrorMessages(err: unknown): string[] {
-  if (err instanceof CliExitError) {
-    return [err.message ?? '']
-  }
-
   if (err instanceof PaladeConfigError) {
     const lines = [chalk.red(`Configuration error at ${err.field}:`), `  ${err.message}`]
     if (err.suggestion) lines.push(chalk.dim(`  Hint: ${err.suggestion}`))
@@ -44,7 +40,10 @@ export function formatErrorMessages(err: unknown): string[] {
   }
 
   if (err instanceof TargetNotFoundError) {
-    return [chalk.red(err.message), chalk.dim(`  Run 'palade targets list' to see defined targets.`)]
+    return [
+      chalk.red(err.message),
+      chalk.dim(`  Run 'palade targets list' to see defined targets.`),
+    ]
   }
 
   if (err instanceof SwarmTimeoutError) {
@@ -62,20 +61,22 @@ export function formatErrorMessages(err: unknown): string[] {
       'Attempted providers:',
     ]
     err.attempts.forEach((attempt, i) => {
-      const safe = sanitizeForLog({ finalError: attempt.finalError }).finalError
-      lines.push(`  ${i + 1}. ${attempt.provider.padEnd(10)} → ${safe}`)
+      lines.push(`  ${i + 1}. ${attempt.provider.padEnd(10)} → ${attempt.finalError}`)
     })
     lines.push('', 'Suggestions:', '  • Check your API key environment variables')
     return lines
   }
+
   if (err instanceof Error) {
     const debug = process.env.DEBUG === 'palade'
     const lines = [chalk.red(`Unexpected error: ${err.message}`)]
     if (debug) {
       lines.push(chalk.dim(err.stack ?? ''))
-      const extra = Object.fromEntries(
-        Object.entries(err as object).filter(([k]) => k !== 'message' && k !== 'stack')
-      )
+      const {
+        message: _message,
+        stack: _stack,
+        ...extra
+      } = err as unknown as Record<string, unknown>
       if (Object.keys(extra).length > 0) {
         lines.push(chalk.dim(JSON.stringify(sanitizeForLog(extra), null, 2)))
       }

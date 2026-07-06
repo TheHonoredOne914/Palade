@@ -11,27 +11,11 @@ import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
 import { triageFiles } from './triage.js'
 import { AgentMemory } from './memory.js'
 import { mergeFindings } from './merger.js'
-import { scheduleBatches } from './scheduler.js'
+import { scheduleBatches, estimateTotalTokens } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
-import { detectConflicts, arbitrateConflict, saveDecision, type Conflict, type Verdict } from './verdict.js'
-import { ReviewCancelledError, AuthError } from '../errors/types.js'
-
-// Providers don't expose a structured status/code field on thrown errors —
-// they're plain Errors with the status baked into the message string (see
-// src/providers/*.ts, e.g. `Cerebras error 401: ...`) — so we're stuck
-// pattern-matching on the message. Word-boundary regexes avoid false
-// positives on unrelated text that merely contains these digits.
-function isFatalAuthError(err: Error): boolean {
-  if (err instanceof AuthError) return true
-  const msg = err.message.toLowerCase()
-  return (
-    /\b401\b/.test(msg) ||
-    /\b403\b/.test(msg) ||
-    msg.includes('unauthorized') ||
-    msg.includes('invalid api key') ||
-    msg.includes('authentication')
-  )
-}
+import { isFatalAuthError } from '../providers/errorClassification.js'
+import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
+import { ReviewCancelledError } from '../errors/types.js'
 
 export async function runSwarm(
   allChunks: CodeChunk[],
@@ -105,9 +89,9 @@ export async function runSwarm(
   const runAbort = new AbortController()
 
   // Run agents concurrently — rate-limit handling is done at the provider
-  // layer (fetchWithRetry + FallbackProvider), not serialized here.
-  // Batch scheduling uses options.softTokenLimit / options.hardChunkLimit
-  // per-agent — computed inside each agent's map callback.
+  // layer (fetchWithRetry + FallbackProvider), not serialized here. Batch
+  // scheduling happens per-agent below, using options.softTokenLimit /
+  // options.hardChunkLimit (the actual formal SwarmOptions fields).
   const agentPromises = agents.map(async (agent) => {
     const agentStart = Date.now()
     options.onAgentStart?.(agent.name)
@@ -115,11 +99,7 @@ export async function runSwarm(
     const allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
     try {
-      const batches = scheduleBatches(
-        reviewChunks,
-        options.softTokenLimit,
-        options.hardChunkLimit
-      )
+      const batches = scheduleBatches(reviewChunks, options.softTokenLimit, options.hardChunkLimit)
       const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>
@@ -222,6 +202,11 @@ export async function runSwarm(
 
       if (isFatalAuthError(agentError)) {
         runAbort.abort()
+        // Record whatever batches already succeeded before this fatal error
+        // was raised — otherwise the rethrow below skips the memory.record()
+        // call further down in this same agent promise, silently losing
+        // partial findings from batches that completed fine.
+        memory.record(agent.name, allFindings)
         throw agentError
       }
 
@@ -260,11 +245,13 @@ export async function runSwarm(
     // inside each agent promise — they record partial findings before throwing.
     // A rejection here means the agent's own catch couldn't recover.
     if (result.status === 'rejected') {
-      const err = result.reason
+      const err = result.reason instanceof Error ? result.reason : new Error(String(result.reason))
       if (err instanceof ReviewCancelledError) throw err
-      console.warn(
-        chalk.yellow(`⚠ Agent failed: ${err instanceof Error ? err.message : String(err)}`)
-      )
+      // A fatal auth error must abort the whole run rather than resolve
+      // "successfully" with whatever partial findings existed — otherwise a
+      // dead API key silently produces a clean-looking report.
+      if (isFatalAuthError(err)) throw err
+      console.warn(chalk.yellow(`⚠ Agent failed: ${err.message}`))
     }
   }
 
@@ -285,57 +272,49 @@ export async function runSwarm(
 
   if (!options.noVerdict) {
     const conflicts = detectConflicts(memory.getAll())
-
-    // Arbitrate conflicts with a concurrency cap to avoid overwhelming the LLM
-    // provider while still gaining some parallelism over a pure sequential loop.
-    const CONCURRENCY = 3
-    const results: Array<{ verdict: Verdict | null; conflict: Conflict }> = []
-    for (let i = 0; i < conflicts.length; i += CONCURRENCY) {
-      const batch = conflicts.slice(i, i + CONCURRENCY)
-      const batchResults = await Promise.all(
-        batch.map(async (conflict) => {
-          options.onVerdictDetected?.(
-            conflict.filePath,
-            conflict.sideA.agentName,
-            conflict.sideB.agentName
-          )
-          const verdict = await arbitrateConflict(conflict, context, options.signal)
-          return { verdict, conflict }
-        })
+    for (const conflict of conflicts) {
+      // detectConflicts already pre-filters out pairs the keyword tally is
+      // confident actually agree — everything it returns (including
+      // 'low'-confidence entries: near-ties, one-sided, or no keyword signal
+      // at all) is a real candidate. Let the LLM's own `is_conflict` field
+      // below make the final call instead of gating on the tally here.
+      options.onVerdictDetected?.(
+        conflict.filePath,
+        conflict.sideA.agentName,
+        conflict.sideB.agentName
       )
-      results.push(...batchResults)
-    }
 
-    for (const { verdict, conflict } of results) {
-      if (!verdict?.is_conflict) continue
-      options.onVerdictDecided?.(verdict.decision, verdict.confidence)
+      const verdict = (await arbitrateConflict(conflict, context, options.signal)) as any
+      if (verdict && verdict.is_conflict) {
+        options.onVerdictDecided?.(verdict.decision, verdict.confidence)
 
-      // Save to ADR — a failed disk write must not abort the review
-      let savedNote = ''
-      try {
-        const slug = await saveDecision(projectRoot, conflict, verdict)
-        savedNote = `\nSaved as: ${slug}.md`
-      } catch (err) {
-        console.warn(
-          chalk.yellow(
-            `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+        // Save to ADR — a failed disk write must not abort the review
+        let savedNote = ''
+        try {
+          const slug = await saveDecision(projectRoot, conflict, verdict)
+          savedNote = `\nSaved as: ${slug}.md`
+        } catch (err) {
+          console.warn(
+            chalk.yellow(
+              `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+            )
           )
-        )
-      }
+        }
 
-      // Inject into findings for synthesis
-      finalFindings.push({
-        id: crypto.randomUUID(),
-        agentName: 'architecture',
-        title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
-        description: `Decision: ${verdict.decision}\nTradeoff: ${verdict.tradeoff_accepted}${savedNote}`,
-        filePath: conflict.filePath,
-        lineStart: conflict.lineStart,
-        lineEnd: conflict.lineEnd,
-        severity: 'info',
-        tags: ['architectural-decision'],
-        scorePenalty: 0,
-      })
+        // Inject into findings for synthesis
+        finalFindings.push({
+          id: crypto.randomUUID(),
+          agentName: 'architecture',
+          title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
+          description: `Decision: ${verdict.decision}\nTradeoff: ${verdict.tradeoff_accepted}${savedNote}`,
+          filePath: conflict.filePath,
+          lineStart: conflict.lineStart,
+          lineEnd: conflict.lineEnd,
+          severity: 'info',
+          tags: ['architectural-decision'],
+          scorePenalty: 0,
+        })
+      }
     }
   }
 
@@ -375,33 +354,28 @@ export async function runSwarm(
         // The combined analyzer's verdict returns a single "Architect" finding.
         // Try to figure out the winning vs losing sides from the text so the ADR isn't blank.
         const winningLensMatch = decisionStr.match(/(\w+) says/i)
-        const winningLens = winningLensMatch ? winningLensMatch[1] : 'CombinedAgent(Winner)'
+        const winningLens = winningLensMatch ? winningLensMatch[1] : 'Unknown (parse failed)'
 
-        const fakeConflict: Conflict = {
+        const fakeConflict = {
           filePath: finding.filePath || 'unknown',
           lineStart: finding.lineStart || 0,
           lineEnd: finding.lineEnd || 0,
-          confidence: 'low',
           sideA: {
-            id: crypto.randomUUID(),
-            agentName: winningLens as AgentName,
+            agentName: winningLens as any,
             title: `[VERDICT DECISION] ${finding.title.replace('[VERDICT] ', '')}`,
             description: decisionStr,
             severity: 'info',
             tags: [],
-            scorePenalty: 0,
-          },
+          } as any,
           sideB: {
-            id: crypto.randomUUID(),
-            agentName: losingStr as AgentName,
+            agentName: losingStr as any,
             title: `[REJECTED] ${finding.title.replace('[VERDICT] ', '')}`,
             description: `This lens was rejected in favor of the tradeoff.`,
             severity: 'info',
             tags: [],
-            scorePenalty: 0,
-          },
+          } as any,
         }
-        const verdict: Verdict = {
+        const verdict = {
           is_conflict: true,
           decision: decisionStr,
           tradeoff_accepted: tradeoffStr,
@@ -419,7 +393,7 @@ export async function runSwarm(
           )
         } else {
           try {
-            const slug = await saveDecision(projectRoot, fakeConflict, verdict)
+            const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
             finding.description += `\nSaved as: ${slug}.md`
           } catch (err) {
             console.warn(
@@ -453,8 +427,9 @@ export async function runSwarm(
     crossAgentFindings,
     synthesis,
     agentTimings: agentTimings as Record<AgentName, number>,
+    agentsRun: modeAgents.map((a) => a.name),
     totalChunks: reviewChunks.length,
-    totalTokensEstimated: reviewChunks.reduce((sum, c) => sum + c.tokenCount, 0),
+    totalTokensEstimated: estimateTotalTokens(reviewChunks),
     durationMs: Date.now() - startTime,
     fallbackStats: getFallbackStats() ?? undefined,
   }

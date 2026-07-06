@@ -31,7 +31,14 @@ export interface AgentFinding {
   lineEnd?: number
   symbolName?: string
   tags: string[]
-  scorePenalty: number
+  /**
+   * Explicit per-finding penalty override (set by custom agents with
+   * severityPenalty config, or economy-mode attribution). Left unset for
+   * built-in specialist findings so calculateScore's configured
+   * severityWeights actually apply instead of being shadowed by a value
+   * pre-baked from the default SEVERITY_PENALTY table — see scorer/calculator.ts.
+   */
+  scorePenalty?: number
   findingFingerprint?: string
   estimatedHours?: number
   hoursWasted?: number
@@ -218,7 +225,11 @@ function unparsableResponseFinding(agentName: AgentName, reason: string): AgentF
   ]
 }
 
-export function parseFindingsResponse(raw: string, agentName: AgentName): AgentFinding[] {
+export function parseFindingsResponse(
+  raw: string,
+  agentName: AgentName,
+  trustModelAgentName = false
+): AgentFinding[] {
   if (!raw || raw.trim().length === 0) {
     console.warn(chalk.yellow(`⚠ ${agentName}: empty response from provider`))
     return unparsableResponseFinding(agentName, 'was empty')
@@ -318,7 +329,7 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
       findings.push({
         id: crypto.randomUUID(),
         agentName:
-          typeof obj.agentName === 'string' && obj.agentName
+          trustModelAgentName && typeof obj.agentName === 'string' && obj.agentName
             ? (obj.agentName as AgentName)
             : agentName,
         severity,
@@ -329,7 +340,12 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
         lineEnd,
         symbolName: typeof obj.symbolName === 'string' ? obj.symbolName : undefined,
         tags,
-        scorePenalty: SEVERITY_PENALTY[severity],
+        // Intentionally left unset here (not baked from SEVERITY_PENALTY) so
+        // calculateScore's configured severityWeights apply to built-in
+        // findings; scorer/calculator.ts's penaltyFor() falls back to the
+        // severity weight whenever scorePenalty is undefined. Agents that need
+        // an explicit override (e.g. CustomAgent's severityPenalty config) set
+        // f.scorePenalty themselves after this call returns.
         estimatedHours: typeof obj.estimatedHours === 'number' ? obj.estimatedHours : undefined,
         hoursWasted: typeof obj.hoursWasted === 'number' ? obj.hoursWasted : undefined,
       })

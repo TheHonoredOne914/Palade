@@ -78,6 +78,26 @@ function calculateComplexity(node: ts.Node): number {
   return complexity
 }
 
+// Derive a human-readable name for a top-level node, mirroring the
+// declaration matching in symbolResolver.ts's visit() so chunks carry the
+// same symbolName keywordIndex.ts's getKeywordContext() expects.
+function getTopLevelSymbolName(node: ts.Node): string | undefined {
+  if (
+    ts.isFunctionDeclaration(node) ||
+    ts.isClassDeclaration(node) ||
+    ts.isInterfaceDeclaration(node) ||
+    ts.isTypeAliasDeclaration(node) ||
+    ts.isEnumDeclaration(node)
+  ) {
+    return node.name?.text
+  }
+  if (ts.isVariableStatement(node)) {
+    const decl = node.declarationList.declarations[0]
+    if (decl && ts.isIdentifier(decl.name)) return decl.name.text
+  }
+  return undefined
+}
+
 function chunkByAST(content: string, filePath: string, language: string): CodeChunk[] {
   const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
   const chunks: CodeChunk[] = []
@@ -90,6 +110,7 @@ function chunkByAST(content: string, filePath: string, language: string): CodeCh
     const start = sourceFile.getLineAndCharacterOfPosition(currentStartNode.getStart())
     const end = sourceFile.getLineAndCharacterOfPosition(currentEndNode.getEnd())
     const chunkContent = content.substring(currentStartNode.getStart(), currentEndNode.getEnd())
+    const symbolName = getTopLevelSymbolName(currentStartNode)
 
     const tempFile = ts.createSourceFile('temp.ts', chunkContent, ts.ScriptTarget.Latest, true)
     const complexity = calculateComplexity(tempFile)
@@ -100,6 +121,7 @@ function chunkByAST(content: string, filePath: string, language: string): CodeCh
       startLine: start.line + 1,
       endLine: end.line + 1,
       content: chunkContent,
+      symbolName,
       tokenCount: estimateTokens(chunkContent),
       language: language as any,
       complexity,
@@ -135,6 +157,26 @@ function chunkByAST(content: string, filePath: string, language: string): CodeCh
   return chunks.flatMap(splitLargeChunk)
 }
 
+// A leading '/' starts a regex literal unless it more plausibly means
+// division/comment-adjacent — i.e. unless the previous significant
+// character is an identifier/number char, or a closing ')'/']', or the end
+// of a string literal. This is a simple heuristic (matches the pattern the
+// audit fix sketch asked for), not a full JS grammar.
+function isRegexStartAllowed(lastSignificantChar: string): boolean {
+  if (!lastSignificantChar) return true
+  if (/[A-Za-z0-9_$]/.test(lastSignificantChar)) return false
+  if (
+    lastSignificantChar === ')' ||
+    lastSignificantChar === ']' ||
+    lastSignificantChar === '"' ||
+    lastSignificantChar === "'" ||
+    lastSignificantChar === '`'
+  ) {
+    return false
+  }
+  return true
+}
+
 function chunkByBrackets(content: string, filePath: string, language: string): CodeChunk[] {
   const lines = content.split('\n')
   if (lines.length === 0 || (lines.length === 1 && lines[0] === '')) return []
@@ -150,6 +192,18 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
     // Scanner state, persists across lines within this chunk scan
     let inString: '"' | "'" | '`' | null = null
     let inBlockComment = false
+    let inRegex = false
+    let inRegexCharClass = false
+    let lastSignificantChar = ''
+    // Whether any '{' has been seen in this chunk. Brace-less languages
+    // (Python, Ruby, etc.) never increment depth above 0, so without this the
+    // depth<=0 break below fires after every 5 lines — shredding the whole
+    // file into ~5-line chunks that then blow past MAX_CHUNKS_PER_FILE and
+    // silently truncate the file's tail. Require a full CHUNK_LINES-sized
+    // chunk before breaking when we've never seen a brace, matching the size
+    // of the line-based fallback; brace-heavy languages keep the original
+    // 5-line minimum.
+    let sawBrace = false
 
     while (currentIdx < lines.length && currentIdx - startIdx < maxLines) {
       const line = lines[currentIdx]
@@ -174,7 +228,24 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
             i++
             continue
           } // skip escaped char
-          if (ch === inString) inString = null
+          if (ch === inString) {
+            inString = null
+            lastSignificantChar = ch
+          }
+          continue
+        }
+
+        if (inRegex) {
+          if (ch === '\\') {
+            i++
+            continue
+          } // skip escaped char
+          if (ch === '[') inRegexCharClass = true
+          else if (ch === ']') inRegexCharClass = false
+          else if (ch === '/' && !inRegexCharClass) {
+            inRegex = false
+            lastSignificantChar = ch
+          }
           continue
         }
 
@@ -191,14 +262,29 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
           inString = ch
           continue
         }
+        if (ch === '/' && isRegexStartAllowed(lastSignificantChar)) {
+          inRegex = true
+          continue
+        }
 
-        if (ch === '{') depth++
-        else if (ch === '}') depth--
+        if (ch === '{') {
+          depth++
+          sawBrace = true
+        } else if (ch === '}') depth--
+
+        if (!/\s/.test(ch)) lastSignificantChar = ch
       }
 
       currentIdx++
       // If we've closed all blocks, have at least some lines, and aren't mid-string/comment, end chunk here
-      if (depth <= 0 && currentIdx - startIdx >= 5 && !inString && !inBlockComment) {
+      const minLines = sawBrace ? 5 : CHUNK_LINES
+      if (
+        depth <= 0 &&
+        currentIdx - startIdx >= minLines &&
+        !inString &&
+        !inBlockComment &&
+        !inRegex
+      ) {
         break
       }
     }
@@ -227,17 +313,14 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
   return chunks
 }
 
-export async function chunkFiles(
-  manifests: FileManifest[],
-  maxChunksPerFile: number = MAX_CHUNKS_PER_FILE
-): Promise<CodeChunk[]> {
+export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]> {
   const allChunks: CodeChunk[] = []
 
   for (const manifest of manifests) {
     let content: string
     try {
       content = await readFile(manifest.absolutePath, 'utf-8')
-      if (content.includes('\uFFFD')) {
+      if (content.includes('�')) {
         console.warn(
           `[chunker] Warning: File ${manifest.path} contains invalid UTF-8 characters and may degrade analysis.`
         )
@@ -273,13 +356,21 @@ export async function chunkFiles(
       chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap(splitLargeChunk)
     }
 
-    if (chunks.length > maxChunksPerFile) {
-      console.warn(
-        `[chunker] File ${manifest.path} produced ${chunks.length} chunks, exceeding the ` +
-          `${maxChunksPerFile}-chunk cap — the remaining ${chunks.length - maxChunksPerFile} ` +
-          `chunk(s) at the end of the file were truncated and will not be reviewed.`
+    if (chunks.length > MAX_CHUNKS_PER_FILE) {
+      const droppedCount = chunks.length - MAX_CHUNKS_PER_FILE
+      // Use console.error (not warn) so this is unmissable: a file this large
+      // silently loses review coverage on its tail, which is easy to miss in
+      // noisy logs otherwise.
+      console.error(
+        `[chunker] TRUNCATED: ${manifest.path} produced ${chunks.length} chunks, exceeding the ` +
+          `${MAX_CHUNKS_PER_FILE}-chunk cap (kept ${MAX_CHUNKS_PER_FILE}, dropped ${droppedCount}) — ` +
+          `the last ${droppedCount} chunk(s) of this file were NOT reviewed.`
       )
-      chunks.length = maxChunksPerFile
+      chunks.length = MAX_CHUNKS_PER_FILE
+      // Mark the final surviving chunk so callers can programmatically detect
+      // truncation (not just via log output).
+      const lastChunk = chunks[chunks.length - 1]
+      if (lastChunk) lastChunk.truncated = true
     }
 
     allChunks.push(...chunks)

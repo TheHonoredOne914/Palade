@@ -30,7 +30,7 @@ export class GroqProvider implements IProvider {
 
   constructor(
     apiKey: string,
-    model = 'llama-3.3-70b-versatile',
+    model = 'openai/gpt-oss-120b',
     maxConcurrency = 8,
     baseUrl = 'https://api.groq.com/openai/v1',
     deadlineMs: number = DEFAULT_DEADLINE_MS
@@ -106,8 +106,11 @@ export class GroqProvider implements IProvider {
         throw new Error(`Groq daily limit exceeded. ${body.slice(0, 200)}`)
       }
       if (res.status === 401 || res.status === 403) {
-        this.dailyLimitExhausted = true
-        throw new AuthError(`Groq error ${res.status}: ${body}`, res.status, this.name)
+        throw new AuthError(
+          `Groq error ${res.status}: ${body.slice(0, 200)}`,
+          res.status,
+          this.name
+        )
       }
       throw new Error(`Groq error ${res.status}: ${body.slice(0, 200)}`)
     }
@@ -135,6 +138,9 @@ export class GroqProvider implements IProvider {
     }
   }
 
+  // Quota-only check: reflects whether we have locally observed a daily-limit
+  // response, not a live connectivity/auth probe. An invalid API key or an
+  // unreachable endpoint will still report available=true here.
   async isAvailable(): Promise<boolean> {
     return !this.dailyLimitExhausted
   }

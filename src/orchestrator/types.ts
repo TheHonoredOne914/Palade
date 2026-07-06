@@ -14,6 +14,14 @@ export interface SwarmResult {
   crossAgentFindings: CrossAgentFinding[]
   synthesis: SynthesisResult
   agentTimings: Record<AgentName, number>
+  /**
+   * Names of the agents actually dispatched this run (post mode/agentOverrides/
+   * agentCount selection, pre economy-mode combining — economy mode still
+   * logically covers every one of these domains, just via a single combined
+   * call). Used by the scorer to avoid averaging in a free 100 for a category
+   * that never ran (scorer-001).
+   */
+  agentsRun?: AgentName[]
   totalChunks: number
   totalTokensEstimated: number
   durationMs: number

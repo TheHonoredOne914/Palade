@@ -1,9 +1,11 @@
 import chalk from 'chalk'
 import type { PaladeConfig } from '../config/schema.js'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
+import { FATAL_QUOTA_KEYWORDS } from './base.js'
 import { GroqProvider } from './groq.js'
 import { CerebrasProvider } from './cerebras.js'
-import { NoProvidersError } from '../errors/types.js'
+import { NoProvidersError, AuthError } from '../errors/types.js'
+import { isFatalAuthError } from './errorClassification.js'
 import { NvidiaProvider } from './nvidia.js'
 import { OpenRouterProvider } from './openrouter.js'
 import { OpenCodeZenProvider } from './opencode-zen.js'
@@ -17,53 +19,17 @@ export class AllProvidersExhaustedError extends Error {
   }
 }
 
-// Single source of truth for error classification, shared by the inner
-// withExponentialBackoff() call and the outer catch below — previously these
-// kept two independently-maintained keyword lists that had drifted apart.
-const RETRYABLE_KEYWORDS = [
-  '429',
-  '500',
-  '502',
-  '503',
-  'timeout',
-  'timed out',
-  'econnrefused',
-  'fetch failed',
-  'rate limit',
-]
-
 // Bare 'daily' / 'quota' used to be fatal keywords, which meant an incidental
-// occurrence of either word in an unrelated error body (or in the now-removed
-// 'daily limit' / 'quota exhausted' RETRYABLE_KEYWORDS entries above) would
+// occurrence of either word in an unrelated error body would
 // permanently mark a provider dead. Tightened to the specific phrases our
 // adapters actually throw (see groq.ts/cerebras.ts/nvidia.ts/openrouter.ts/
 // opencode-zen.ts daily-limit messages) so a stray 'daily' or 'quota'
 // substring elsewhere in a body can't trip this.
-const FATAL_KEYWORDS = [
-  'per day',
-  'per-day',
-  'daily limit',
-  'quota exceeded',
-  'out of quota',
-  'insufficient_quota',
-  'monthly limit',
-]
-
-function isRetryableMessage(message: string): boolean {
-  const lower = message.toLowerCase()
-  return RETRYABLE_KEYWORDS.some((keyword) => lower.includes(keyword))
-}
-
-function isFatalAuthError(err: Error): boolean {
-  const msg = err.message.toLowerCase()
-  return (
-    /\b401\b/.test(msg) ||
-    /\b403\b/.test(msg) ||
-    msg.includes('unauthorized') ||
-    msg.includes('invalid api key') ||
-    msg.includes('authentication')
-  )
-}
+// Imported from base.ts (not redeclared here) so this stays in lockstep with
+// isDailyLimitError's body-scan — the two independently-maintained copies had
+// drifted apart before (this list had 'insufficient_quota'/'monthly limit',
+// isDailyLimitError's regex didn't).
+const FATAL_KEYWORDS = FATAL_QUOTA_KEYWORDS
 
 function isFatalMessage(message: string): boolean {
   const lower = message.toLowerCase()
@@ -118,7 +84,9 @@ function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[]
         )
         break
       case 'ollama':
-        instances.push(new OllamaProvider(cfg.model, cfg.baseUrl, cfg.maxConcurrency))
+        instances.push(
+          new OllamaProvider(cfg.model, cfg.baseUrl, cfg.maxConcurrency, cfg.timeoutMs)
+        )
         break
     }
   }
@@ -191,6 +159,15 @@ export class FallbackProvider implements IProvider {
     const primaryProvider = this.chain[0]
 
     const attempts: { provider: string; finalError: string }[] = []
+    // If every provider we actually invoked this call failed with an
+    // auth-classified error, the whole run is doomed regardless of which
+    // provider we try next — surface that as an AuthError so swarm.ts's
+    // isFatalAuthError can abort the run instead of exhausting retries on a
+    // dead API key. attemptedAny guards against an all-skipped chain (every
+    // member already marked dead) reporting a false auth failure.
+    let attemptedAny = false
+    let allAttemptsAuthLike = true
+    let lastAuthLikeError: Error | undefined
 
     for (let i = 0; i < this.chain.length; i++) {
       const provider = this.chain[i]
@@ -213,15 +190,17 @@ export class FallbackProvider implements IProvider {
         return response
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
-        // Aborted calls must propagate instantly — don't iterate fallbacks.
-        if (lastError.name === 'AbortError') throw lastError
         attempts.push({ provider: provider.name, finalError: lastError.message })
+        attemptedAny = true
 
         const isFatal = isFatalMessage(lastError.message)
-        const fatalAuth = isFatalAuthError(lastError)
-        const isRetryable = isRetryableMessage(lastError.message)
+        if (isFatalAuthError(lastError)) {
+          lastAuthLikeError = lastError
+        } else {
+          allAttemptsAuthLike = false
+        }
 
-        if (isFatal || fatalAuth) {
+        if (isFatal) {
           // A chain entry may be a ProviderPool backing several keys/instances
           // that share this same provider name. A fatal error on ONE member
           // (e.g. that key's daily quota) must not take down its healthy
@@ -243,26 +222,37 @@ export class FallbackProvider implements IProvider {
           }
         }
 
-        // Default to trying the next provider even for errors that match
-        // neither the retryable nor fatal keyword lists — an unclassified
+        // Default to trying the next provider regardless of error type — an
         // error on this provider (e.g. a bad key) doesn't mean every other
         // provider in the chain will fail the same way, so give them a
         // chance before giving up entirely.
         if (i < this.chain.length - 1) {
-          const reason = isRetryable ? 'exhausted retries' : 'hit an unclassified error'
-          console.warn(chalk.yellow(`[router] provider ${provider.name} ${reason}, trying next`))
+          console.warn(chalk.yellow(`[router] provider ${provider.name} failed, trying next`))
           console.warn(chalk.dim(`         → ${lastError.message.split('\n')[0].slice(0, 120)}`))
         } else {
           // Last in chain — surface the real error so users can diagnose
-          const reason = isRetryable ? 'exhausted retries' : 'unclassified error'
           console.warn(
             chalk.red(
-              `[router] provider ${provider.name} failed (${reason}): ${lastError.message.split('\n')[0].slice(0, 200)}`
+              `[router] provider ${provider.name} failed: ${lastError.message.split('\n')[0].slice(0, 200)}`
             )
           )
         }
         continue
       }
+    }
+
+    if (attemptedAny && allAttemptsAuthLike) {
+      const status = lastAuthLikeError instanceof AuthError ? lastAuthLikeError.status : 401
+      const providerName =
+        lastAuthLikeError instanceof AuthError
+          ? lastAuthLikeError.providerName
+          : this.chain[this.chain.length - 1].name
+      throw new AuthError(
+        `All ${attempts.length} providers failed with auth errors. ` +
+          attempts.map((a) => `${a.provider}: ${a.finalError}`).join(' | '),
+        status,
+        providerName
+      )
     }
 
     throw new AllProvidersExhaustedError(attempts)
@@ -292,8 +282,6 @@ function getFallbackChain(excludeName: string): IProvider[] {
 }
 
 export async function initRouter(config: PaladeConfig): Promise<ProviderAssignment> {
-  assignment = null
-  allProviders = new Map()
   allProviders = instantiateProviders(config.providers)
 
   const names = Array.from(allProviders.keys())

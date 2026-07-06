@@ -1,6 +1,7 @@
 import type { IProvider } from '../providers/base.js'
 import { getProvider } from '../providers/router.js'
 import type { AgentContext, AgentFinding } from './base.js'
+import { SEVERITY_PENALTY } from './base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 
 export interface PriorityFix {
@@ -182,9 +183,18 @@ export async function synthesize(
   try {
     const provider: IProvider = getProvider('synthesis')
 
-    const sorted = [...allFindings].sort((a, b) => b.scorePenalty - a.scorePenalty)
+    const sorted = [...allFindings].sort(
+      (a, b) =>
+        (b.scorePenalty ?? SEVERITY_PENALTY[b.severity]) -
+        (a.scorePenalty ?? SEVERITY_PENALTY[a.severity])
+    )
     const cappedFindings = sorted.slice(0, maxSynthesisFindings)
     const droppedFindings = sorted.slice(maxSynthesisFindings)
+
+    // Scale the output budget with the finding cap so raising
+    // maxSynthesisFindings doesn't risk truncated JSON — same pattern as
+    // combined.ts's per-domain scaling (Math.max(8192, domains.length * 1500)).
+    const maxTokens = Math.max(4096, maxSynthesisFindings * 150)
 
     let droppedSummary = ''
     if (droppedFindings.length > 0) {
@@ -233,7 +243,7 @@ export async function synthesize(
       .complete({
         systemPrompt,
         userPrompt,
-        maxTokens: Math.max(4096, maxSynthesisFindings * 80),
+        maxTokens,
         signal: controller.signal,
       })
       .catch((err: unknown): null => {

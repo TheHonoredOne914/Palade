@@ -95,7 +95,11 @@ export class NvidiaProvider implements IProvider {
         throw new Error(`NVIDIA daily limit exceeded. ${body.slice(0, 200)}`)
       }
       if (res.status === 401 || res.status === 403) {
-        throw new AuthError(`NVIDIA error ${res.status}: ${body}`, res.status, this.name)
+        throw new AuthError(
+          `NVIDIA error ${res.status}: ${body.slice(0, 200)}`,
+          res.status,
+          this.name
+        )
       }
       throw new Error(`NVIDIA error ${res.status}: ${body.slice(0, 200)}`)
     }
@@ -122,6 +126,9 @@ export class NvidiaProvider implements IProvider {
     }
   }
 
+  // Quota-only check: reflects whether we have locally observed a daily-limit
+  // response, not a live connectivity/auth probe. An invalid API key or an
+  // unreachable endpoint will still report available=true here.
   async isAvailable(): Promise<boolean> {
     return !this.dailyLimitExhausted
   }

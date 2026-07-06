@@ -11,7 +11,6 @@ import {
   buildSystemPrompt,
   computeMaxTokens,
   parseFindingsResponse,
-  SEVERITY_PENALTY,
   verifyCriticalHighFindings,
 } from '../base.js'
 import { validateAndFingerprintFindings } from '../../orchestrator/findingValidation.js'
@@ -30,9 +29,15 @@ export class CustomAgent implements IAgent {
     this.domain = def.domain
   }
 
-  /** Get score penalty for a severity, using custom overrides or defaults. */
-  getScorePenalty(severity: Severity): number {
-    return this.penaltyOverrides[severity] ?? SEVERITY_PENALTY[severity]
+  /**
+   * Get the explicit per-agent score penalty override for a severity, if the
+   * custom agent definition configured one. Returns undefined when no
+   * override is configured so the caller leaves f.scorePenalty unset and lets
+   * calculateScore's configured severityWeights apply uniformly, same as
+   * built-in specialists (see base.ts's parseFindingsResponse).
+   */
+  getScorePenalty(severity: Severity): number | undefined {
+    return this.penaltyOverrides[severity]
   }
 
   async analyze(
@@ -60,11 +65,14 @@ export class CustomAgent implements IAgent {
         parseFindingsResponse(response.content ?? '', this.name),
         chunks
       )
-      // Apply custom score penalties
+      // Apply custom score penalties only when this agent explicitly
+      // configured a severityPenalty override; otherwise leave f.scorePenalty
+      // unset so calculateScore's configured severityWeights apply.
       for (const f of findings) {
         f.provider = response.provider
         f.model = response.model
-        f.scorePenalty = this.getScorePenalty(f.severity)
+        const penalty = this.getScorePenalty(f.severity)
+        if (typeof penalty === 'number') f.scorePenalty = penalty
       }
       annotateComplexity(findings, chunks)
       return verifyCriticalHighFindings(findings, chunks, provider, this.name, signal)
