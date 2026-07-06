@@ -34,7 +34,14 @@ const BUILTIN_AGENTS = new Map<AgentName, IAgent>([
   ['logic', new LogicAgent()],
 ])
 
-/** Derived from BUILTIN_AGENTS for backward compatibility. */
+/**
+ * Derived from BUILTIN_AGENTS for backward compatibility.
+ *
+ * Array order IS the intentional priority order: when agentCount trims this
+ * list down to a prefix (see getAgentsForMode below), security/architecture/
+ * performance are prioritized and kept, while logic/pragmatism/testIntelligence
+ * are the first to be dropped.
+ */
 export const AGENT_REGISTRY: IAgent[] = Array.from(BUILTIN_AGENTS.values())
 
 export function getAgentsForMode(

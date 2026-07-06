@@ -115,6 +115,7 @@ export async function getTargetFromRegistry(packageName: string): Promise<Target
   const description = paladeTarget.description
   const entry = paladeTarget.entry
   const focus = paladeTarget.focus
+  const scope = paladeTarget.scope
 
   if (typeof name !== 'string' || typeof description !== 'string') {
     console.warn(`[registry] ${packageName} paladeTarget missing required fields`)
@@ -126,6 +127,7 @@ export async function getTargetFromRegistry(packageName: string): Promise<Target
     description,
     entry: typeof entry === 'string' ? entry : Array.isArray(entry) ? entry : '.',
     focus: Array.isArray(focus) ? focus : undefined,
+    scope: scope && typeof scope === 'object' ? (scope as TargetDefinition['scope']) : undefined,
   }
 
   // Validate before handing it to appendTargetToFile — an invalid target
@@ -168,6 +170,9 @@ export function appendTargetToFile(projectRoot: string, target: TargetDefinition
   lines.push(`  entry: ${entryStr},`)
   if (target.focus && target.focus.length > 0) {
     lines.push(`  focus: ${JSON.stringify(target.focus)},`)
+  }
+  if (target.scope) {
+    lines.push(`  scope: ${JSON.stringify(target.scope)},`)
   }
   lines.push(`},`)
 

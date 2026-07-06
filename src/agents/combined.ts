@@ -5,12 +5,10 @@ import {
   type AgentFinding,
   type AgentContext,
   type AgentName,
-  type Severity,
   annotateComplexity,
   buildChunkContext,
   buildSystemPrompt,
   parseFindingsResponse,
-  SEVERITY_PENALTY,
   verifyCriticalHighFindings,
 } from './base.js'
 import type { IAgent } from './base.js'
@@ -130,17 +128,10 @@ Each finding must match this exact schema, and MUST include its originating agen
 }
 
 - Be specific. Reference exact file paths and line numbers from the context provided.
-
-### Verdict Mode (Internal Arbitration)
-If you detect that two of your lenses fundamentally disagree on the same piece of code (e.g., Security says "add rate limit" but Performance says "remove overhead on hot path"):
-1. DO NOT output the conflicting findings.
-2. Instead, arbitrate the conflict internally as the "Lead Architect".
-3. Output a SINGLE finding for that conflict with:
-   - \`agentName\`: "Architect"
-   - \`severity\`: "info"
-   - \`title\`: "[VERDICT] {Brief description}"
-   - \`description\`: "Decision: {What to do}\\nTradeoff: {Cost accepted}\\nConfidence: {0-100%}\\nLosing side: {Which lens was rejected}"
-   - \`tags\`: ["architectural-decision"]
+- If two of your lenses disagree on the same piece of code, do NOT arbitrate
+  the conflict yourself — output both conflicting findings as-is, tagged with
+  their own agentName. A downstream arbiter resolves conflicts across all
+  findings.
 `
 
   if (context?.spec) {
@@ -188,7 +179,7 @@ export class CombinedAnalyzer implements IAgent {
         signal,
       })
       const findings = attributeFindings(
-        parseFindingsResponse(response.content ?? '', this.name),
+        parseFindingsResponse(response.content ?? '', this.name, true),
         this.domains,
         response.provider,
         response.model
@@ -237,8 +228,10 @@ export function attributeFindings(
     }
     f.provider = provider
     f.model = model
-    const penalty = SEVERITY_PENALTY[f.severity as Severity]
-    if (typeof penalty === 'number') f.scorePenalty = penalty
+    // Intentionally left unset here (not baked from SEVERITY_PENALTY) so
+    // calculateScore's configured severityWeights apply to economy-mode
+    // findings the same way they do for parallel-mode specialist findings —
+    // see base.ts's parseFindingsResponse for the equivalent comment.
     attributed.push(f)
   }
   return attributed

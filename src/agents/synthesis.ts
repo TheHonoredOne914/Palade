@@ -191,6 +191,11 @@ export async function synthesize(
     const cappedFindings = sorted.slice(0, maxSynthesisFindings)
     const droppedFindings = sorted.slice(maxSynthesisFindings)
 
+    // Scale the output budget with the finding cap so raising
+    // maxSynthesisFindings doesn't risk truncated JSON — same pattern as
+    // combined.ts's per-domain scaling (Math.max(8192, domains.length * 1500)).
+    const maxTokens = Math.max(4096, maxSynthesisFindings * 150)
+
     let droppedSummary = ''
     if (droppedFindings.length > 0) {
       const countsByAgent: Record<string, number> = {}
@@ -238,7 +243,7 @@ export async function synthesize(
       .complete({
         systemPrompt,
         userPrompt,
-        maxTokens: 4096,
+        maxTokens,
         signal: controller.signal,
       })
       .catch((err: unknown): null => {

@@ -10,6 +10,7 @@ import type { Severity } from '../agents/base.js'
 
 import { CATEGORY_LABELS } from '../scorer/types.js'
 import { scoreGrade } from '../ui/layout.js'
+import { SCORE_THRESHOLDS } from '../ui/theme.js'
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
   critical: 'severity-critical',
@@ -32,9 +33,9 @@ function getScoreGradeClass(score: number): string {
 function getScoreColor(score: number): string {
   const clamped = Math.max(0, Math.min(100, score))
   let color: string
-  if (clamped >= 75) color = '#3fb950'
-  else if (clamped >= 60) color = '#d29922'
-  else if (clamped >= 40) color = '#db61a2'
+  if (clamped >= SCORE_THRESHOLDS.good) color = '#3fb950'
+  else if (clamped >= SCORE_THRESHOLDS.warning) color = '#d29922'
+  else if (clamped >= SCORE_THRESHOLDS.poor) color = '#db61a2'
   else color = '#f85149'
   // Ensure the returned value is a valid hex color to prevent CSS injection
   return /^#[0-9a-f]{6}$/i.test(color) ? color : '#888888'

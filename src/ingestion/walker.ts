@@ -4,6 +4,7 @@ import ignore, { Ignore } from 'ignore'
 import type { FileManifest, Language, ScopeOptions, LanguageProfile } from './types.js'
 import { parseFile } from './annotationParser.js'
 import { WorkspaceTooLargeError } from '../errors/types.js'
+import { extractImportSpecifiers } from './importExtractor.js'
 
 const DEFAULT_IGNORES = [
   'node_modules',
@@ -153,15 +154,12 @@ async function walkDir(
 
     const linesOfCode = content.split('\n').length
 
-    const importRegex = /(?:\bimport(?:[\s\S]*?from\s+)?|\brequire\()\s*['"]([^'"]+)['"]/g
-    let match
-    const importedPaths = []
-    let importCount = 0
-    while ((match = importRegex.exec(content)) !== null) {
-      importCount++
-      importedPaths.push(match[1])
-    }
-    const annotations = await parseFile(fullPath, language === 'python')
+    const importedPaths = extractImportSpecifiers(content, fullPath)
+    const importCount = importedPaths.length
+    // Hash-comment languages (python, ruby) use `#`-style @palade annotations;
+    // everything else falls back to `//`-style JS regexes in annotationParser.
+    const isHashComment = language === 'python' || language === 'ruby'
+    const annotations = await parseFile(fullPath, isHashComment)
 
     results.push({
       path: relPath,

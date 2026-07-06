@@ -106,9 +106,13 @@ export class GroqProvider implements IProvider {
         throw new Error(`Groq daily limit exceeded. ${body.slice(0, 200)}`)
       }
       if (res.status === 401 || res.status === 403) {
-        throw new AuthError(`Groq error ${res.status}: ${body}`, res.status, this.name)
+        throw new AuthError(
+          `Groq error ${res.status}: ${body.slice(0, 200)}`,
+          res.status,
+          this.name
+        )
       }
-      throw new Error(`Groq error ${res.status}: ${body}`)
+      throw new Error(`Groq error ${res.status}: ${body.slice(0, 200)}`)
     }
 
     const data: OpenAIResponse = (await res.json()) as OpenAIResponse
@@ -134,6 +138,9 @@ export class GroqProvider implements IProvider {
     }
   }
 
+  // Quota-only check: reflects whether we have locally observed a daily-limit
+  // response, not a live connectivity/auth probe. An invalid API key or an
+  // unreachable endpoint will still report available=true here.
   async isAvailable(): Promise<boolean> {
     return !this.dailyLimitExhausted
   }

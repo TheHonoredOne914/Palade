@@ -1,5 +1,6 @@
 import { dirname, join, normalize } from 'node:path'
 import type { CodeChunk } from './types.js'
+import { extractImportSpecifiers } from './importExtractor.js'
 
 const MAX_RESULTS = 4
 const MAX_CHARS_PER_RESULT = 900
@@ -19,21 +20,6 @@ function resolveRelativeImport(fromFile: string, specifier: string): string | nu
   if (!specifier.startsWith('.')) return null
   const resolved = normalize(join(dirname(fromFile), specifier))
   return toPosix(resolved)
-}
-
-function extractImportSpecifiers(content: string): string[] {
-  const specs = new Set<string>()
-  const importRegex = /\bimport\s+(?:[^'"]+\s+from\s+)?['"]([^'"]+)['"]/g
-  const requireRegex = /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g
-
-  for (const regex of [importRegex, requireRegex]) {
-    let match: RegExpExecArray | null
-    while ((match = regex.exec(content))) {
-      specs.add(match[1])
-    }
-  }
-
-  return Array.from(specs)
 }
 
 function identifierTerms(content: string): Set<string> {
@@ -103,7 +89,7 @@ function scoreRelatedChunk(
 
 export function buildRetrievedContext(subject: CodeChunk, allChunks: CodeChunk[]): string {
   // Hoist subject-only computations out of the per-candidate loop to avoid O(N²)
-  const subjectImports = extractImportSpecifiers(subject.content)
+  const subjectImports = extractImportSpecifiers(subject.content, subject.filePath)
   const subjectTerms = identifierTerms(subject.content)
   const subjectTestBases = expectedTestBases(subject.filePath)
   const subjectBase = withoutExtension(toPosix(subject.filePath)).split('/').pop()
