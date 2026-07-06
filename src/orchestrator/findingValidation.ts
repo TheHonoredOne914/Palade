@@ -9,16 +9,22 @@ function normalizePath(path: string): string {
     .replace(/\\/g, '/')
 }
 
-function lineIsInsideChunk(finding: AgentFinding, chunk: CodeChunk): boolean {
-  if (finding.lineStart === undefined) return true
-  if (!Number.isInteger(finding.lineStart)) return false
-  if (finding.lineStart < chunk.startLine || finding.lineStart > chunk.endLine) return false
-  if (finding.lineEnd !== undefined) {
-    if (!Number.isInteger(finding.lineEnd)) return false
-    if (finding.lineEnd < finding.lineStart) return false
-    if (finding.lineEnd > chunk.endLine) return false
+function getMatchingChunkAndClamp(finding: AgentFinding, chunk: CodeChunk): AgentFinding | null {
+  if (finding.lineStart === undefined) return finding
+  if (!Number.isInteger(finding.lineStart)) return null
+  if (finding.lineStart < chunk.startLine || finding.lineStart > chunk.endLine) return null
+  
+  const clamped = { ...finding }
+  if (clamped.lineEnd !== undefined) {
+    if (!Number.isInteger(clamped.lineEnd)) {
+      clamped.lineEnd = undefined
+    } else if (clamped.lineEnd < clamped.lineStart!) {
+      clamped.lineEnd = clamped.lineStart
+    } else if (clamped.lineEnd > chunk.endLine) {
+      clamped.lineEnd = chunk.endLine
+    }
   }
-  return true
+  return clamped
 }
 
 function fingerprintFor(finding: AgentFinding): string {
@@ -71,8 +77,18 @@ export function validateAndFingerprintFindings(
       continue
     }
 
-    const matchingChunk = candidateChunks.find((chunk) => lineIsInsideChunk(finding, chunk))
-    if (!matchingChunk) {
+    let clampedFinding: AgentFinding | null = null
+    let matchingChunk: CodeChunk | null = null
+    for (const chunk of candidateChunks) {
+      const match = getMatchingChunkAndClamp(finding, chunk)
+      if (match) {
+        clampedFinding = match
+        matchingChunk = chunk
+        break
+      }
+    }
+
+    if (!clampedFinding || !matchingChunk) {
       console.warn(
         `[validation] Finding at ${normalizedPath}:${finding.lineStart}-${finding.lineEnd} falls outside all known chunks — dropping`
       )
@@ -80,7 +96,7 @@ export function validateAndFingerprintFindings(
     }
 
     const normalized: AgentFinding = {
-      ...finding,
+      ...clampedFinding,
       filePath: normalizedPath,
       tags,
       symbolName: finding.symbolName || matchingChunk.symbolName,

@@ -455,7 +455,11 @@ Reply strictly YES or NO.`,
         temperature: 0,
         signal,
       })
-      if (verifyResponse.content.trim().toUpperCase() === 'YES') {
+      let cleaned = verifyResponse.content.trim()
+      cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
+      cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
+      const match = cleaned.match(/\b(YES|NO)\b/i)
+      if (match ? match[1].toUpperCase() === 'YES' : cleaned.toUpperCase().includes('YES')) {
         return f
       }
       console.log(

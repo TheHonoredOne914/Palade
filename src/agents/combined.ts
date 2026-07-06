@@ -172,7 +172,7 @@ export class CombinedAnalyzer implements IAgent {
       // A single call has to fit findings for every domain, so the output
       // budget must scale with how many domains are combined into it — a flat
       // cap starves runs with more domains and truncates the JSON array.
-      const maxTokens = Math.max(8192, this.domains.length * 1500, chunks.length * 1000)
+      const maxTokens = Math.min(4096, Math.max(3000, this.domains.length * 600))
       const response = await provider.complete({
         systemPrompt,
         userPrompt,
