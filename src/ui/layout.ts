@@ -81,13 +81,6 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s
 }
 
-function truncatePath(p: string, n: number): string {
-  const sep = p.includes('\\') ? '\\' : '/'
-  const parts = p.split(sep)
-  const short = parts.slice(-2).join(sep)
-  return truncate(short, n)
-}
-
 function severityChip(sev: string): string {
   const chips: Record<string, string> = {
     critical: chalk.bgRed.white.bold(' CRIT '),

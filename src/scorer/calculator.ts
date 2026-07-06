@@ -42,7 +42,7 @@ export const DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS: CrossAgentPenaltyWeights = {
  * CustomAgent's per-severity override feature dead code — an agent configured
  * with { critical: 50 } still got penalized at 10.
  */
-function penaltyFor(f: AgentFinding, severityWeights: SeverityWeights = SEVERITY_PENALTY): number {
+export function penaltyFor(f: AgentFinding, severityWeights: SeverityWeights = SEVERITY_PENALTY): number {
   return typeof f.scorePenalty === 'number' ? f.scorePenalty : severityWeights[f.severity]
 }
 
@@ -172,6 +172,8 @@ export function calculateScore(
     'maintainability',
     'deadCode',
     'testIntelligence',
+    'logic',
+    'pragmatism',
   ]
   const baseCategories =
     executedCategories && executedCategories.length > 0

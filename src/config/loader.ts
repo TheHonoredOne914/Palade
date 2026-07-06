@@ -175,7 +175,7 @@ export async function loadConfig(): Promise<PaladeConfig> {
     'cerebras',
     'openrouter',
     'ollama',
-  ].filter((p) => !!(mergedProviders[p] as any)?.apiKey)
+  ].filter((p) => !!(mergedProviders as Record<string, { apiKey?: string } | undefined>)[p]?.apiKey)
 
   const freeProviders = allConfiguredProviders.filter((p) => p === 'opencode-zen' || p === 'ollama')
   const paidProviders = allConfiguredProviders.filter((p) => p !== 'opencode-zen' && p !== 'ollama')

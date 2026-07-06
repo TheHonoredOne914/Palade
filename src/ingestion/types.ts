@@ -41,6 +41,7 @@ export interface FileManifest {
   churnCount?: number
   importCount?: number
   importers?: string[]
+  _rawImports?: string[]
 }
 
 export interface CodeChunk {
@@ -49,6 +50,7 @@ export interface CodeChunk {
   startLine: number
   endLine: number
   content: string
+  contextPrefix?: string
   symbolName?: string
   tokenCount: number
   language: Language

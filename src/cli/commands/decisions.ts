@@ -2,7 +2,6 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import chalk from 'chalk'
-import { kvTable } from '../../ui/layout.js'
 import { theme } from '../../ui/theme.js'
 
 export async function decisionsCommand(

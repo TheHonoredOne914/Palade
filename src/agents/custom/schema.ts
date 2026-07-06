@@ -9,6 +9,9 @@ export const CustomAgentDefinitionSchema = z.object({
     .min(1)
     .refine((n) => !(BUILTIN_NAMES as readonly string[]).includes(n), {
       message: `Name collides with a built-in agent. Reserved names: ${BUILTIN_NAMES.join(', ')}`,
+    })
+    .refine((n) => !['combined', 'Architect'].includes(n), {
+      message: 'Name collides with an internal analyzer name. Reserved: combined, Architect',
     }),
   /** Display label for the agent's domain (e.g. "API Design", "Database Queries"). */
   domain: z.string().min(1),

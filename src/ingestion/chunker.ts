@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import type { FileManifest, CodeChunk } from './types.js'
+import type { FileManifest, CodeChunk, Language } from './types.js'
 import ts from 'typescript'
 
 export const MAX_TOKENS = 6000
@@ -98,7 +98,7 @@ function getTopLevelSymbolName(node: ts.Node): string | undefined {
   return undefined
 }
 
-function chunkByAST(content: string, filePath: string, language: string): CodeChunk[] {
+function chunkByAST(content: string, filePath: string, language: Language): CodeChunk[] {
   const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
   const chunks: CodeChunk[] = []
   let currentStartNode: ts.Node | null = null
@@ -123,7 +123,7 @@ function chunkByAST(content: string, filePath: string, language: string): CodeCh
       content: chunkContent,
       symbolName,
       tokenCount: estimateTokens(chunkContent),
-      language: language as any,
+      language,
       complexity,
     })
 

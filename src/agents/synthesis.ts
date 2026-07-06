@@ -3,6 +3,7 @@ import { getProvider } from '../providers/router.js'
 import type { AgentContext, AgentFinding } from './base.js'
 import { SEVERITY_PENALTY } from './base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
+import { penaltyFor } from '../scorer/calculator.js'
 
 export interface PriorityFix {
   rank: number
@@ -183,11 +184,7 @@ export async function synthesize(
   try {
     const provider: IProvider = getProvider('synthesis')
 
-    const sorted = [...allFindings].sort(
-      (a, b) =>
-        (b.scorePenalty ?? SEVERITY_PENALTY[b.severity]) -
-        (a.scorePenalty ?? SEVERITY_PENALTY[a.severity])
-    )
+    const sorted = [...allFindings].sort((a, b) => penaltyFor(b) - penaltyFor(a))
     const cappedFindings = sorted.slice(0, maxSynthesisFindings)
     const droppedFindings = sorted.slice(maxSynthesisFindings)
 

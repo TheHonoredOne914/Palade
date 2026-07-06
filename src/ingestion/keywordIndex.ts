@@ -1,6 +1,8 @@
 import type { CodeChunk } from './types.js'
 
-export function buildKeywordIndex(chunks: CodeChunk[]): CodeChunk[] {
+type IndexedChunk = CodeChunk & { _words: string[] }
+
+export function buildKeywordIndex(chunks: CodeChunk[]): IndexedChunk[] {
   // Snapshot each chunk before returning. Callers (e.g. the keyword-context
   // injection loop in orchestrator/pipeline.ts) mutate `chunk.content` in
   // place on the chunks used as the review corpus; if this index shared the
@@ -14,13 +16,13 @@ export function buildKeywordIndex(chunks: CodeChunk[]): CodeChunk[] {
   return chunks.map((chunk) => {
     const contentLower = chunk.content.toLowerCase()
     const words = contentLower.match(/\b[a-z]{4,}\b/g) ?? []
-    return { ...chunk, _words: words } as CodeChunk & { _words: string[] }
+    return { ...chunk, _words: words }
   })
 }
 
 export function getKeywordContext(
   chunk: CodeChunk,
-  index: CodeChunk[],
+  index: IndexedChunk[],
   maxResults = 3,
   maxTokensPerResult = 250
 ): string {
@@ -49,9 +51,7 @@ export function getKeywordContext(
   const scoredChunks = index
     .filter((c) => c.id !== chunk.id)
     .map((c) => {
-      // Use pre-computed word list if available, otherwise fall back to extraction
-      const chunkWords =
-        (c as any)._words ?? (c.content.toLowerCase().match(/\b[a-z]{4,}\b/g) || [])
+      const chunkWords = c._words
       const chunkWordCount = chunkWords.length
 
       let queryWordCount = 0

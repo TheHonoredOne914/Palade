@@ -7,7 +7,6 @@ interface CommandInputProps {
   value: string
   onChange: (val: string) => void
   onSubmit: (val: string) => void
-  onHistoryNav: (dir: 'up' | 'down') => void
   isRunning: boolean
 }
 
@@ -15,7 +14,6 @@ export function CommandInput({
   value,
   onChange,
   onSubmit,
-  onHistoryNav,
   isRunning,
 }: CommandInputProps): React.JSX.Element {
   return (

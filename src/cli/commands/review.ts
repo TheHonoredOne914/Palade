@@ -320,7 +320,6 @@ export async function reviewCommand(
   }
 
   // 8. Run pipeline with progress
-  let completedAgents = 0
   const progress = opts.quiet || opts.tui ? undefined : createLiveProgress()
   let swarmResult: SwarmResult
   try {
@@ -353,7 +352,6 @@ export async function reviewCommand(
           durationMs: number,
           error?: Error
         ): void => {
-          completedAgents++
           if (opts.tui) {
             if (error) {
               console.log(theme.error(`  ✖ ${name} agent failed: ${error.message}`))
@@ -400,6 +398,13 @@ export async function reviewCommand(
         signal: opts.signal,
         specPath: config.swarm.specPath,
         constitutionPath: config.swarm.constitutionPath,
+        maxConcurrentBatches: config.swarm.maxConcurrentBatches,
+        softTokenLimit: (opts.economy ?? config.swarm.economyMode)
+          ? Math.min(6000, config.swarm.softTokenLimit)
+          : config.swarm.softTokenLimit,
+        hardChunkLimit: (opts.economy ?? config.swarm.economyMode)
+          ? Math.min(3000, config.swarm.hardChunkLimit)
+          : config.swarm.hardChunkLimit,
       },
       target: resolvedTarget,
       dryRunConfig: opts.dryRun ? config : undefined,

@@ -39,7 +39,11 @@ function getProviderModelKey(providerName: string, providerConfig?: { model?: st
   return `${providerName}:${providerConfig?.model || 'unknown'}`
 }
 
-export function estimateRunCost(chunks: CodeChunk[], config: PaladeConfig): EstimateResult {
+export function estimateRunCost(
+  chunks: CodeChunk[],
+  config: PaladeConfig,
+  customAgentCount = 0
+): EstimateResult {
   const totalChunks = chunks.length
 
   // Reuse the shared chars/4 token estimation formula instead of
@@ -48,7 +52,7 @@ export function estimateRunCost(chunks: CodeChunk[], config: PaladeConfig): Esti
     return sum + estimateTokens(chunk.content)
   }, 0)
 
-  const agentCount = config.swarm.economyMode ? 1 : config.swarm.agentCount
+  const agentCount = (config.swarm.economyMode ? 1 : config.swarm.agentCount) + customAgentCount
 
   // The swarm doesn't send 1 LLM call per chunk per agent — scheduleBatches
   // groups chunks into batches first, and each agent makes one call per
@@ -65,8 +69,8 @@ export function estimateRunCost(chunks: CodeChunk[], config: PaladeConfig): Esti
   const primaryName = config.swarm.primary || 'opencode-zen'
   const synthesisName = config.swarm.synthesis || primaryName
 
-  const primaryConfig = (config.providers as any)?.[primaryName]
-  const synthesisConfig = (config.providers as any)?.[synthesisName]
+  const primaryConfig = config.providers[primaryName as keyof PaladeConfig['providers']]
+  const synthesisConfig = config.providers[synthesisName as keyof PaladeConfig['providers']]
 
   const primaryKey = getProviderModelKey(primaryName, primaryConfig)
   const synthesisKey = getProviderModelKey(synthesisName, synthesisConfig)

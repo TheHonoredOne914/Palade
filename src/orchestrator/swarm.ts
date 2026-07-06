@@ -14,8 +14,8 @@ import { mergeFindings } from './merger.js'
 import { scheduleBatches, estimateTotalTokens } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
 import { isFatalAuthError } from '../providers/errorClassification.js'
-import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
-import { ReviewCancelledError } from '../errors/types.js'
+import { detectConflicts, arbitrateConflict, saveDecision, type Conflict, type Verdict } from './verdict.js'
+import { ReviewCancelledError, SwarmTimeoutError } from '../errors/types.js'
 
 export async function runSwarm(
   allChunks: CodeChunk[],
@@ -255,6 +255,13 @@ export async function runSwarm(
     }
   }
 
+  const elapsed = Date.now() - startTime
+  const timeoutMs = options.timeoutMs ?? 600_000
+  const completedCount = Object.keys(agentTimings).length
+  if (completedCount < agents.length && elapsed >= timeoutMs * 0.9) {
+    throw new SwarmTimeoutError(completedCount, agents.length, timeoutMs)
+  }
+
   const crossAgentFindings: CrossAgentFinding[] = memory.crossReference()
   const mergedFindings: AgentFinding[] = mergeFindings(memory.getAll())
 
@@ -407,18 +414,20 @@ export async function runSwarm(
     }
   }
 
-  try {
-    options.onSynthesisStart?.()
-    const synthStart = Date.now()
-    synthesis = await analyzeSynthesis(finalFindings, crossAgentFindings, context)
-    options.onSynthesisComplete?.(Date.now() - synthStart)
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error(String(err))
-    if (isFatalAuthError(error)) {
-      throw error
-    }
+  if (!options.noSynthesis) {
+    try {
+      options.onSynthesisStart?.()
+      const synthStart = Date.now()
+      synthesis = await analyzeSynthesis(finalFindings, crossAgentFindings, context)
+      options.onSynthesisComplete?.(Date.now() - synthStart)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      if (isFatalAuthError(error)) {
+        throw error
+      }
 
-    console.warn(chalk.red(`⚠ Synthesis failed: ${error.message}`))
+      console.warn(chalk.red(`⚠ Synthesis failed: ${error.message}`))
+    }
   }
 
   return {

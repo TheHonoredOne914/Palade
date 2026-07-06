@@ -16,17 +16,19 @@ process.on('uncaughtException', (err) => {
 })
 
 const originalEmit = process.emit
-process.emit = function (name: any, data: any, ...args: any[]) {
-  if (name === 'warning' && typeof data === 'object') {
+process.emit = function (name: string | symbol, ...args: unknown[]) {
+  const data = args[0]
+  if (name === 'warning' && typeof data === 'object' && data !== null) {
+    const w = data as { code?: string; message?: string }
     if (
-      data.code === 'MODULE_TYPELESS_PACKAGE_JSON' ||
-      (data.message && data.message.includes('MODULE_TYPELESS_PACKAGE_JSON'))
+      w.code === 'MODULE_TYPELESS_PACKAGE_JSON' ||
+      (w.message && w.message.includes('MODULE_TYPELESS_PACKAGE_JSON'))
     ) {
       return false
     }
   }
-  return originalEmit.apply(process, [name, data, ...args] as any)
-} as any
+  return originalEmit.apply(process, [name, ...args] as Parameters<typeof process.emit>)
+} as typeof process.emit
 
 const rawArgs = process.argv.slice(2)
 // --config takes a value; exclude it so `palade --config foo.ts` isn't

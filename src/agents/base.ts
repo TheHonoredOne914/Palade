@@ -135,7 +135,8 @@ export function buildChunkContext(chunks: CodeChunk[]): string {
         .split('\n')
         .map((line, i) => `${c.startLine + i} | ${line}`)
         .join('\n')
-      return `=== FILE: ${c.filePath} (lines ${c.startLine}–${c.endLine}) ===\n${numberedContent}`
+      const prefix = c.contextPrefix || ''
+      return `${prefix}=== FILE: ${c.filePath} (lines ${c.startLine}–${c.endLine}) ===\n${numberedContent}`
     })
     .join('\n\n')
 }

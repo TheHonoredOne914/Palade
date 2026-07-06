@@ -13,7 +13,7 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     // (see src/config/loader.ts), regardless of the values set here.
     primary: 'opencode-zen',
     synthesis: 'nvidia',
-    agentCount: 6,
+    agentCount: 8,
     timeoutMs: 600000,
     maxReviewTokens: 200_000,
     economyMode: false,

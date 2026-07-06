@@ -171,7 +171,7 @@ async function walkDir(
       lastModified: fileStat.mtime,
       importCount,
       _rawImports: importedPaths,
-    } as any)
+    })
   }
 
   return results
@@ -343,7 +343,7 @@ export async function walkProject(
   }
 
   for (const m of manifests) {
-    const rawImports = ((m as any)._rawImports as string[]) || []
+    const rawImports = m._rawImports ?? []
     for (const raw of rawImports) {
       if (raw.startsWith('.')) {
         // relative import
@@ -367,7 +367,7 @@ export async function walkProject(
         }
       }
     }
-    delete (m as any)._rawImports
+    delete m._rawImports
   }
 
   return manifests

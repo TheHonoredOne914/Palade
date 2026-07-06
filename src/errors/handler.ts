@@ -2,6 +2,7 @@ import chalk from 'chalk'
 import {
   PaladeConfigError,
   NoProvidersError,
+  OllamaNotRunningError,
   TargetNotFoundError,
   SwarmTimeoutError,
   WorkspaceTooLargeError,
@@ -37,6 +38,10 @@ export function formatErrorMessages(err: unknown): string[] {
       chalk.dim(`    export OPENCODE_ZEN_API_KEY=your_key_here`),
       chalk.dim(`    # or run locally: OLLAMA_MODEL=codellama:13b npx palade review`),
     ]
+  }
+
+  if (err instanceof OllamaNotRunningError) {
+    return [chalk.red(err.message)]
   }
 
   if (err instanceof TargetNotFoundError) {

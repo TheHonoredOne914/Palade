@@ -4,6 +4,7 @@ import type { OutputLine } from '../components/OutputPane.js'
 import type { PaladeConfig } from '../../config/schema.js'
 import { reviewCommand } from '../../cli/commands/review.js'
 import { diffCommand } from '../../cli/commands/diff.js'
+import { VALUE_FLAGS } from '../../cli/flags.js'
 
 import { scoreCommand } from '../../cli/commands/score.js'
 import { initCommand } from '../../cli/commands/init.js'
@@ -114,17 +115,6 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
       // Only these flags consume a value. Excluding the token after ANY `--`
       // flag would swallow positionals following boolean flags (e.g.
       // `/review --pick src/foo.ts` losing its path).
-      const VALUE_FLAGS = new Set([
-        'target',
-        'dir',
-        'glob',
-        'mode',
-        'depth',
-        'format',
-        'base',
-        'file',
-        'days',
-      ])
       const positional = rest.filter((r, i) => {
         if (r.startsWith('--')) return false
         const prev = rest[i - 1]

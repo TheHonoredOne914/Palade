@@ -81,7 +81,9 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
 
   return {
     ...keep,
-    scorePenalty: Math.max(keep.scorePenalty ?? 0, discard.scorePenalty ?? 0),
+    scorePenalty: (keep.scorePenalty !== undefined || discard.scorePenalty !== undefined)
+      ? Math.max(keep.scorePenalty ?? 0, discard.scorePenalty ?? 0)
+      : undefined,
     tags: Array.from(tagSet),
     description: mergedDescription,
     mergedFromAgents: [keep.agentName, discard.agentName].filter(
