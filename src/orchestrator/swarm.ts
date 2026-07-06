@@ -13,25 +13,9 @@ import { AgentMemory } from './memory.js'
 import { mergeFindings } from './merger.js'
 import { scheduleBatches } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
+import { isFatalAuthError } from '../providers/errorClassification.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
-import { ReviewCancelledError, AuthError } from '../errors/types.js'
-
-// Providers don't expose a structured status/code field on thrown errors —
-// they're plain Errors with the status baked into the message string (see
-// src/providers/*.ts, e.g. `Cerebras error 401: ...`) — so we're stuck
-// pattern-matching on the message. Word-boundary regexes avoid false
-// positives on unrelated text that merely contains these digits.
-function isFatalAuthError(err: Error): boolean {
-  if (err instanceof AuthError) return true
-  const msg = err.message.toLowerCase()
-  return (
-    /\b401\b/.test(msg) ||
-    /\b403\b/.test(msg) ||
-    msg.includes('unauthorized') ||
-    msg.includes('invalid api key') ||
-    msg.includes('authentication')
-  )
-}
+import { ReviewCancelledError } from '../errors/types.js'
 
 export async function runSwarm(
   allChunks: CodeChunk[],
@@ -126,11 +110,7 @@ export async function runSwarm(
     const allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
     try {
-      const batches = scheduleBatches(
-        reviewChunks,
-        options.softTokenLimit,
-        options.hardChunkLimit
-      )
+      const batches = scheduleBatches(reviewChunks, options.softTokenLimit, options.hardChunkLimit)
       const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>

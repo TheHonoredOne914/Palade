@@ -111,7 +111,14 @@ export function buildRetrievedContext(subject: CodeChunk, allChunks: CodeChunk[]
   const related = allChunks
     .map((chunk) => ({
       chunk,
-      score: scoreRelatedChunk(subject, chunk, subjectImports, subjectTerms, subjectTestBases, subjectBase),
+      score: scoreRelatedChunk(
+        subject,
+        chunk,
+        subjectImports,
+        subjectTerms,
+        subjectTestBases,
+        subjectBase
+      ),
     }))
     .filter((entry) => entry.score >= 4)
     .sort((a, b) => b.score - a.score)

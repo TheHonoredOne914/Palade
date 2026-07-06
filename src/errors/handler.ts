@@ -40,7 +40,10 @@ export function formatErrorMessages(err: unknown): string[] {
   }
 
   if (err instanceof TargetNotFoundError) {
-    return [chalk.red(err.message), chalk.dim(`  Run 'palade targets list' to see defined targets.`)]
+    return [
+      chalk.red(err.message),
+      chalk.dim(`  Run 'palade targets list' to see defined targets.`),
+    ]
   }
 
   if (err instanceof SwarmTimeoutError) {
@@ -69,7 +72,11 @@ export function formatErrorMessages(err: unknown): string[] {
     const lines = [chalk.red(`Unexpected error: ${err.message}`)]
     if (debug) {
       lines.push(chalk.dim(err.stack ?? ''))
-      const { message: _message, stack: _stack, ...extra } = err as unknown as Record<string, unknown>
+      const {
+        message: _message,
+        stack: _stack,
+        ...extra
+      } = err as unknown as Record<string, unknown>
       if (Object.keys(extra).length > 0) {
         lines.push(chalk.dim(JSON.stringify(sanitizeForLog(extra), null, 2)))
       }

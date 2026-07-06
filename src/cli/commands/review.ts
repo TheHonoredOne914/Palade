@@ -225,7 +225,9 @@ export async function reviewCommand(
   // 5. Handle --pick
   let resolvedTarget: ResolvedTarget | undefined = undefined
   if (opts.tui && opts.pick) {
-    console.log(theme.dim('  --pick is not supported inside the interactive TUI. Reviewing all files.'))
+    console.log(
+      theme.dim('  --pick is not supported inside the interactive TUI. Reviewing all files.')
+    )
     opts.pick = false
   }
   if (opts.pick && !process.stdin.isTTY) {
