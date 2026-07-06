@@ -220,7 +220,8 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
       language: language as CodeChunk['language'],
     })
 
-    startIdx = Math.max(startIdx + 1, endIdx - CHUNK_OVERLAP)
+    const nextStart = endIdx - CHUNK_OVERLAP
+    startIdx = nextStart > startIdx ? nextStart : endIdx
   }
 
   return chunks
