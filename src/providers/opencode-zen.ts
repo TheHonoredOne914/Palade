@@ -111,7 +111,11 @@ export class OpenCodeZenProvider implements IProvider {
     if (!res.ok) {
       const body = await res.text()
       if (res.status === 401 || res.status === 403) {
-        throw new AuthError(`OpenCode Zen error ${res.status}: ${body.slice(0, 200)}`, res.status, this.name)
+        throw new AuthError(
+          `OpenCode Zen error ${res.status}: ${body.slice(0, 200)}`,
+          res.status,
+          this.name
+        )
       }
       throw new Error(`OpenCode Zen error ${res.status}: ${body.slice(0, 200)}`)
     }

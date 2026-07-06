@@ -184,7 +184,9 @@ export async function synthesize(
     const provider: IProvider = getProvider('synthesis')
 
     const sorted = [...allFindings].sort(
-      (a, b) => (b.scorePenalty ?? SEVERITY_PENALTY[b.severity]) - (a.scorePenalty ?? SEVERITY_PENALTY[a.severity])
+      (a, b) =>
+        (b.scorePenalty ?? SEVERITY_PENALTY[b.severity]) -
+        (a.scorePenalty ?? SEVERITY_PENALTY[a.severity])
     )
     const cappedFindings = sorted.slice(0, maxSynthesisFindings)
     const droppedFindings = sorted.slice(maxSynthesisFindings)

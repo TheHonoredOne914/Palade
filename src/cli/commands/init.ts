@@ -71,7 +71,11 @@ const GITIGNORE_APPEND = `
 .palade/
 `
 
-export async function initCommand(opts?: { yes?: boolean; signal?: AbortSignal; tui?: boolean }): Promise<void> {
+export async function initCommand(opts?: {
+  yes?: boolean
+  signal?: AbortSignal
+  tui?: boolean
+}): Promise<void> {
   if (opts?.signal?.aborted) return
   const cwd = process.cwd()
 

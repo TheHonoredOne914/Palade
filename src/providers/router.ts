@@ -5,6 +5,7 @@ import { FATAL_QUOTA_KEYWORDS } from './base.js'
 import { GroqProvider } from './groq.js'
 import { CerebrasProvider } from './cerebras.js'
 import { NoProvidersError, AuthError } from '../errors/types.js'
+import { isFatalAuthError } from './errorClassification.js'
 import { NvidiaProvider } from './nvidia.js'
 import { OpenRouterProvider } from './openrouter.js'
 import { OpenCodeZenProvider } from './opencode-zen.js'
@@ -33,21 +34,6 @@ const FATAL_KEYWORDS = FATAL_QUOTA_KEYWORDS
 function isFatalMessage(message: string): boolean {
   const lower = message.toLowerCase()
   return FATAL_KEYWORDS.some((keyword) => lower.includes(keyword))
-}
-
-// Mirrors swarm.ts's isFatalAuthError classification. Duplicated (rather than
-// imported) because swarm.ts imports getFallbackStats from this module —
-// importing back from swarm.ts would create a cycle.
-function isAuthLikeError(err: Error): boolean {
-  if (err instanceof AuthError) return true
-  const msg = err.message.toLowerCase()
-  return (
-    /\b401\b/.test(msg) ||
-    /\b403\b/.test(msg) ||
-    msg.includes('unauthorized') ||
-    msg.includes('invalid api key') ||
-    msg.includes('authentication')
-  )
 }
 
 export type ProviderRole = 'primary' | 'synthesis'
@@ -208,7 +194,7 @@ export class FallbackProvider implements IProvider {
         attemptedAny = true
 
         const isFatal = isFatalMessage(lastError.message)
-        if (isAuthLikeError(lastError)) {
+        if (isFatalAuthError(lastError)) {
           lastAuthLikeError = lastError
         } else {
           allAttemptsAuthLike = false
