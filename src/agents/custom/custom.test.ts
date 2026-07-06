@@ -84,21 +84,21 @@ describe('agents/custom/schema', () => {
 })
 
 describe('CustomAgent', () => {
-  it('applies default SEVERITY_PENALTY when no overrides given', async () => {
+  it('leaves score penalty unset when no overrides given, so configured severityWeights apply', async () => {
     const { CustomAgent } = await import('./agent.js')
     const agent = new CustomAgent({
       name: 'test-agent',
       domain: 'testing',
       systemPrompt: 'Test prompt.',
     })
-    expect(agent.getScorePenalty('critical')).toBe(10)
-    expect(agent.getScorePenalty('high')).toBe(5)
-    expect(agent.getScorePenalty('medium')).toBe(2)
-    expect(agent.getScorePenalty('low')).toBe(0.5)
-    expect(agent.getScorePenalty('info')).toBe(0)
+    expect(agent.getScorePenalty('critical')).toBeUndefined()
+    expect(agent.getScorePenalty('high')).toBeUndefined()
+    expect(agent.getScorePenalty('medium')).toBeUndefined()
+    expect(agent.getScorePenalty('low')).toBeUndefined()
+    expect(agent.getScorePenalty('info')).toBeUndefined()
   })
 
-  it('applies custom severityPenalty overrides', async () => {
+  it('applies custom severityPenalty overrides, leaving un-overridden severities unset', async () => {
     const { CustomAgent } = await import('./agent.js')
     const agent = new CustomAgent({
       name: 'test-agent',
@@ -107,8 +107,8 @@ describe('CustomAgent', () => {
       severityPenalty: { critical: 50, medium: 1 },
     })
     expect(agent.getScorePenalty('critical')).toBe(50)
-    expect(agent.getScorePenalty('high')).toBe(5) // default
+    expect(agent.getScorePenalty('high')).toBeUndefined()
     expect(agent.getScorePenalty('medium')).toBe(1)
-    expect(agent.getScorePenalty('low')).toBe(0.5) // default
+    expect(agent.getScorePenalty('low')).toBeUndefined()
   })
 })

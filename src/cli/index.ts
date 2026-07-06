@@ -29,8 +29,13 @@ process.emit = function (name: any, data: any, ...args: any[]) {
 } as any
 
 const rawArgs = process.argv.slice(2)
+// --config takes a value; exclude it so `palade --config foo.ts` isn't
+// mistaken for a subcommand invocation (foo.ts doesn't start with '-').
+const configIdx = rawArgs.indexOf('--config')
+const commandScanArgs =
+  configIdx !== -1 ? rawArgs.filter((_, i) => i !== configIdx + 1) : rawArgs
 const hasCommand =
-  rawArgs.some((a) => !a.startsWith('-') && a.length > 0) ||
+  commandScanArgs.some((a) => !a.startsWith('-') && a.length > 0) ||
   rawArgs.includes('--help') ||
   rawArgs.includes('-h') ||
   rawArgs.includes('--version') ||

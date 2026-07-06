@@ -11,7 +11,7 @@ import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
 import { triageFiles } from './triage.js'
 import { AgentMemory } from './memory.js'
 import { mergeFindings } from './merger.js'
-import { scheduleBatches } from './scheduler.js'
+import { scheduleBatches, estimateTotalTokens } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 import { ReviewCancelledError, AuthError } from '../errors/types.js'
@@ -105,20 +105,9 @@ export async function runSwarm(
   const runAbort = new AbortController()
 
   // Run agents concurrently — rate-limit handling is done at the provider
-  // layer (fetchWithRetry + FallbackProvider), not serialized here.
-  // batchTokenLimit isn't (yet) a formal field on SwarmOptions — read it
-  // defensively so callers can override the scheduler's default soft
-  // token limit without requiring a type change here.
-  const rawBatchTokenLimit = (options as SwarmOptions & { batchTokenLimit?: number })
-    .batchTokenLimit
-  const batchTokenLimit =
-    typeof rawBatchTokenLimit === 'number' && rawBatchTokenLimit > 0
-      ? rawBatchTokenLimit
-      : undefined
-
-  // Batch scheduling is deterministic — compute once, not per-agent
-  const batches = scheduleBatches(reviewChunks, batchTokenLimit)
-
+  // layer (fetchWithRetry + FallbackProvider), not serialized here. Batch
+  // scheduling happens per-agent below, using options.softTokenLimit /
+  // options.hardChunkLimit (the actual formal SwarmOptions fields).
   const agentPromises = agents.map(async (agent) => {
     const agentStart = Date.now()
     options.onAgentStart?.(agent.name)
@@ -385,7 +374,7 @@ export async function runSwarm(
         // The combined analyzer's verdict returns a single "Architect" finding.
         // Try to figure out the winning vs losing sides from the text so the ADR isn't blank.
         const winningLensMatch = decisionStr.match(/(\w+) says/i)
-        const winningLens = winningLensMatch ? winningLensMatch[1] : 'CombinedAgent(Winner)'
+        const winningLens = winningLensMatch ? winningLensMatch[1] : 'Unknown (parse failed)'
 
         const fakeConflict = {
           filePath: finding.filePath || 'unknown',
@@ -457,8 +446,9 @@ export async function runSwarm(
     crossAgentFindings,
     synthesis,
     agentTimings: agentTimings as Record<AgentName, number>,
+    agentsRun: modeAgents.map((a) => a.name),
     totalChunks: reviewChunks.length,
-    totalTokensEstimated: reviewChunks.reduce((sum, c) => sum + c.tokenCount, 0),
+    totalTokensEstimated: estimateTotalTokens(reviewChunks),
     durationMs: Date.now() - startTime,
     fallbackStats: getFallbackStats() ?? undefined,
   }

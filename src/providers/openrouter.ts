@@ -132,6 +132,9 @@ export class OpenRouterProvider implements IProvider {
     }
   }
 
+  // Quota-only check: reflects whether we have locally observed a daily-limit
+  // response, not a live connectivity/auth probe. An invalid API key or an
+  // unreachable endpoint will still report available=true here.
   async isAvailable(): Promise<boolean> {
     if (this.dailyLimitExhausted) return false
     return true

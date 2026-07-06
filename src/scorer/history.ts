@@ -67,12 +67,17 @@ export function parseHistoryEntries(raw: string): ScoreHistoryEntry[] {
       const kind: ScoreHistoryEntry['kind'] =
         obj.kind === 'diff' ? 'diff' : obj.kind === 'full' ? 'full' : undefined
 
+      // Reject non-finite scores (NaN/Infinity from a corrupted file) instead
+      // of trusting the `typeof === 'number'` check above — those would flow
+      // into delta math and the badge undetected.
+      if (!Number.isFinite(obj.score)) continue
+
       entries.push({
         timestamp: obj.timestamp as string,
-        runId: (obj.runId as string) ?? '',
+        runId: typeof obj.runId === 'string' ? obj.runId : obj.runId != null ? String(obj.runId) : '',
         score: obj.score as number,
         breakdown,
-        delta: typeof obj.delta === 'number' ? obj.delta : 0,
+        delta: typeof obj.delta === 'number' && Number.isFinite(obj.delta) ? obj.delta : 0,
         ...(kind ? { kind } : {}),
       })
     }
@@ -82,11 +87,29 @@ export function parseHistoryEntries(raw: string): ScoreHistoryEntry[] {
 }
 
 export function readHistory(historyPath: string): ScoreHistoryEntry[] {
+  if (!existsSync(historyPath)) return []
+  let raw: string
   try {
-    if (!existsSync(historyPath)) return []
-    const raw = readFileSync(historyPath, 'utf-8')
-    return parseHistoryEntries(raw)
+    raw = readFileSync(historyPath, 'utf-8')
   } catch {
+    return []
+  }
+  try {
+    return parseHistoryEntries(raw)
+  } catch (err) {
+    // Corrupt history.json: back it up before returning [] so the next
+    // appendEntry() write doesn't silently overwrite it with a single entry
+    // and destroy all prior score trend data.
+    const backupPath = `${historyPath}.corrupt-${Date.now()}`
+    try {
+      copyFileSync(historyPath, backupPath)
+    } catch {
+      // best-effort backup — still warn below even if this fails
+    }
+    console.error(
+      `[palade] history.json is corrupt and could not be parsed (${err instanceof Error ? err.message : String(err)}). ` +
+        `Backed up to ${backupPath}. Starting from empty history.`
+    )
     return []
   }
 }
@@ -121,7 +144,7 @@ export function writeHistory(
 // `diff` running at once) don't both read-modify-write and clobber each
 // other's entry. `wx` fails if the lockfile already exists, giving us
 // exclusive-create semantics without a locking dependency.
-function acquireLock(historyPath: string): string {
+function acquireLock(historyPath: string): string | null {
   const lockPath = `${historyPath}.lock`
   const maxAttempts = 50 // ~1s total wait
   for (let i = 0; i < maxAttempts; i++) {
@@ -136,7 +159,10 @@ function acquireLock(historyPath: string): string {
       }
     }
   }
-  return lockPath
+  // Never acquired the lock (still held by another live process) — return
+  // null so the caller skips releaseLock instead of deleting a lockfile it
+  // doesn't own, which would let a third process barge in mid-write.
+  return null
 }
 
 function releaseLock(lockPath: string): void {
@@ -161,7 +187,7 @@ export function appendEntry(
     // from the next readHistory() once the retention cap kicks in.
     return existing.slice(-maxEntries)
   } finally {
-    releaseLock(lockPath)
+    if (lockPath) releaseLock(lockPath)
   }
 }
 

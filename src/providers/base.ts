@@ -99,6 +99,10 @@ export async function fetchWithRetry(
         await sleep(delayMs, externalSignal)
         continue
       }
+      if ([500, 502, 503, 504].includes(res.status) && attempt < retries) {
+        await sleep(Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS), externalSignal)
+        continue
+      }
       return res
     } catch (err) {
       // An explicit abort must not be retried or swallowed as a transient

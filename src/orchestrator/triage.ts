@@ -1,6 +1,7 @@
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import { getProvider } from '../providers/router.js'
 import { CliExitError } from '../errors/types.js'
+import { estimateTotalTokens } from './scheduler.js'
 import chalk from 'chalk'
 
 const DEFAULT_MAX_REVIEW_TOKENS = 200_000
@@ -19,17 +20,13 @@ Prioritise:
 - Config files that might have hardcoded values
 - Files that look like they handle payments, sessions, or user data`
 
-function estimateTokens(chunks: CodeChunk[]): number {
-  return chunks.reduce((sum, c) => sum + c.tokenCount, 0)
-}
-
 export async function triageFiles(
   manifests: FileManifest[],
   allChunks: CodeChunk[],
   options?: { maxReviewTokens?: number; strictTriage?: boolean }
 ): Promise<CodeChunk[]> {
   const budget = options?.maxReviewTokens ?? DEFAULT_MAX_REVIEW_TOKENS
-  const totalTokens = estimateTokens(allChunks)
+  const totalTokens = estimateTotalTokens(allChunks)
 
   if (totalTokens <= budget) {
     console.log(

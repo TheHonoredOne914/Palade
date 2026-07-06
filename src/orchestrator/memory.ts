@@ -1,7 +1,25 @@
 import type { AgentFinding, AgentName, Severity } from '../agents/base.js'
 import { SEVERITY_PENALTY } from '../agents/base.js'
 import type { CrossAgentFinding } from './types.js'
-import { SEVERITY_RANK } from './merger.js'
+import { SEVERITY_RANK, jaccardSimilarity } from './merger.js'
+
+// Mirrors merger.ts's shouldMerge proximity window: chunk overlap (up to 60
+// lines, see scheduler.ts) means two agents can flag the same bug from
+// slightly different chunk boundaries, a few lines apart rather than on the
+// exact same line.
+const LOCATION_WINDOW = 60
+
+// Same proximity+similarity pattern as merger.ts's shouldMerge, reused here
+// so "same issue, different agent" detection doesn't drift between the two
+// call sites. Cross-agent titles are less likely to coincidentally share
+// wording than two passes of the same agent, so a stricter bar (0.7) is used
+// when the two findings come from different agents.
+function isNearMatch(a: AgentFinding, b: AgentFinding): boolean {
+  if (a.lineStart === undefined || b.lineStart === undefined) return false
+  if (Math.abs(a.lineStart - b.lineStart) > LOCATION_WINDOW) return false
+  const threshold = a.agentName === b.agentName ? 0.5 : 0.7
+  return jaccardSimilarity(a.title, b.title) > threshold
+}
 
 // Derived from merger.ts's SEVERITY_RANK (rather than a separately maintained
 // array) so the two orderings can't drift apart.
@@ -34,7 +52,7 @@ export class AgentMemory {
   }
 
   crossReference(): CrossAgentFinding[] {
-    const locationAgentMap = new Map<string, Map<AgentName, AgentFinding[]>>()
+    const findingsByFile = new Map<string, AgentFinding[]>()
     const symbolAgentMap = new Map<
       string,
       { agents: Set<AgentName>; findings: AgentFinding[]; files: Set<string> }
@@ -48,17 +66,10 @@ export class AgentMemory {
         // see >1 distinct agent and cross-referencing would silently no-op.
         const agentName = finding.agentName
         if (finding.filePath && finding.lineStart !== undefined) {
-          // Use lineStart itself as key, then check adjacency in crossReference
-          const bucket = finding.lineStart
-          const key = `${finding.filePath}:${bucket}`
-          if (!locationAgentMap.has(key)) {
-            locationAgentMap.set(key, new Map())
+          if (!findingsByFile.has(finding.filePath)) {
+            findingsByFile.set(finding.filePath, [])
           }
-          const agentMap = locationAgentMap.get(key)!
-          if (!agentMap.has(agentName)) {
-            agentMap.set(agentName, [])
-          }
-          agentMap.get(agentName)!.push(finding)
+          findingsByFile.get(finding.filePath)!.push(finding)
         }
 
         if (finding.symbolName && finding.filePath) {
@@ -76,29 +87,63 @@ export class AgentMemory {
 
     const crossFindings: CrossAgentFinding[] = []
 
-    for (const [locKey, agentMap] of locationAgentMap) {
-      if (agentMap.size < 2) continue
+    // Cluster findings within the same file using a small union-find over
+    // isNearMatch (proximity window + title similarity), instead of requiring
+    // an exact lineStart match — two agents flagging the same bug a few lines
+    // apart (routine given 30-line chunk overlaps) would otherwise never be
+    // grouped together.
+    for (const [filePath, fileFindings] of findingsByFile) {
+      const n = fileFindings.length
+      const parent = Array.from({ length: n }, (_, i) => i)
+      const find = (x: number): number => {
+        if (parent[x] !== x) parent[x] = find(parent[x])
+        return parent[x]
+      }
+      const union = (x: number, y: number): void => {
+        const rx = find(x)
+        const ry = find(y)
+        if (rx !== ry) parent[rx] = ry
+      }
 
-      const agents = Array.from(agentMap.keys())
-      const allFindings = Array.from(agentMap.values()).flat()
-      const severity = highestSeverity(allFindings)
-      const titles = allFindings
-        .sort((a, b) => SEVERITY_PENALTY[b.severity] - SEVERITY_PENALTY[a.severity])
-        .map((f) => f.title)
-        .slice(0, 3)
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          if (isNearMatch(fileFindings[i], fileFindings[j])) union(i, j)
+        }
+      }
 
-      // locKey is `${filePath}:${bucket}` — split on the *last* colon only,
-      // since filePath itself (LLM-sourced, unvalidated) may legitimately
-      // contain colons (e.g. an echoed "path:line" string).
-      const filePath = locKey.slice(0, locKey.lastIndexOf(':'))
-      crossFindings.push({
-        title: `Multi-domain issues near ${locKey}`,
-        description: titles.join('; '),
-        agents,
-        filePaths: [filePath],
-        severity,
-        blastRadius: 1,
-      })
+      const clusters = new Map<number, AgentFinding[]>()
+      for (let i = 0; i < n; i++) {
+        const root = find(i)
+        if (!clusters.has(root)) clusters.set(root, [])
+        clusters.get(root)!.push(fileFindings[i])
+      }
+
+      for (const clusterFindings of clusters.values()) {
+        const agents = Array.from(new Set(clusterFindings.map((f) => f.agentName)))
+        if (agents.length < 2) continue
+
+        const severity = highestSeverity(clusterFindings)
+        const titles = [...clusterFindings]
+          .sort((a, b) => SEVERITY_PENALTY[b.severity] - SEVERITY_PENALTY[a.severity])
+          .map((f) => f.title)
+          .slice(0, 3)
+        const lines = clusterFindings
+          .map((f) => f.lineStart!)
+          .sort((a, b) => a - b)
+        const locLabel =
+          lines[0] === lines[lines.length - 1]
+            ? `${filePath}:${lines[0]}`
+            : `${filePath}:${lines[0]}-${lines[lines.length - 1]}`
+
+        crossFindings.push({
+          title: `Multi-domain issues near ${locLabel}`,
+          description: titles.join('; '),
+          agents,
+          filePaths: [filePath],
+          severity,
+          blastRadius: 1,
+        })
+      }
     }
 
     for (const [symbolKey, entry] of symbolAgentMap) {

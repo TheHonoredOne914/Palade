@@ -219,7 +219,11 @@ function unparsableResponseFinding(agentName: AgentName, reason: string): AgentF
   ]
 }
 
-export function parseFindingsResponse(raw: string, agentName: AgentName): AgentFinding[] {
+export function parseFindingsResponse(
+  raw: string,
+  agentName: AgentName,
+  trustModelAgentName = false
+): AgentFinding[] {
   if (!raw || raw.trim().length === 0) {
     console.warn(chalk.yellow(`⚠ ${agentName}: empty response from provider`))
     return unparsableResponseFinding(agentName, 'was empty')
@@ -319,7 +323,7 @@ export function parseFindingsResponse(raw: string, agentName: AgentName): AgentF
       findings.push({
         id: crypto.randomUUID(),
         agentName:
-          typeof obj.agentName === 'string' && obj.agentName
+          trustModelAgentName && typeof obj.agentName === 'string' && obj.agentName
             ? (obj.agentName as AgentName)
             : agentName,
         severity,

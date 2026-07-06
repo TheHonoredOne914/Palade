@@ -1,5 +1,5 @@
 import type { CompletionRequest, CompletionResponse, IProvider } from './base.js'
-import { createLimiter } from './base.js'
+import { createLimiter, fetchWithRetry } from './base.js'
 import { OllamaNotRunningError } from '../errors/types.js'
 
 const DEFAULT_DEADLINE_MS = 300_000
@@ -50,7 +50,7 @@ export default class OllamaProvider implements IProvider {
     const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
 
     try {
-      const res = await fetch(`${this.baseUrl}/api/chat`, {
+      const res = await fetchWithRetry(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

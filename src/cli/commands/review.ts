@@ -437,7 +437,8 @@ export async function reviewCommand(
     {
       severityWeights: config.score.severityWeights,
       crossAgentPenalty: config.score.crossAgentPenalty,
-    }
+    },
+    swarmResult.agentsRun
   )
 
   // 10. Append to history

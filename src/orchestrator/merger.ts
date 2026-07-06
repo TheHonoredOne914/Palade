@@ -8,7 +8,7 @@ export const SEVERITY_RANK: Record<Severity, number> = {
   info: 4,
 }
 
-function jaccardSimilarity(a: string, b: string): number {
+export function jaccardSimilarity(a: string, b: string): number {
   const getWords = (str: string) =>
     new Set(
       str

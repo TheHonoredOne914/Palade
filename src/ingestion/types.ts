@@ -53,6 +53,10 @@ export interface CodeChunk {
   tokenCount: number
   language: Language
   complexity?: number
+  // Set on the last chunk kept for a file when chunkFiles() had to drop
+  // trailing chunks past MAX_CHUNKS_PER_FILE, so callers can detect
+  // incomplete coverage programmatically (not just via log output).
+  truncated?: boolean
 }
 
 export interface ScopeOptions {

@@ -271,7 +271,7 @@ describe('FallbackProvider', () => {
     // name) and a dim detail line with the actual error message, so the
     // failure is diagnosable without needing --debug.
     expect(warnSpy).toHaveBeenCalledTimes(2)
-    expect(warnSpy.mock.calls[0][0]).toContain('exhausted retries')
+    expect(warnSpy.mock.calls[0][0]).toContain('failed, trying next')
     expect(warnSpy.mock.calls[0][0]).toContain('primary')
     expect(warnSpy.mock.calls[1][0]).toContain('503 service unavailable')
     warnSpy.mockRestore()

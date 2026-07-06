@@ -18,24 +18,8 @@ export class AllProvidersExhaustedError extends Error {
   }
 }
 
-// Single source of truth for error classification, shared by the inner
-// withExponentialBackoff() call and the outer catch below — previously these
-// kept two independently-maintained keyword lists that had drifted apart.
-const RETRYABLE_KEYWORDS = [
-  '429',
-  '500',
-  '502',
-  '503',
-  'timeout',
-  'timed out',
-  'econnrefused',
-  'fetch failed',
-  'rate limit',
-]
-
 // Bare 'daily' / 'quota' used to be fatal keywords, which meant an incidental
-// occurrence of either word in an unrelated error body (or in the now-removed
-// 'daily limit' / 'quota exhausted' RETRYABLE_KEYWORDS entries above) would
+// occurrence of either word in an unrelated error body would
 // permanently mark a provider dead. Tightened to the specific phrases our
 // adapters actually throw (see groq.ts/cerebras.ts/nvidia.ts/openrouter.ts/
 // opencode-zen.ts daily-limit messages) so a stray 'daily' or 'quota'
@@ -45,11 +29,6 @@ const RETRYABLE_KEYWORDS = [
 // drifted apart before (this list had 'insufficient_quota'/'monthly limit',
 // isDailyLimitError's regex didn't).
 const FATAL_KEYWORDS = FATAL_QUOTA_KEYWORDS
-
-function isRetryableMessage(message: string): boolean {
-  const lower = message.toLowerCase()
-  return RETRYABLE_KEYWORDS.some((keyword) => lower.includes(keyword))
-}
 
 function isFatalMessage(message: string): boolean {
   const lower = message.toLowerCase()
@@ -105,7 +84,7 @@ function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[]
         break
       case 'nvidia':
         instances.push(
-          new NvidiaProvider(key, cfg.model, cfg.baseUrl, cfg.maxConcurrency, cfg.timeoutMs)
+          new NvidiaProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
         )
         break
       case 'openrouter':
@@ -229,7 +208,6 @@ export class FallbackProvider implements IProvider {
         attemptedAny = true
 
         const isFatal = isFatalMessage(lastError.message)
-        const isRetryable = isRetryableMessage(lastError.message)
         if (isAuthLikeError(lastError)) {
           lastAuthLikeError = lastError
         } else {
@@ -258,21 +236,18 @@ export class FallbackProvider implements IProvider {
           }
         }
 
-        // Default to trying the next provider even for errors that match
-        // neither the retryable nor fatal keyword lists — an unclassified
+        // Default to trying the next provider regardless of error type — an
         // error on this provider (e.g. a bad key) doesn't mean every other
         // provider in the chain will fail the same way, so give them a
         // chance before giving up entirely.
         if (i < this.chain.length - 1) {
-          const reason = isRetryable ? 'exhausted retries' : 'hit an unclassified error'
-          console.warn(chalk.yellow(`[router] provider ${provider.name} ${reason}, trying next`))
+          console.warn(chalk.yellow(`[router] provider ${provider.name} failed, trying next`))
           console.warn(chalk.dim(`         → ${lastError.message.split('\n')[0].slice(0, 120)}`))
         } else {
           // Last in chain — surface the real error so users can diagnose
-          const reason = isRetryable ? 'exhausted retries' : 'unclassified error'
           console.warn(
             chalk.red(
-              `[router] provider ${provider.name} failed (${reason}): ${lastError.message.split('\n')[0].slice(0, 200)}`
+              `[router] provider ${provider.name} failed: ${lastError.message.split('\n')[0].slice(0, 200)}`
             )
           )
         }
