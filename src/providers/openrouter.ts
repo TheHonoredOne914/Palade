@@ -56,7 +56,7 @@ export class OpenRouterProvider implements IProvider {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://github.com/palade/palade',
+          'HTTP-Referer': 'https://github.com/TheHonoredOne914/Palade',
           'X-Title': 'Palade',
         },
         body: JSON.stringify({

@@ -1,4 +1,3 @@
-import chalk from 'chalk'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 import { fetchWithRetry, createLimiter, isDailyLimitError } from './base.js'
 import { AuthError } from '../errors/types.js'

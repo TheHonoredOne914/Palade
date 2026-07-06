@@ -37,7 +37,9 @@ export async function launchTUI(): Promise<void> {
   }
 
   const hasConfigProviderKey = config
-    ? Object.values(config.providers ?? {}).some((p: any) => !!p?.apiKey)
+    ? Object.values(config.providers ?? {}).some(
+        (p) => !!(p as { apiKey?: string } | undefined)?.apiKey
+      )
     : false
 
   const noProvider = !hasAnyEnvKey && !hasConfigProviderKey

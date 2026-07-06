@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { readFile, writeFile, mkdir, appendFile } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { theme } from '../../ui/theme.js'
@@ -173,7 +173,7 @@ async function applySets(projectRoot: string, sets: string[]): Promise<void> {
     throw new CliExitError(1)
   }
 
-  let currentConfig: any
+  let currentConfig: Record<string, unknown>
   try {
     currentConfig = await loadConfig()
   } catch {
@@ -203,8 +203,8 @@ async function applySets(projectRoot: string, sets: string[]): Promise<void> {
 
     try {
       PaladeConfigSchema.parse(testConfig)
-    } catch (err: any) {
-      const msg = err.errors?.[0]?.message || String(err)
+    } catch (err: unknown) {
+      const msg = (err as { errors?: { message: string }[] }).errors?.[0]?.message || String(err)
       console.error(chalk.red(`  Invalid value for ${key}: ${msg}`))
       continue
     }

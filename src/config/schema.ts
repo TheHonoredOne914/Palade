@@ -35,7 +35,7 @@ export const PaladeConfigSchema = z
         synthesis: z
           .enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
           .default('nvidia'),
-        agentCount: z.number().int().min(1).max(12).default(6),
+        agentCount: z.number().int().min(1).max(12).default(8),
         timeoutMs: z.number().int().default(600000),
         maxReviewTokens: z.number().int().min(10_000).default(200_000),
         // Economy mode sends each batch of code to ONE combined multi-domain call
@@ -88,9 +88,9 @@ export const PaladeConfigSchema = z
         // blast-radius multiplier is applied.
         crossAgentPenalty: z
           .object({
-            critical: z.number().default(15),
-            high: z.number().default(8),
-            medium: z.number().default(4),
+            critical: z.number().default(DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS.critical),
+            high: z.number().default(DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS.high),
+            medium: z.number().default(DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS.medium),
           })
           .default({}),
         // Configurable complexity thresholds for the maintainability category.

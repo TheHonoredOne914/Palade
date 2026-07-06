@@ -202,6 +202,15 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           customAgents: customAgentDefs,
           agentCount: config.swarm.agentCount,
           economyMode: config.swarm.economyMode,
+          strictTriage: true,
+          noVerdict: false,
+          maxConcurrentBatches: config.swarm.maxConcurrentBatches,
+          softTokenLimit: config.swarm.economyMode
+            ? Math.min(6000, config.swarm.softTokenLimit)
+            : config.swarm.softTokenLimit,
+          hardChunkLimit: config.swarm.economyMode
+            ? Math.min(3000, config.swarm.hardChunkLimit)
+            : config.swarm.hardChunkLimit,
           signal: opts.signal,
         },
         manifests
@@ -222,23 +231,17 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     // review pipeline (orchestrator/pipeline.ts) applies, so diff findings
     // honor ignored files/lines just like `review` does.
     const annotationSummary = buildAnnotationSummary(manifests, chunks)
-    if (annotationSummary.ignoredFiles.length > 0 || annotationSummary.ignoredLines.length > 0) {
+    if (annotationSummary.ignoredFiles.length > 0) {
       const norm = (p: string) => p.replace(/^\.?\/+/, '')
       const ignoredFileSet = new Set(annotationSummary.ignoredFiles.map(norm))
       swarmResult.findings = swarmResult.findings.filter(
-        (f: { filePath?: string; lineStart?: number; lineEnd?: number }) => {
+        (f: { filePath?: string }) => {
           if (!f.filePath) return true
-          if (ignoredFileSet.has(norm(f.filePath))) return false
-          if (f.lineStart === undefined) return true
-          return !annotationSummary.ignoredLines.some(
-            (il) =>
-              norm(il.filePath) === norm(f.filePath!) &&
-              f.lineStart! <= il.startLine + 1 &&
-              (f.lineEnd ?? f.lineStart!) >= il.startLine
-          )
+          return !ignoredFileSet.has(norm(f.filePath))
         }
       )
     }
+    swarmResult.findings = applyLineIgnores(swarmResult.findings, annotationSummary.ignoredLines)
 
     if (swarmResult.fallbackStats) {
       const fs = swarmResult.fallbackStats
@@ -334,6 +337,14 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                 customAgents: customAgentDefs,
                 agentCount: config.swarm.agentCount,
                 economyMode: config.swarm.economyMode,
+                projectRoot: baseTempDir,
+                noSynthesis: true,
+                softTokenLimit: config.swarm.economyMode
+                  ? Math.min(6000, config.swarm.softTokenLimit)
+                  : config.swarm.softTokenLimit,
+                hardChunkLimit: config.swarm.economyMode
+                  ? Math.min(3000, config.swarm.hardChunkLimit)
+                  : config.swarm.hardChunkLimit,
                 signal: opts.signal,
                 onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
                   console.log(theme.dim(`  [base] Conflict: ${sideA} vs ${sideB} in ${filePath}`))

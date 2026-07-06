@@ -57,8 +57,7 @@ function escapeHtml(text: string): string {
 
 function renderCategoryScoreHtml(
   category: ScoreCategory,
-  score: number,
-  findingCount: number
+  score: number
 ): string {
   const safeScore = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0
   const color = getScoreColor(safeScore)
@@ -272,10 +271,9 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
   const timestamp = ctx.config?.runTimestamp ?? new Date().toISOString()
   const score = ctx.score.score
   const grade = scoreGrade(score)
-  const gradeClass = getScoreGradeClass(score)
 
   const categoryScoresHtml = ctx.score.breakdown.categories
-    .map((c) => renderCategoryScoreHtml(c.category, c.score, c.findingCount))
+    .map((c) => renderCategoryScoreHtml(c.category, c.score))
     .join('\n')
 
   const priorityFixesHtml = ctx.synthesis.priorityFixes
@@ -426,8 +424,10 @@ export function startLocalServer(
     res.end(html)
   })
 
-  htmlServer.on('error', (err: any) => {
+  htmlServer.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
+      htmlServer = null
+      if (serverTimeout) { clearTimeout(serverTimeout); serverTimeout = null }
       console.log(`Palade report server port ${port} is already in use. Opening file directly...`)
       if (options.openBrowser !== false) {
         // Fallback to opening the local file URI if the server can't start

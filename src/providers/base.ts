@@ -84,7 +84,7 @@ export async function fetchWithRetry(
         // 8s backoff ceiling would retry inside the server's window and burn
         // every attempt on guaranteed 429s.
         const delayMs = isNaN(parsed)
-          ? Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS)
+          ? Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS) * (0.5 + Math.random() * 0.5)
           : Math.min(parsed, 60_000)
         await sleep(delayMs, externalSignal)
         continue
@@ -98,7 +98,10 @@ export async function fetchWithRetry(
       }
       lastError = err instanceof Error ? err : new Error(String(err))
       if (attempt < retries) {
-        await sleep(Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS), externalSignal)
+        await sleep(
+          Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS) * (0.5 + Math.random() * 0.5),
+          externalSignal
+        )
       }
     }
   }

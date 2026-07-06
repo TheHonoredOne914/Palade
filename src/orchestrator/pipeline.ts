@@ -5,10 +5,10 @@ import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
 import type { ScopeOptions, CodeChunk, FileManifest } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
-import { chunkFiles, estimateTokens, splitLargeChunk, CHARS_PER_TOKEN, MAX_TOKENS } from '../ingestion/chunker.js'
+import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../ingestion/contextPacks.js'
-import { buildAnnotationSummary } from '../ingestion/annotationParser.js'
+import { buildAnnotationSummary, applyLineIgnores } from '../ingestion/annotationParser.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
 import { estimateTotalTokens } from './scheduler.js'
 import { runSwarm } from './swarm.js'
@@ -177,7 +177,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       // keyword index's content mapping.
       activeChunks[i] = {
         ...chunk,
-        content: contextPrefix + chunk.content,
+        contextPrefix,
         tokenCount: estimateTokens(contextPrefix + chunk.content),
       }
     }
@@ -265,22 +265,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     triageManifests
   )
 
-  // Apply line-level `@palade ignore` annotations: suppress findings whose
-  // line range overlaps with an ignored line. The previous implementation only
-  // checked `lineStart` against a 2-line window, which missed findings that
-  // span across ignored lines but don't start on them.
-  if (annotationSummary.ignoredLines.length > 0) {
-    const norm = (p: string) => p.replace(/^\.?\/+/, '')
-    result.findings = result.findings.filter((f) => {
-      if (!f.filePath || f.lineStart === undefined) return true
-      return !annotationSummary.ignoredLines.some(
-        (il) =>
-          norm(il.filePath) === norm(f.filePath!) &&
-          f.lineStart! <= il.startLine + 1 &&
-          (f.lineEnd ?? f.lineStart!) >= il.startLine
-      )
-    })
-  }
+  result.findings = applyLineIgnores(result.findings, annotationSummary.ignoredLines)
 
   return result
 }

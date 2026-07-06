@@ -2,7 +2,7 @@ import * as readline from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 
 export async function askQuestion(query: string): Promise<string> {
-  if (process.env.PALADE_TUI === 'true') {
+  if (process.env.PALADE_TUI) {
     console.warn('[prompt] Readline blocked under TUI')
     return ''
   }

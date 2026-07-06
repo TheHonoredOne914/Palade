@@ -14,7 +14,7 @@ import { mergeFindings } from './merger.js'
 import { scheduleBatches } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
 import { detectConflicts, arbitrateConflict, saveDecision, type Conflict, type Verdict } from './verdict.js'
-import { ReviewCancelledError, AuthError } from '../errors/types.js'
+import { ReviewCancelledError, AuthError, SwarmTimeoutError } from '../errors/types.js'
 
 // Providers don't expose a structured status/code field on thrown errors —
 // they're plain Errors with the status baked into the message string (see
@@ -268,6 +268,13 @@ export async function runSwarm(
     }
   }
 
+  const elapsed = Date.now() - startTime
+  const timeoutMs = options.timeoutMs ?? 600_000
+  const completedCount = Object.keys(agentTimings).length
+  if (completedCount < agents.length && elapsed >= timeoutMs * 0.9) {
+    throw new SwarmTimeoutError(completedCount, agents.length, timeoutMs)
+  }
+
   const crossAgentFindings: CrossAgentFinding[] = memory.crossReference()
   const mergedFindings: AgentFinding[] = mergeFindings(memory.getAll())
 
@@ -433,18 +440,20 @@ export async function runSwarm(
     }
   }
 
-  try {
-    options.onSynthesisStart?.()
-    const synthStart = Date.now()
-    synthesis = await analyzeSynthesis(finalFindings, crossAgentFindings, context)
-    options.onSynthesisComplete?.(Date.now() - synthStart)
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error(String(err))
-    if (isFatalAuthError(error)) {
-      throw error
-    }
+  if (!options.noSynthesis) {
+    try {
+      options.onSynthesisStart?.()
+      const synthStart = Date.now()
+      synthesis = await analyzeSynthesis(finalFindings, crossAgentFindings, context)
+      options.onSynthesisComplete?.(Date.now() - synthStart)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      if (isFatalAuthError(error)) {
+        throw error
+      }
 
-    console.warn(chalk.red(`⚠ Synthesis failed: ${error.message}`))
+      console.warn(chalk.red(`⚠ Synthesis failed: ${error.message}`))
+    }
   }
 
   return {

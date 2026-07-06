@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import crypto from 'node:crypto'
-import { readdir, readFile } from 'node:fs/promises'
+import { readdir, readFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import chalk from 'chalk'
 import { z } from 'zod'
@@ -334,8 +334,15 @@ ${verdict.losing_side}
 ${verdict.confidence}%
 `
 
+  const MAX_DECISIONS = 100
   const dir = join(projectRoot, '.palade', 'decisions')
   await mkdir(dir, { recursive: true })
+  const existingFiles = await readdir(dir).catch(() => [] as string[])
+  const mdFiles = existingFiles.filter((f) => f.endsWith('.md'))
+  if (mdFiles.length >= MAX_DECISIONS) {
+    const toDelete = mdFiles.sort().slice(0, mdFiles.length - MAX_DECISIONS + 1)
+    await Promise.all(toDelete.map((f) => unlink(join(dir, f)).catch(() => {})))
+  }
   const filepath = join(dir, `${slug}.md`)
   await writeFile(filepath, markdown, 'utf-8')
 

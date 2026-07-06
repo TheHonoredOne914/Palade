@@ -393,7 +393,6 @@ export function App({
           value={inputValue}
           onChange={handleChange}
           onSubmit={handleSubmit}
-          onHistoryNav={handleHistoryNav}
           isRunning={status === 'running'}
         />
       )}
