@@ -1,6 +1,6 @@
 import chalk from 'chalk'
 import type { CodeChunk } from '../ingestion/types.js'
-import { getProvider } from '../providers/router.js'
+import { getProvider, type ProviderRole } from '../providers/router.js'
 import {
   type AgentFinding,
   type AgentContext,
@@ -161,7 +161,8 @@ export class CombinedAnalyzer implements IAgent {
     signal?: AbortSignal
   ): Promise<AgentFinding[]> {
     try {
-      const provider = getProvider('primary')
+      const providerName = (context.providerName as ProviderRole) ?? 'primary'
+      const provider = getProvider(providerName)
       const systemPrompt = buildSystemPrompt(
         buildCombinedSystemPrompt(this.domains, context),
         context,
@@ -171,7 +172,7 @@ export class CombinedAnalyzer implements IAgent {
       // A single call has to fit findings for every domain, so the output
       // budget must scale with how many domains are combined into it — a flat
       // cap starves runs with more domains and truncates the JSON array.
-      const maxTokens = Math.max(8192, this.domains.length * 1500)
+      const maxTokens = Math.max(8192, this.domains.length * 1500, chunks.length * 1000)
       const response = await provider.complete({
         systemPrompt,
         userPrompt,

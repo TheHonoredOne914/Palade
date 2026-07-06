@@ -79,6 +79,7 @@ export async function watchCommand(opts: {
   const MAX_ACCUMULATED_FILES = 200
   let sweepQueue: string[] = []
   const urgentQueue: string[] = []
+  const urgentSet = new Set<string>()
   let loopTimer: ReturnType<typeof setTimeout> | null = null
   let currentSweepController: AbortController | null = null
 
@@ -228,6 +229,7 @@ export async function watchCommand(opts: {
 
       if (isUrgent) {
         nextFile = urgentQueue.shift()
+        if (nextFile) urgentSet.delete(nextFile)
         // Deduplicate from sweep queue and push to back
         if (isContinuous && nextFile) {
           sweepQueue = sweepQueue.filter((f) => f !== nextFile)
@@ -284,6 +286,14 @@ export async function watchCommand(opts: {
     awaitWriteFinish: { stabilityThreshold: 300 },
   })
 
+  watcher.on('unlink', (path: string) => {
+    const timer = debounceTimers.get(path)
+    if (timer) {
+      clearTimeout(timer)
+      debounceTimers.delete(path)
+    }
+  })
+
   watcher.on('change', (path: string) => {
     const existing = debounceTimers.get(path)
     if (existing) clearTimeout(existing)
@@ -295,7 +305,8 @@ export async function watchCommand(opts: {
         // produces forward-slash paths, so normalise before passing as scope.
         const normalizedPath = path.split('\\').join('/')
 
-        if (!urgentQueue.includes(normalizedPath)) {
+        if (!urgentSet.has(normalizedPath)) {
+          urgentSet.add(normalizedPath)
           urgentQueue.push(normalizedPath)
         }
 

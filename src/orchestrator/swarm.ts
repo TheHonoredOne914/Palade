@@ -376,6 +376,7 @@ export async function runSwarm(
           } as any,
         }
         const verdict = {
+          is_conflict: true,
           decision: decisionStr,
           tradeoff_accepted: tradeoffStr,
           confidence: Number.isNaN(parseInt(confidenceStr, 10)) ? 50 : parseInt(confidenceStr, 10),

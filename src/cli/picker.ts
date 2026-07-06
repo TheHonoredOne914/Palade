@@ -10,7 +10,7 @@ export async function launchPicker(
   }
 
   if (!process.stdin.isTTY) {
-    console.error('  --pick requires an interactive terminal.')
+    console.log('  --pick requires an interactive terminal.')
     return []
   }
 

@@ -1,5 +1,4 @@
 import type { AgentFinding, AgentName, Severity } from '../agents/base.js'
-import type { CodeChunk } from '../ingestion/types.js'
 import type { SynthesisResult } from '../agents/synthesis.js'
 import type { TargetDefinition } from '../targets/schema.js'
 import type { CustomAgentDefinition } from '../agents/custom/schema.js'
@@ -7,12 +6,6 @@ import type { CustomAgentDefinition } from '../agents/custom/schema.js'
 export interface ResolvedTarget {
   definition: TargetDefinition
   resolvedPaths: string[]
-}
-
-export interface ScheduledBatch {
-  agentName: AgentName
-  chunks: CodeChunk[]
-  estimatedTokens: number
 }
 
 export interface SwarmResult {

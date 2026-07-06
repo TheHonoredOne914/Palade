@@ -1,36 +1,13 @@
 import chalk from 'chalk'
 import { theme } from './theme.js'
+import { ASCII_ART, GRADIENT } from './asciiArt.js'
 
 export interface BannerOptions {
   version: string
   quiet?: boolean
 }
 
-const ASCII_ART = [
-  '██████╗  █████╗ ██╗      █████╗ ██████╗ ███████╗',
-  '██╔══██╗██╔══██╗██║     ██╔══██╗██╔══██╗██╔════╝',
-  '██████╔╝███████║██║     ███████║██║  ██║█████╗  ',
-  '██╔═══╝ ██╔══██║██║     ██╔══██║██║  ██║██╔══╝  ',
-  '██║     ██║  ██║██║     ██║  ██║██║  ██║██║     ',
-  '██║     ██║  ██║██║     ██║  ██║██║  ██║██║     ',
-  '██║     ██║  ██║███████╗██║  ██║██████╔╝███████╗',
-  '╚═╝     ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═════╝ ╚══════╝',
-]
-
-const GRADIENT = [
-  '#FF3366',
-  '#FF4E5B',
-  '#FF6950',
-  '#FF8446',
-  '#FFA03B',
-  '#FFBB30',
-  '#FFD626',
-  '#F9F871',
-]
-
 function renderAscii(): void {
-  const termWidth = process.stdout.columns || 80
-  const longest = Math.max(...ASCII_ART.map((l) => l.length))
   const centered = ASCII_ART.map((line) => {
     // Left align it slightly off edge to match TUI paddingX={2}
     return '  ' + line
@@ -50,7 +27,6 @@ export function printBanner(opts: BannerOptions): void {
 
   const creditRaw = 'by Carren Mathew'
   const versionRaw = `v${opts.version}`
-  const termWidth = process.stdout.columns || 80
   const asciiWidth = Math.max(...ASCII_ART.map((l) => l.length)) + 2 // +2 for left padding
 
   // Align "By Carren Mathew" to the right of the ASCII art, similar to TUI

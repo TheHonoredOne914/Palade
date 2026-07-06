@@ -179,16 +179,31 @@ export async function initCommand(opts?: {
   try {
     const { loadConfig } = await import('../../config/loader.js')
     const config = await loadConfig()
-    console.log(chalk.cyan(`\nProviders initialized:`))
-    console.log(chalk.gray(`  Primary:   ${config.swarm.primary}`))
-    console.log(chalk.gray(`  Synthesis: ${config.swarm.synthesis}`))
+    const configuredProviders = Object.entries(config.providers ?? {}).filter(
+      ([, p]) => (p as { apiKey?: string }).apiKey
+    )
+    if (configuredProviders.length === 0) {
+      console.log(chalk.yellow(`\n⚠ No API keys detected.`))
+      console.log(
+        chalk.dim(
+          `   Set environment variables like GROQ_API_KEY or add apiKey to palade.config.ts`
+        )
+      )
+    } else {
+      console.log(chalk.cyan(`\nProviders initialized (${configuredProviders.length}):`))
+      for (const [name] of configuredProviders) {
+        console.log(chalk.gray(`  ◆ ${name}`))
+      }
+      console.log(chalk.gray(`  Primary:   ${config.swarm.primary}`))
+      console.log(chalk.gray(`  Synthesis: ${config.swarm.synthesis}`))
+    }
   } catch (e) {
     // ignore if config fails to load
   }
 
   console.log(`
 Next steps:
-  1. Add your API keys to .palade/palade.config.ts or set env vars
+  1. Add your API keys to .palade/palade.config.ts or set env vars (if not done yet)
   2. Run: npx palade review
 `)
 }

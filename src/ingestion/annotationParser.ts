@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import type { Annotation, FileManifest, CodeChunk } from './types.js'
-import type { AnnotationSummary } from '../agents/base.js'
+import type { AnnotationSummary, AgentFinding } from '../agents/base.js'
 
 const REVIEW_RE = /\/\/\s*@palade\s+review\s*:\s*(.+)/i
 const FOCUS_RE = /\/\/\s*@palade\s+focus\s*:\s*(.+)/i
@@ -145,4 +145,21 @@ export function buildAnnotationSummary(
   }
 
   return { reviewRequests, focusRequests, ignoredFiles, ignoredLines }
+}
+
+export function applyLineIgnores(
+  findings: AgentFinding[],
+  ignoredLines: { filePath: string; startLine: number }[]
+): AgentFinding[] {
+  if (ignoredLines.length === 0) return findings
+  const norm = (p: string) => p.replace(/^\.?\/+/, '')
+  return findings.filter((f) => {
+    if (!f.filePath || f.lineStart === undefined) return true
+    return !ignoredLines.some(
+      (il) =>
+        norm(il.filePath) === norm(f.filePath!) &&
+        f.lineStart! <= il.startLine + 1 &&
+        (f.lineEnd ?? f.lineStart!) >= il.startLine
+    )
+  })
 }
