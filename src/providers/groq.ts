@@ -106,7 +106,11 @@ export class GroqProvider implements IProvider {
         throw new Error(`Groq daily limit exceeded. ${body.slice(0, 200)}`)
       }
       if (res.status === 401 || res.status === 403) {
-        throw new AuthError(`Groq error ${res.status}: ${body.slice(0, 200)}`, res.status, this.name)
+        throw new AuthError(
+          `Groq error ${res.status}: ${body.slice(0, 200)}`,
+          res.status,
+          this.name
+        )
       }
       throw new Error(`Groq error ${res.status}: ${body.slice(0, 200)}`)
     }

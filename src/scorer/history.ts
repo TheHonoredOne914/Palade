@@ -74,7 +74,8 @@ export function parseHistoryEntries(raw: string): ScoreHistoryEntry[] {
 
       entries.push({
         timestamp: obj.timestamp as string,
-        runId: typeof obj.runId === 'string' ? obj.runId : obj.runId != null ? String(obj.runId) : '',
+        runId:
+          typeof obj.runId === 'string' ? obj.runId : obj.runId != null ? String(obj.runId) : '',
         score: obj.score as number,
         breakdown,
         delta: typeof obj.delta === 'number' && Number.isFinite(obj.delta) ? obj.delta : 0,

@@ -20,10 +20,7 @@ export function parseFile(
   return parseFileAsync(absolutePath, isHashComment)
 }
 
-async function parseFileAsync(
-  absolutePath: string,
-  isHashComment: boolean
-): Promise<Annotation[]> {
+async function parseFileAsync(absolutePath: string, isHashComment: boolean): Promise<Annotation[]> {
   let content: string
   try {
     content = await readFile(absolutePath, 'utf-8')

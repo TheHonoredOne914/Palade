@@ -127,9 +127,7 @@ export class AgentMemory {
           .sort((a, b) => SEVERITY_PENALTY[b.severity] - SEVERITY_PENALTY[a.severity])
           .map((f) => f.title)
           .slice(0, 3)
-        const lines = clusterFindings
-          .map((f) => f.lineStart!)
-          .sort((a, b) => a - b)
+        const lines = clusterFindings.map((f) => f.lineStart!).sort((a, b) => a - b)
         const locLabel =
           lines[0] === lines[lines.length - 1]
             ? `${filePath}:${lines[0]}`

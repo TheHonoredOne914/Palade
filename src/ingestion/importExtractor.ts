@@ -4,8 +4,7 @@ const TS_JS_EXTENSION = /\.(tsx?|mtsx?|jsx?|mjs|cjs)$/
 
 // Fallback regex used for non-JS/TS languages (or if AST parsing throws).
 // Matches `import ... from '...'`, bare `import '...'`, and `require('...')`.
-const FALLBACK_IMPORT_REGEX =
-  /(?:\bimport(?:[\s\S]*?from\s+)?|\brequire\()\s*['"]([^'"]+)['"]/g
+const FALLBACK_IMPORT_REGEX = /(?:\bimport(?:[\s\S]*?from\s+)?|\brequire\()\s*['"]([^'"]+)['"]/g
 
 /**
  * Extract raw import/require specifier strings from source code.
