@@ -66,7 +66,7 @@ export function Autocomplete({
         }))
         .slice(0, 5)
 
-      if (!isTargetFlag && cmd === 'review' && '.'.includes(query)) {
+      if (!isTargetFlag && cmd === 'review' && (query === '' || query === '.')) {
         return [
           { text: '/review .', display: '/review .', desc: 'Full codebase review' },
           ...targetMatches,

@@ -73,6 +73,11 @@ export async function fetchWithRetry(
     try {
       const res = await fetch(url, init)
       if (res.status === 429 && attempt < retries) {
+        // Peek body before retrying — daily-limit errors are not transient.
+        const body = await res.clone().text()
+        if (isDailyLimitError(body)) {
+          return res
+        }
         const retryAfter = res.headers.get('retry-after')
         const parsed = retryAfter != null ? parseInt(retryAfter, 10) * 1000 : NaN
         // Honor an explicit server Retry-After up to 60s — clamping it to the

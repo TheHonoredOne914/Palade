@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import chalk from 'chalk'
 import { readFileSync, existsSync } from 'node:fs'
 import { join, sep } from 'node:path'
 import { config as dotenvConfig } from 'dotenv'
@@ -189,6 +190,9 @@ export async function loadConfig(): Promise<PaladeConfig> {
 
   const rawSwarm = (rawObj.swarm as Record<string, unknown>) ?? {}
 
+  const rawOutput = (rawObj.output as Record<string, unknown>) ?? {}
+  const rawScore = (rawObj.score as Record<string, unknown>) ?? {}
+
   const merged = {
     ...DEFAULT_CONFIG,
     ...envConfig,
@@ -200,6 +204,16 @@ export async function loadConfig(): Promise<PaladeConfig> {
       primary: rawSwarm.primary ?? defaultPrimary,
       synthesis: rawSwarm.synthesis ?? defaultSynthesis,
     },
+    output: {
+      ...((DEFAULT_CONFIG.output as Record<string, unknown>) ?? {}),
+      ...(((envConfig as Record<string, unknown>).output as Record<string, unknown>) ?? {}),
+      ...rawOutput,
+    },
+    score: {
+      ...((DEFAULT_CONFIG.score as Record<string, unknown>) ?? {}),
+      ...(((envConfig as Record<string, unknown>).score as Record<string, unknown>) ?? {}),
+      ...rawScore,
+    },
     providers: mergedProviders,
   } as Record<string, unknown>
 
@@ -210,6 +224,20 @@ export async function loadConfig(): Promise<PaladeConfig> {
       formatZodError(result.error),
       'schema',
       'Check your palade.config.ts against the schema.'
+    )
+  }
+
+  // Warn if allConfiguredProviders is empty but the user has a swarm.primary set
+  if (
+    allConfiguredProviders.length === 0 &&
+    result.data.swarm.primary !== 'opencode-zen' &&
+    result.data.swarm.primary !== 'ollama'
+  ) {
+    console.warn(
+      chalk.yellow(
+        `[config] swarm.primary is "${result.data.swarm.primary}" but no API key is configured for any provider. ` +
+          'Set the provider\'s env var (e.g. GROQ_API_KEY) or configure apiKey in palade.config.ts.'
+      )
     )
   }
 

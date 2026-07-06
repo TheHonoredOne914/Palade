@@ -54,6 +54,17 @@ function isRetryableMessage(message: string): boolean {
   return RETRYABLE_KEYWORDS.some((keyword) => lower.includes(keyword))
 }
 
+function isFatalAuthError(err: Error): boolean {
+  const msg = err.message.toLowerCase()
+  return (
+    /\b401\b/.test(msg) ||
+    /\b403\b/.test(msg) ||
+    msg.includes('unauthorized') ||
+    msg.includes('invalid api key') ||
+    msg.includes('authentication')
+  )
+}
+
 function isFatalMessage(message: string): boolean {
   const lower = message.toLowerCase()
   return FATAL_KEYWORDS.some((keyword) => lower.includes(keyword))
@@ -93,7 +104,7 @@ function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[]
         break
       case 'nvidia':
         instances.push(
-          new NvidiaProvider(key, cfg.model, cfg.baseUrl, cfg.maxConcurrency, cfg.timeoutMs)
+          new NvidiaProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
         )
         break
       case 'openrouter':
@@ -202,12 +213,15 @@ export class FallbackProvider implements IProvider {
         return response
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
+        // Aborted calls must propagate instantly — don't iterate fallbacks.
+        if (lastError.name === 'AbortError') throw lastError
         attempts.push({ provider: provider.name, finalError: lastError.message })
 
         const isFatal = isFatalMessage(lastError.message)
+        const fatalAuth = isFatalAuthError(lastError)
         const isRetryable = isRetryableMessage(lastError.message)
 
-        if (isFatal) {
+        if (isFatal || fatalAuth) {
           // A chain entry may be a ProviderPool backing several keys/instances
           // that share this same provider name. A fatal error on ONE member
           // (e.g. that key's daily quota) must not take down its healthy
@@ -278,6 +292,8 @@ function getFallbackChain(excludeName: string): IProvider[] {
 }
 
 export async function initRouter(config: PaladeConfig): Promise<ProviderAssignment> {
+  assignment = null
+  allProviders = new Map()
   allProviders = instantiateProviders(config.providers)
 
   const names = Array.from(allProviders.keys())

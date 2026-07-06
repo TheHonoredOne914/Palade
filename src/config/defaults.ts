@@ -17,6 +17,9 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     includeSkills: true,
     specPath: DEFAULT_SPEC_PATH,
     constitutionPath: DEFAULT_CONSTITUTION_PATH,
+    maxConcurrentBatches: 5,
+    softTokenLimit: 16000,
+    hardChunkLimit: 6000,
   },
   output: {
     dir: '.palade/reports',
@@ -29,17 +32,13 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     badge: true,
     badgePath: DEFAULT_BADGE_PATH,
     maxHistoryEntries: 50,
-    severityWeights: {
-      critical: 10,
-      high: 5,
-      medium: 2,
-      low: 0.5,
-      info: 0,
-    },
-    crossAgentPenalty: {
-      critical: 15,
-      high: 8,
-      medium: 4,
+    severityWeights: { ...SEVERITY_PENALTY },
+    crossAgentPenalty: { ...DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS },
+    complexityPenalties: {
+      lowThreshold: 5,
+      lowFactor: 0.5,
+      highThreshold: 20,
+      highFactor: 1.5,
     },
   },
 }

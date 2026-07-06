@@ -1,150 +1,91 @@
-import React, { useState, useCallback } from 'react'
-import { Box, Text } from 'ink'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-
-export const PROVIDERS = [
-  { id: 'groq', label: 'Groq', env: 'GROQ_API_KEY', model: 'llama-3.3-70b-versatile' },
-  { id: 'cerebras', label: 'Cerebras', env: 'CEREBRAS_API_KEY', model: 'gpt-oss-120b' },
-  {
-    id: 'openrouter',
-    label: 'OpenRouter',
-    env: 'OPENROUTER_API_KEY',
-    model: 'deepseek/deepseek-chat-v3-0324:free',
-  },
-  { id: 'nvidia', label: 'NVIDIA', env: 'NVIDIA_API_KEY', model: 'minimaxai/minimax-m3' },
-  {
-    id: 'opencode-zen',
-    label: 'OpenCode Zen',
-    env: 'OPENCODE_ZEN_API_KEY',
-    model: 'deepseek-v4-flash-free',
-  },
-] as const
-
-export type ProviderId = (typeof PROVIDERS)[number]['id']
-
-/**
- * Same precedence as config/loader.ts loadConfig(): `.palade/palade.config.ts`
- * first, then the root-level file. Writing to a different file than the one
- * loadConfig reads would save keys that are never picked up.
- */
-function resolveConfigPath(projectRoot: string): string {
-  const nested = join(projectRoot, '.palade', 'palade.config.ts')
-  if (existsSync(nested)) return nested
-  return join(projectRoot, 'palade.config.ts')
-}
-
-export async function readCurrentKeys(projectRoot: string): Promise<Record<string, string>> {
-  const configPath = resolveConfigPath(projectRoot)
-  const result: Record<string, string> = {}
-  if (!existsSync(configPath)) return result
-  try {
-    const content = await readFile(configPath, 'utf-8')
-    for (const p of PROVIDERS) {
-      // Use a non-backtracking pattern to avoid ReDoS: match the provider
-      // section non-greedily up to apiKey, but constrain to a reasonable line
-      // count instead of using [\s\S]{0,200}? which can cause catastrophic
-      // backtracking on long config files.
-      const re = new RegExp(`${p.id}[^]*?apiKey:\\s*['"]([^'"]+)['"]`)
-      const m = content.match(re)
-      if (m) result[p.id] = m[1]
-    }
-  } catch {
-    /* ignore */
-  }
-  return result
-}
-
-async function saveApiKey(
-  projectRoot: string,
-  providerId: ProviderId,
-  apiKey: string
-): Promise<void> {
-  const configPath = resolveConfigPath(projectRoot)
-  const paladeDir = join(projectRoot, '.palade')
-  if (!existsSync(paladeDir)) await mkdir(paladeDir, { recursive: true })
-
-  let content: string
-  try {
-    content = await readFile(configPath, 'utf-8')
-  } catch {
-    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: { primary: '${providerId}', synthesis: '${providerId}', agentCount: 6 },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
-  }
-
-  const prov = PROVIDERS.find((p) => p.id === providerId)!
-  const escapedApiKey = apiKey
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-  // Same non-backtracking approach as the read regex above
-  const updateRe = new RegExp(`(${providerId}[^]*?apiKey:\\s*)(['"])([^'"]*)(\\2)`)
-  if (updateRe.test(content)) {
-    content = content.replace(
-      updateRe,
-      (_match, p1, p2, _p3, p4) => `${p1}${p2}${escapedApiKey}${p4}`
-    )
-  } else {
-    const provBlock = `    '${providerId}': {\n      apiKey: '${escapedApiKey}',\n      model: '${prov.model}'\n    },\n`
-    const providersRe = /(providers\s*:\s*\{)/
-    if (providersRe.test(content)) {
-      content = content.replace(providersRe, `$1\n${provBlock}`)
-    } else {
-      const exportRe = /(export default\s*\{)/
-      if (!exportRe.test(content)) {
-        throw new Error(`Could not find an insertion point in ${configPath}`)
-      }
-      content = content.replace(exportRe, `$1\n  providers: {\n${provBlock}  },`)
-    }
-  }
-
-  await writeFile(configPath, content, 'utf-8')
-
-  // Also persist to .env so dotenv picks it up on next launch, and inject
-  // into process.env immediately so this TUI session uses the key right away.
-  const envKey = prov.env
-  process.env[envKey] = apiKey
-
-  const envPath = join(projectRoot, '.env')
-  let envContent = ''
-  try {
-    envContent = await readFile(envPath, 'utf-8')
-  } catch {
-    // file doesn't exist yet, start fresh
-  }
-  const envLineRe = new RegExp(`^${envKey}=.*$`, 'm')
-  const newLine = `${envKey}=${apiKey}`
-  if (envLineRe.test(envContent)) {
-    envContent = envContent.replace(envLineRe, newLine)
-  } else {
-    envContent = envContent ? `${envContent.trimEnd()}\n${newLine}\n` : `${newLine}\n`
-  }
-  await writeFile(envPath, envContent, 'utf-8')
-}
+import { saveApiKey, saveConfigValue, PROVIDERS } from '../../config/apiKey.js'
+import type { ProviderId } from '../../config/apiKey.js'
+import { fetchModels } from '../../config/models.js'
 
 interface SettingsPanelProps {
   projectRoot: string
   /** Controlled: parent drives provider selection via Tab */
   selectedProviderIdx: number
   existingKeys: Record<string, string>
+  swarmPrimary: string
+  swarmSynthesis: string
+  currentModels: Record<string, string>
   onKeySaved: (providerId: string, key: string) => void
   onClose: (message?: string) => void
+}
+
+type FocusField = 'key' | 'model' | 'swarm' | 'synthesis'
+const FOCUS_ORDER: FocusField[] = ['key', 'model', 'swarm', 'synthesis']
+
+interface ModelFetchState {
+  status: 'loading' | 'loaded'
+  models: string[]
 }
 
 export function SettingsPanel({
   projectRoot,
   selectedProviderIdx,
   existingKeys,
+  swarmPrimary,
+  swarmSynthesis,
+  currentModels,
   onKeySaved,
   onClose,
 }: SettingsPanelProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
+  const [manualModelInput, setManualModelInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
+  const [focusField, setFocusField] = useState<FocusField>('key')
+  const [modelState, setModelState] = useState<Record<string, ModelFetchState>>({})
+  const [modelIdx, setModelIdx] = useState(0)
+  const [localModels, setLocalModels] = useState<Record<string, string>>(currentModels)
+
+  const [swarmIdx, setSwarmIdx] = useState(() => Math.max(0, PROVIDERS.findIndex((p) => p.id === swarmPrimary)))
+  const [synthesisIdx, setSynthesisIdx] = useState(() =>
+    Math.max(0, PROVIDERS.findIndex((p) => p.id === swarmSynthesis))
+  )
+  const [localSwarmPrimary, setLocalSwarmPrimary] = useState(swarmPrimary)
+  const [localSwarmSynthesis, setLocalSwarmSynthesis] = useState(swarmSynthesis)
+
   const selectedProvider = PROVIDERS[selectedProviderIdx]
+  const modelEntry = modelState[selectedProvider.id]
+  const hasFetchedModels = modelEntry?.status === 'loaded' && modelEntry.models.length > 0
+
+  // Fetch the live model list the first time the model field is focused for a
+  // given provider tab. Skipped when there is no key yet — an unauthenticated
+  // call would just fail, so go straight to the manual-entry fallback.
+  useEffect(() => {
+    if (focusField !== 'model') return
+    const id = selectedProvider.id
+    const cached = modelState[id]
+    if (cached) {
+      // Already fetched for this provider (maybe on an earlier tab visit) —
+      // resync the selected index to its current model instead of carrying
+      // over whatever index was selected for the previously focused tab.
+      if (cached.status === 'loaded' && cached.models.length > 0) {
+        const current = localModels[id]
+        const idx = current ? cached.models.indexOf(current) : -1
+        setModelIdx(idx >= 0 ? idx : 0)
+      }
+      return
+    }
+    const key = existingKeys[id]
+    if (!key) return
+    setModelState((prev) => ({ ...prev, [id]: { status: 'loading', models: [] } }))
+    fetchModels(id as ProviderId, key).then((models) => {
+      setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models } }))
+      if (models.length > 0) {
+        const current = localModels[id]
+        const idx = current ? models.indexOf(current) : -1
+        setModelIdx(idx >= 0 ? idx : 0)
+      }
+    })
+  }, [focusField, selectedProviderIdx, existingKeys, modelState, localModels])
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -169,6 +110,95 @@ export function SettingsPanel({
     [projectRoot, selectedProvider, onClose, onKeySaved]
   )
 
+  const saveModel = useCallback(
+    async (model: string) => {
+      if (!model.trim()) return
+      try {
+        await saveConfigValue(projectRoot, `providers.${selectedProvider.id}.model`, model.trim())
+        setLocalModels((prev) => ({ ...prev, [selectedProvider.id]: model.trim() }))
+        setManualModelInput('')
+        setMessage(`✓ ${selectedProvider.label} model set to ${model.trim()}`)
+      } catch (err) {
+        setMessage(`✗ Error: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+    [projectRoot, selectedProvider]
+  )
+
+  const saveSwarmRole = useCallback(
+    async (role: 'primary' | 'synthesis', providerId: string) => {
+      try {
+        await saveConfigValue(projectRoot, `swarm.${role}`, providerId)
+        if (role === 'primary') setLocalSwarmPrimary(providerId)
+        else setLocalSwarmSynthesis(providerId)
+        setMessage(`✓ swarm.${role} set to ${providerId}`)
+      } catch (err) {
+        setMessage(`✗ Error: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+    [projectRoot]
+  )
+
+  useInput((_input, key) => {
+    if (key.upArrow) {
+      setFocusField((f) => FOCUS_ORDER[(FOCUS_ORDER.indexOf(f) - 1 + FOCUS_ORDER.length) % FOCUS_ORDER.length])
+      return
+    }
+    if (key.downArrow) {
+      setFocusField((f) => FOCUS_ORDER[(FOCUS_ORDER.indexOf(f) + 1) % FOCUS_ORDER.length])
+      return
+    }
+    if (focusField === 'model' && hasFetchedModels) {
+      const models = modelEntry!.models
+      if (key.leftArrow) {
+        setModelIdx((i) => Math.max(0, i - 1))
+        return
+      }
+      if (key.rightArrow) {
+        setModelIdx((i) => Math.min(models.length - 1, i + 1))
+        return
+      }
+      if (key.return) {
+        saveModel(models[modelIdx])
+        return
+      }
+    }
+    if (focusField === 'swarm') {
+      if (key.leftArrow) {
+        setSwarmIdx((i) => (i - 1 + PROVIDERS.length) % PROVIDERS.length)
+        return
+      }
+      if (key.rightArrow) {
+        setSwarmIdx((i) => (i + 1) % PROVIDERS.length)
+        return
+      }
+      if (key.return) {
+        saveSwarmRole('primary', PROVIDERS[swarmIdx].id)
+        return
+      }
+    }
+    if (focusField === 'synthesis') {
+      if (key.leftArrow) {
+        setSynthesisIdx((i) => (i - 1 + PROVIDERS.length) % PROVIDERS.length)
+        return
+      }
+      if (key.rightArrow) {
+        setSynthesisIdx((i) => (i + 1) % PROVIDERS.length)
+        return
+      }
+      if (key.return) {
+        saveSwarmRole('synthesis', PROVIDERS[synthesisIdx].id)
+        return
+      }
+    }
+  })
+
+  const modelDisplay = hasFetchedModels
+    ? modelEntry!.models[modelIdx]
+    : modelEntry?.status === 'loading'
+      ? 'loading models…'
+      : localModels[selectedProvider.id] ?? '(type a model id below)'
+
   return (
     <Box
       flexDirection="column"
@@ -183,7 +213,9 @@ export function SettingsPanel({
         <Text color="#FF3366" bold>
           ⚙ PALADE SETTINGS
         </Text>
-        <Text color="#6B7280">— Tab to switch provider · Enter to save · empty Enter to close</Text>
+        <Text color="#6B7280">
+          — Tab: provider · ↑↓: field · ←→: value · Enter: save · empty Enter: close
+        </Text>
       </Box>
 
       {/* Provider tabs */}
@@ -215,9 +247,12 @@ export function SettingsPanel({
         </Text>
       </Box>
 
-      {/* Current key status */}
+      {/* API key field */}
       <Box marginBottom={1}>
-        <Text color="#9CA3AF"> {selectedProvider.label} key: </Text>
+        <Text color={focusField === 'key' ? '#FF3366' : '#9CA3AF'} bold={focusField === 'key'}>
+          {focusField === 'key' ? '▸ ' : '  '}
+          {selectedProvider.label} key:{' '}
+        </Text>
         {existingKeys[selectedProvider.id] ? (
           <Text color="#10B981">{'●●●●●● …' + existingKeys[selectedProvider.id].slice(-6)}</Text>
         ) : (
@@ -226,23 +261,80 @@ export function SettingsPanel({
           </Text>
         )}
       </Box>
-
-      {/* Key input */}
-      <Box borderStyle="single" borderColor="#FF3366" paddingX={1} marginBottom={1}>
-        <Text color="#FF3366" bold>
-          key ›{' '}
-        </Text>
-        <Box flexGrow={1}>
-          <TextInput
-            value={inputValue}
-            onChange={setInputValue}
-            onSubmit={handleSubmit}
-            placeholder={
-              saving ? 'Saving...' : `Paste ${selectedProvider.label} API key, press Enter to save`
-            }
-            mask="*"
-          />
+      {focusField === 'key' && (
+        <Box borderStyle="single" borderColor="#FF3366" paddingX={1} marginBottom={1}>
+          <Text color="#FF3366" bold>
+            key ›{' '}
+          </Text>
+          <Box flexGrow={1}>
+            <TextInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSubmit={handleSubmit}
+              placeholder={
+                saving ? 'Saving...' : `Paste ${selectedProvider.label} API key, press Enter to save`
+              }
+              mask="*"
+            />
+          </Box>
         </Box>
+      )}
+
+      {/* Model field */}
+      <Box marginBottom={1}>
+        <Text color={focusField === 'model' ? '#FF3366' : '#9CA3AF'} bold={focusField === 'model'}>
+          {focusField === 'model' ? '▸ ' : '  '}
+          Model: {'< '}
+        </Text>
+        <Text color={focusField === 'model' ? '#00D0FF' : '#D1D5DB'}>{modelDisplay}</Text>
+        <Text color={focusField === 'model' ? '#FF3366' : '#9CA3AF'}>{' >'}</Text>
+      </Box>
+      {focusField === 'model' && !hasFetchedModels && modelEntry?.status !== 'loading' && (
+        <Box borderStyle="single" borderColor="#FF3366" paddingX={1} marginBottom={1}>
+          <Text color="#FF3366" bold>
+            model ›{' '}
+          </Text>
+          <Box flexGrow={1}>
+            <TextInput
+              value={manualModelInput}
+              onChange={setManualModelInput}
+              onSubmit={saveModel}
+              placeholder="Type a model id, press Enter to save"
+            />
+          </Box>
+        </Box>
+      )}
+
+      {/* Swarm provider field */}
+      <Box marginBottom={1}>
+        <Text color={focusField === 'swarm' ? '#FF3366' : '#9CA3AF'} bold={focusField === 'swarm'}>
+          {focusField === 'swarm' ? '▸ ' : '  '}
+          Swarm provider: {'< '}
+        </Text>
+        <Text color={focusField === 'swarm' ? '#00D0FF' : '#D1D5DB'}>{PROVIDERS[swarmIdx].label}</Text>
+        <Text color={focusField === 'swarm' ? '#FF3366' : '#9CA3AF'}>{' >'}</Text>
+        <Text color="#4B5563" dimColor>
+          {'  (current: '}
+          {localSwarmPrimary}
+          {')'}
+        </Text>
+      </Box>
+
+      {/* Synthesis provider field */}
+      <Box marginBottom={1}>
+        <Text color={focusField === 'synthesis' ? '#FF3366' : '#9CA3AF'} bold={focusField === 'synthesis'}>
+          {focusField === 'synthesis' ? '▸ ' : '  '}
+          Synthesis provider: {'< '}
+        </Text>
+        <Text color={focusField === 'synthesis' ? '#00D0FF' : '#D1D5DB'}>
+          {PROVIDERS[synthesisIdx].label}
+        </Text>
+        <Text color={focusField === 'synthesis' ? '#FF3366' : '#9CA3AF'}>{' >'}</Text>
+        <Text color="#4B5563" dimColor>
+          {'  (current: '}
+          {localSwarmSynthesis}
+          {')'}
+        </Text>
       </Box>
 
       {/* Env hint */}

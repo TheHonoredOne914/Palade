@@ -5,7 +5,7 @@ import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
 import type { ScopeOptions, CodeChunk, FileManifest } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
-import { chunkFiles, estimateTokens } from '../ingestion/chunker.js'
+import { chunkFiles, estimateTokens, splitLargeChunk, CHARS_PER_TOKEN, MAX_TOKENS } from '../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../ingestion/contextPacks.js'
 import { buildAnnotationSummary } from '../ingestion/annotationParser.js'
@@ -59,7 +59,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       })
     }
     console.log(
-      `[pipeline] Symbol-scoped: 1 symbol → 1 chunk (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
+      `[pipeline] Symbol-scoped: ${scope.symbolChunks.length} symbol(s) → ${chunks.length} chunk(s) (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
     )
   } else {
     manifests = await walkProject(opts.projectRoot, scope)
@@ -181,6 +181,14 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
         tokenCount: estimateTokens(contextPrefix + chunk.content),
       }
     }
+  })
+
+  // Re-chunk any active chunk that grew beyond MAX_TOKENS after context injection.
+  activeChunks = activeChunks.flatMap((chunk) => {
+    if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > MAX_TOKENS) {
+      return splitLargeChunk(chunk)
+    }
+    return [chunk]
   })
 
   const context = { ...opts.context }

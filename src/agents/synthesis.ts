@@ -233,7 +233,7 @@ export async function synthesize(
       .complete({
         systemPrompt,
         userPrompt,
-        maxTokens: 4096,
+        maxTokens: Math.max(4096, maxSynthesisFindings * 80),
         signal: controller.signal,
       })
       .catch((err: unknown): null => {

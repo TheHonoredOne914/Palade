@@ -158,7 +158,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               quiet: false,
               tui: true,
               dryRun: hasFlag('dry-run'),
-              economy: hasFlag('economy'),
+              economy: hasFlag('economy') ? true : undefined,
               exhaustive: hasFlag('exhaustive'),
               strictTriage: hasFlag('strict-triage'),
               noVerdict: hasFlag('no-verdict'),

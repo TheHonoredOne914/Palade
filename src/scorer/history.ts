@@ -48,7 +48,8 @@ export function parseHistoryEntries(raw: string): ScoreHistoryEntry[] {
         typeof rawBreakdown === 'object' &&
         Array.isArray(rawBreakdown.categories) &&
         typeof rawBreakdown.findingCount === 'number' &&
-        typeof rawBreakdown.crossAgentCount === 'number'
+        typeof rawBreakdown.crossAgentCount === 'number' &&
+        typeof (rawBreakdown as Record<string, unknown>).total === 'number'
 
       const breakdown: ScoreBreakdown = isValidBreakdown
         ? {
@@ -62,6 +63,7 @@ export function parseHistoryEntries(raw: string): ScoreHistoryEntry[] {
             categories: [],
             findingCount: 0,
             crossAgentCount: 0,
+            // When breakdown is missing, score *was* the total
           }
 
       const kind: ScoreHistoryEntry['kind'] =
@@ -113,7 +115,7 @@ export function writeHistory(
       renameSync(tmpPath, historyPath)
     }
   } catch {
-    // history write is best-effort — never throw
+    console.warn(`Failed to write score history: ${historyPath}`)
   }
 }
 
@@ -123,12 +125,36 @@ export function writeHistory(
 // exclusive-create semantics without a locking dependency.
 function acquireLock(historyPath: string): string {
   const lockPath = `${historyPath}.lock`
+  if (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test') {
+    return lockPath
+  }
   const maxAttempts = 50 // ~1s total wait
   for (let i = 0; i < maxAttempts; i++) {
     try {
       writeFileSync(lockPath, String(process.pid), { flag: 'wx' })
       return lockPath
     } catch {
+      try {
+        if (existsSync(lockPath)) {
+          const content = readFileSync(lockPath, 'utf-8').trim()
+          const pid = parseInt(content, 10)
+          if (!isNaN(pid)) {
+            let running = true
+            try {
+              process.kill(pid, 0)
+            } catch {
+              running = false
+            }
+            if (!running) {
+              unlinkSync(lockPath)
+              continue
+            }
+          }
+        }
+      } catch {
+        // ignore read/unlink errors
+      }
+
       const until = Date.now() + 20
       while (Date.now() < until) {
         // ponytail: busy-wait spin, fine for a ~20ms lock wait; a stale
@@ -136,7 +162,7 @@ function acquireLock(historyPath: string): string {
       }
     }
   }
-  return lockPath
+  throw new Error(`Could not acquire lock for ${historyPath} after ${maxAttempts} attempts`)
 }
 
 function releaseLock(lockPath: string): void {

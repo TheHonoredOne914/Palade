@@ -13,7 +13,7 @@ import { AgentMemory } from './memory.js'
 import { mergeFindings } from './merger.js'
 import { scheduleBatches } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
-import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
+import { detectConflicts, arbitrateConflict, saveDecision, type Conflict, type Verdict } from './verdict.js'
 import { ReviewCancelledError, AuthError } from '../errors/types.js'
 
 // Providers don't expose a structured status/code field on thrown errors —
@@ -106,19 +106,8 @@ export async function runSwarm(
 
   // Run agents concurrently — rate-limit handling is done at the provider
   // layer (fetchWithRetry + FallbackProvider), not serialized here.
-  // batchTokenLimit isn't (yet) a formal field on SwarmOptions — read it
-  // defensively so callers can override the scheduler's default soft
-  // token limit without requiring a type change here.
-  const rawBatchTokenLimit = (options as SwarmOptions & { batchTokenLimit?: number })
-    .batchTokenLimit
-  const batchTokenLimit =
-    typeof rawBatchTokenLimit === 'number' && rawBatchTokenLimit > 0
-      ? rawBatchTokenLimit
-      : undefined
-
-  // Batch scheduling is deterministic — compute once, not per-agent
-  const batches = scheduleBatches(reviewChunks, batchTokenLimit)
-
+  // Batch scheduling uses options.softTokenLimit / options.hardChunkLimit
+  // per-agent — computed inside each agent's map callback.
   const agentPromises = agents.map(async (agent) => {
     const agentStart = Date.now()
     options.onAgentStart?.(agent.name)
@@ -296,49 +285,57 @@ export async function runSwarm(
 
   if (!options.noVerdict) {
     const conflicts = detectConflicts(memory.getAll())
-    for (const conflict of conflicts) {
-      // detectConflicts already pre-filters out pairs the keyword tally is
-      // confident actually agree — everything it returns (including
-      // 'low'-confidence entries: near-ties, one-sided, or no keyword signal
-      // at all) is a real candidate. Let the LLM's own `is_conflict` field
-      // below make the final call instead of gating on the tally here.
-      options.onVerdictDetected?.(
-        conflict.filePath,
-        conflict.sideA.agentName,
-        conflict.sideB.agentName
-      )
 
-      const verdict = (await arbitrateConflict(conflict, context, options.signal)) as any
-      if (verdict && verdict.is_conflict) {
-        options.onVerdictDecided?.(verdict.decision, verdict.confidence)
-
-        // Save to ADR — a failed disk write must not abort the review
-        let savedNote = ''
-        try {
-          const slug = await saveDecision(projectRoot, conflict, verdict)
-          savedNote = `\nSaved as: ${slug}.md`
-        } catch (err) {
-          console.warn(
-            chalk.yellow(
-              `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
-            )
+    // Arbitrate conflicts with a concurrency cap to avoid overwhelming the LLM
+    // provider while still gaining some parallelism over a pure sequential loop.
+    const CONCURRENCY = 3
+    const results: Array<{ verdict: Verdict | null; conflict: Conflict }> = []
+    for (let i = 0; i < conflicts.length; i += CONCURRENCY) {
+      const batch = conflicts.slice(i, i + CONCURRENCY)
+      const batchResults = await Promise.all(
+        batch.map(async (conflict) => {
+          options.onVerdictDetected?.(
+            conflict.filePath,
+            conflict.sideA.agentName,
+            conflict.sideB.agentName
           )
-        }
-
-        // Inject into findings for synthesis
-        finalFindings.push({
-          id: crypto.randomUUID(),
-          agentName: 'architecture',
-          title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
-          description: `Decision: ${verdict.decision}\nTradeoff: ${verdict.tradeoff_accepted}${savedNote}`,
-          filePath: conflict.filePath,
-          lineStart: conflict.lineStart,
-          lineEnd: conflict.lineEnd,
-          severity: 'info',
-          tags: ['architectural-decision'],
-          scorePenalty: 0,
+          const verdict = await arbitrateConflict(conflict, context, options.signal)
+          return { verdict, conflict }
         })
+      )
+      results.push(...batchResults)
+    }
+
+    for (const { verdict, conflict } of results) {
+      if (!verdict?.is_conflict) continue
+      options.onVerdictDecided?.(verdict.decision, verdict.confidence)
+
+      // Save to ADR — a failed disk write must not abort the review
+      let savedNote = ''
+      try {
+        const slug = await saveDecision(projectRoot, conflict, verdict)
+        savedNote = `\nSaved as: ${slug}.md`
+      } catch (err) {
+        console.warn(
+          chalk.yellow(
+            `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+          )
+        )
       }
+
+      // Inject into findings for synthesis
+      finalFindings.push({
+        id: crypto.randomUUID(),
+        agentName: 'architecture',
+        title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
+        description: `Decision: ${verdict.decision}\nTradeoff: ${verdict.tradeoff_accepted}${savedNote}`,
+        filePath: conflict.filePath,
+        lineStart: conflict.lineStart,
+        lineEnd: conflict.lineEnd,
+        severity: 'info',
+        tags: ['architectural-decision'],
+        scorePenalty: 0,
+      })
     }
   }
 
@@ -380,26 +377,32 @@ export async function runSwarm(
         const winningLensMatch = decisionStr.match(/(\w+) says/i)
         const winningLens = winningLensMatch ? winningLensMatch[1] : 'CombinedAgent(Winner)'
 
-        const fakeConflict = {
+        const fakeConflict: Conflict = {
           filePath: finding.filePath || 'unknown',
           lineStart: finding.lineStart || 0,
           lineEnd: finding.lineEnd || 0,
+          confidence: 'low',
           sideA: {
-            agentName: winningLens as any,
+            id: crypto.randomUUID(),
+            agentName: winningLens as AgentName,
             title: `[VERDICT DECISION] ${finding.title.replace('[VERDICT] ', '')}`,
             description: decisionStr,
             severity: 'info',
             tags: [],
-          } as any,
+            scorePenalty: 0,
+          },
           sideB: {
-            agentName: losingStr as any,
+            id: crypto.randomUUID(),
+            agentName: losingStr as AgentName,
             title: `[REJECTED] ${finding.title.replace('[VERDICT] ', '')}`,
             description: `This lens was rejected in favor of the tradeoff.`,
             severity: 'info',
             tags: [],
-          } as any,
+            scorePenalty: 0,
+          },
         }
-        const verdict = {
+        const verdict: Verdict = {
+          is_conflict: true,
           decision: decisionStr,
           tradeoff_accepted: tradeoffStr,
           confidence: Number.isNaN(parseInt(confidenceStr, 10)) ? 50 : parseInt(confidenceStr, 10),
@@ -416,7 +419,7 @@ export async function runSwarm(
           )
         } else {
           try {
-            const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
+            const slug = await saveDecision(projectRoot, fakeConflict, verdict)
             finding.description += `\nSaved as: ${slug}.md`
           } catch (err) {
             console.warn(

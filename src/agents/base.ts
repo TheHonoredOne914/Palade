@@ -148,6 +148,7 @@ function salvageTruncatedArray(text: string): unknown[] {
   let inString = false
   let escaped = false
   let objStart = -1
+  let skipped = 0
 
   for (let i = arrayStart + 1; i < text.length; i++) {
     const ch = text[i]
@@ -178,7 +179,7 @@ function salvageTruncatedArray(text: string): unknown[] {
         try {
           salvaged.push(JSON.parse(candidate))
         } catch {
-          // Incomplete/malformed fragment — skip it.
+          skipped++
         }
         objStart = -1
       }
@@ -190,6 +191,11 @@ function salvageTruncatedArray(text: string): unknown[] {
     }
   }
 
+  if (skipped > 0) {
+    console.warn(
+      chalk.yellow(`  salvageTruncatedArray: skipped ${skipped} malformed fragment(s)`)
+    )
+  }
   return salvaged
 }
 
@@ -408,27 +414,20 @@ export async function verifyCriticalHighFindings(
   agentName: AgentName,
   signal?: AbortSignal
 ): Promise<AgentFinding[]> {
-  const validatedFindings: AgentFinding[] = []
-  for (const f of findings) {
-    if (f.severity === 'critical' || f.severity === 'high') {
-      const codeChunk = f.filePath
-        ? chunks.find(
-            (c) =>
+  const verifyOne = async (f: AgentFinding): Promise<AgentFinding | null> => {
+    const codeChunk = f.filePath
+      ? chunks.find(
+          (c) =>
               c.filePath === f.filePath &&
               (typeof f.lineStart !== 'number' ||
                 (c.startLine <= f.lineStart && c.endLine >= f.lineStart))
-          )
-        : undefined
-      if (!codeChunk) {
-        // No matching chunk to verify against — keep the finding rather
-        // than running a self-consistency check with no code to look at.
-        validatedFindings.push(f)
-        continue
-      }
-      try {
-        const verifyResponse = await provider.complete({
-          systemPrompt: 'You are an expert verifier. Reply strictly YES or NO.',
-          userPrompt: `Does the following code ACTUALLY contain this vulnerability/issue?
+        )
+      : undefined
+    if (!codeChunk) return f
+    try {
+      const verifyResponse = await provider.complete({
+        systemPrompt: 'You are an expert verifier. Reply strictly YES or NO.',
+        userPrompt: `Does the following code ACTUALLY contain this vulnerability/issue?
 Issue: ${f.title} - ${f.description}
 
 Code:
@@ -437,34 +436,39 @@ ${codeChunk.content}
 \`\`\`
 
 Reply strictly YES or NO.`,
-          maxTokens: 10,
-          temperature: 0,
-          signal,
-        })
-        if (verifyResponse.content.trim().toUpperCase() === 'YES') {
-          validatedFindings.push(f)
-        } else {
-          console.log(
-            chalk.yellow(
-              `  [${agentName}] Dropped false positive during self-consistency check: ${f.title}`
-            )
-          )
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') throw err
-        // If validation fails (e.g. timeout), err on the side of caution and keep it
-        console.warn(
-          chalk.yellow(
-            `  [${agentName}] Self-consistency check failed (${err instanceof Error ? err.message : String(err)}). Keeping finding: ${f.title}`
-          )
-        )
-        validatedFindings.push(f)
+        maxTokens: 10,
+        temperature: 0,
+        signal,
+      })
+      if (verifyResponse.content.trim().toUpperCase() === 'YES') {
+        return f
       }
-    } else {
-      validatedFindings.push(f)
+      console.log(
+        chalk.yellow(
+          `  [${f.agentName}] Dropped false positive during self-consistency check: ${f.title}`
+        )
+      )
+      return null
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') throw err
+      console.warn(
+        chalk.yellow(
+          `  [${f.agentName}] Self-consistency check failed (${err instanceof Error ? err.message : String(err)}). Keeping finding: ${f.title}`
+        )
+      )
+      return f
     }
   }
-  return validatedFindings
+
+  const validated = await Promise.all(
+    findings.map((f) => {
+      if (f.severity === 'critical' || f.severity === 'high') {
+        return verifyOne(f)
+      }
+      return Promise.resolve(f)
+    })
+  )
+  return validated.filter((v): v is AgentFinding => v !== null)
 }
 
 /**

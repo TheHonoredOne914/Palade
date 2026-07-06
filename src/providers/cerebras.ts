@@ -107,7 +107,7 @@ export class CerebrasProvider implements IProvider {
       if (res.status === 401 || res.status === 403) {
         throw new AuthError(`Cerebras error ${res.status}: ${body}`, res.status, this.name)
       }
-      throw new Error(`Cerebras error ${res.status}: ${body}`)
+      throw new Error(`Cerebras error ${res.status}: ${body.slice(0, 200)}`)
     }
 
     const data: OpenAIResponse = (await res.json()) as OpenAIResponse

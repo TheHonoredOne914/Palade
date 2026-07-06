@@ -5,7 +5,10 @@ export function sanitizeForLog(obj: Record<string, unknown>): Record<string, unk
     Object.entries(obj).map(([k, v]) => {
       const isSecret = REDACTED_KEYS.some((rk) => k.toLowerCase().includes(rk))
       if (isSecret) return [k, '[REDACTED]']
-      if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      if (Array.isArray(v)) {
+        return [k, v.map((e) => (e !== null && typeof e === 'object' ? sanitizeForLog(e as Record<string, unknown>) : e))]
+      }
+      if (v !== null && typeof v === 'object') {
         return [k, sanitizeForLog(v as Record<string, unknown>)]
       }
       return [k, v]

@@ -28,6 +28,7 @@ export interface Conflict {
 }
 
 export interface Verdict {
+  is_conflict: boolean
   decision: string
   tradeoff_accepted: string
   confidence: number
@@ -216,6 +217,7 @@ If they DO conflict, resolve the conflict by making a definitive architectural d
 
 Respond ONLY with JSON matching this schema:
 {
+  "is_conflict": true,
   "decision": "string (what to actually do)",
   "tradeoff_accepted": "string (the explicit cost being accepted)",
   "confidence": 85,
@@ -258,12 +260,31 @@ Please provide your verdict.`
       signal,
     })
     const rawOutput = response.content ?? ''
-    const jsonMatch = rawOutput.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/s)
-    const jsonStr = jsonMatch?.[0] ?? rawOutput
+    const trimmed = rawOutput.trim()
+    let jsonStr = trimmed
+    try {
+      JSON.parse(trimmed)
+    } catch {
+      // Brace-depth parser as fallback for preamble
+      let depth = 0
+      let start = -1
+      for (let i = 0; i < trimmed.length; i++) {
+        if (trimmed[i] === '{') {
+          if (depth === 0) start = i
+          depth++
+        } else if (trimmed[i] === '}') {
+          depth--
+          if (depth === 0 && start !== -1) {
+            jsonStr = trimmed.slice(start, i + 1)
+            break
+          }
+        }
+      }
+    }
     const parsed = JSON.parse(jsonStr)
     return VerdictSchema.parse(parsed)
   } catch (err) {
-    console.error(
+    console.warn(
       chalk.yellow(
         `\n[verdict] Arbitration failed for ${conflict.filePath}: ${err instanceof Error ? err.message : String(err)}`
       )

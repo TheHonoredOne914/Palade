@@ -4,7 +4,9 @@ import { Header } from './components/Header.js'
 import { OutputLineItem } from './components/OutputPane.js'
 import { CommandInput } from './components/CommandInput.js'
 import { Autocomplete } from './components/Autocomplete.js'
-import { SettingsPanel, PROVIDERS, readCurrentKeys } from './components/SettingsPanel.js'
+import { SettingsPanel } from './components/SettingsPanel.js'
+import { PROVIDERS, readCurrentKeys } from '../config/apiKey.js'
+import { loadConfig } from '../config/loader.js'
 import { useOutputStream } from './hooks/useOutputStream.js'
 import { useCommandRunner } from './hooks/useCommandRunner.js'
 import { useCommandHistory } from './hooks/useCommandHistory.js'
@@ -100,6 +102,11 @@ export function App({
   const [showSettings, setShowSettings] = useState(false)
   const [settingsProviderIdx, setSettingsProviderIdx] = useState(0)
   const [settingsKeys, setSettingsKeys] = useState<Record<string, string>>({})
+  const [settingsSwarmPrimary, setSettingsSwarmPrimary] = useState(config?.swarm?.primary ?? 'opencode-zen')
+  const [settingsSwarmSynthesis, setSettingsSwarmSynthesis] = useState(
+    config?.swarm?.synthesis ?? 'nvidia'
+  )
+  const [settingsModels, setSettingsModels] = useState<Record<string, string>>({})
   const [liveProviderStatus, setLiveProviderStatus] = useState(providerStatus)
   const [noProviderDismissed, setNoProviderDismissed] = useState(false)
 
@@ -108,10 +115,21 @@ export function App({
   const abortRef = useRef<AbortController | null>(null)
 
   const openSettings = useCallback(() => {
-    // Load existing keys when opening
-    readCurrentKeys(projectRoot)
-      .then((keys) => {
+    // Re-read keys + config fresh each time so edits from a prior settings
+    // session (or `palade settings --set`) show up without a restart.
+    Promise.all([readCurrentKeys(projectRoot), loadConfig().catch(() => undefined)])
+      .then(([keys, freshConfig]) => {
         setSettingsKeys(keys)
+        if (freshConfig) {
+          setSettingsSwarmPrimary(freshConfig.swarm.primary)
+          setSettingsSwarmSynthesis(freshConfig.swarm.synthesis)
+          const models: Record<string, string> = {}
+          for (const p of PROVIDERS) {
+            const m = (freshConfig.providers as Record<string, { model?: string }>)[p.id]?.model
+            if (m) models[p.id] = m
+          }
+          setSettingsModels(models)
+        }
         setShowSettings(true)
       })
       .catch(() => setShowSettings(true))
@@ -140,7 +158,7 @@ export function App({
   useEffect(() => {
     if (noProvider) {
       readCurrentKeys(projectRoot)
-        .then((keys) => {
+        .then((keys: Record<string, string>) => {
           setSettingsKeys(keys)
           setShowSettings(true)
         })
@@ -283,6 +301,9 @@ export function App({
             projectRoot={projectRoot}
             selectedProviderIdx={settingsProviderIdx}
             existingKeys={settingsKeys}
+            swarmPrimary={settingsSwarmPrimary}
+            swarmSynthesis={settingsSwarmSynthesis}
+            currentModels={settingsModels}
             onKeySaved={handleKeySaved}
             onClose={handleSettingsClose}
           />

@@ -72,7 +72,7 @@ export function calculateCategoryScore(
   for (const f of findings) {
     if (f.agentName === agentName) {
       let fPenalty = penaltyFor(f, severityWeights)
-      if (agentName === 'maintainability' && typeof f.complexity === 'number') {
+      if (agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
         if (f.complexity < 5)
           fPenalty *= 0.5 // simple function, minor maintainability issue
         else if (f.complexity > 20) fPenalty *= 1.5 // complex function, major maintainability issue
@@ -94,13 +94,20 @@ export function calculateCategoryScore(
   }
 }
 
+export const MAINTAINABILITY_AGENT = 'maintainability'
+
 export function calculateTotalPenalty(
   findings: AgentFinding[],
   severityWeights: SeverityWeights = SEVERITY_PENALTY
 ): number {
   let penalty = 0
   for (const f of findings) {
-    penalty += penaltyFor(f, severityWeights)
+    let fPenalty = penaltyFor(f, severityWeights)
+    if (f.agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
+      if (f.complexity < 5) fPenalty *= 0.5
+      else if (f.complexity > 20) fPenalty *= 1.5
+    }
+    penalty += fPenalty
   }
   return penalty
 }

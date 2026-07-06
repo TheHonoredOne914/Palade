@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { setNestedValue } from './settings.js'
+import { setNestedValue } from '../../config/apiKey.js'
 
 const SAMPLE = `export default {
   providers: {

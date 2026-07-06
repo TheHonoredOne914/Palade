@@ -16,8 +16,8 @@ export class NvidiaProvider implements IProvider {
   constructor(
     apiKey: string,
     model = 'minimaxai/minimax-m3',
-    baseUrl = 'https://integrate.api.nvidia.com/v1',
     maxConcurrency = 8,
+    baseUrl = 'https://integrate.api.nvidia.com/v1',
     deadlineMs: number = DEFAULT_DEADLINE_MS
   ) {
     this.apiKey = apiKey
@@ -97,7 +97,7 @@ export class NvidiaProvider implements IProvider {
       if (res.status === 401 || res.status === 403) {
         throw new AuthError(`NVIDIA error ${res.status}: ${body}`, res.status, this.name)
       }
-      throw new Error(`NVIDIA error ${res.status}: ${body}`)
+      throw new Error(`NVIDIA error ${res.status}: ${body.slice(0, 200)}`)
     }
 
     const data = (await res.json()) as Record<string, unknown>

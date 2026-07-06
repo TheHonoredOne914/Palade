@@ -5,7 +5,7 @@ import ts from 'typescript'
 export const MAX_TOKENS = 6000
 const CHUNK_LINES = 150
 const CHUNK_OVERLAP = 30
-const CHARS_PER_TOKEN = 4
+export const CHARS_PER_TOKEN = 4
 const MAX_TREE_SITTER_LINES = 3000
 const MAX_CHUNKS_PER_FILE = 50
 const MAX_TREE_SITTER_BYTES = 300_000
@@ -18,7 +18,7 @@ function makeChunkId(filePath: string, startLine: number, endLine: number): stri
   return `${filePath}:${startLine}-${endLine}`
 }
 
-function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
+export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
   if (chunk.tokenCount <= MAX_TOKENS) return [chunk]
 
   const lines = chunk.content.split('\n')
@@ -220,7 +220,7 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
       language: language as CodeChunk['language'],
     })
 
-    startIdx = endIdx
+    startIdx = Math.max(startIdx + 1, endIdx - CHUNK_OVERLAP)
   }
 
   return chunks

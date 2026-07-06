@@ -9,6 +9,7 @@ let _originalError: typeof console.error
 let _originalClear: typeof console.clear
 
 export function mountOutputAdapter(append: AppendFn): void {
+  if (_append) return
   _append = append
   _originalLog = console.log
   _originalWarn = console.warn
