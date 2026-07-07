@@ -31,6 +31,11 @@ export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
     const startLine = chunk.startLine + startIdx
     const endLine = chunk.startLine + endIdx - 1
 
+    // Attach the parent's injected context only to the first sub-chunk so the
+    // agent still sees it; repeating it on every sub-chunk would blow the token
+    // limit that triggered the split in the first place.
+    const isFirst = chunks.length === 0
+    const contextPrefix = isFirst ? chunk.contextPrefix : undefined
     chunks.push({
       id: makeChunkId(chunk.filePath, startLine, endLine),
       filePath: chunk.filePath,
@@ -38,16 +43,15 @@ export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
       endLine,
       content: subContent,
       symbolName: chunk.symbolName,
-      // Carry over the parent chunk's contextPrefix so re-splitting a chunk
-      // that grew past MAX_TOKENS after context injection doesn't silently
-      // drop the injected keyword/dependency context.
-      contextPrefix: chunk.contextPrefix,
-      tokenCount: estimateTokens((chunk.contextPrefix ?? '') + subContent),
+      tokenCount: contextPrefix
+        ? estimateTokens(contextPrefix + subContent)
+        : estimateTokens(subContent),
       language: chunk.language,
       // Preserve the parent chunk's complexity so sub-chunks split off from
       // a complex function keep its complexity-based scoring multiplier
       // instead of losing it once split.
       complexity: chunk.complexity,
+      contextPrefix,
     })
 
     if (endIdx >= lines.length) break

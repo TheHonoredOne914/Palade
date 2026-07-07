@@ -1,6 +1,10 @@
 import type { ProviderId } from './apiKey.js'
 
 // OpenAI-compatible /models endpoint for every cloud provider except ollama.
+// These URLs intentionally duplicate the defaults in each provider adapter
+// (groq.ts, cerebras.ts, etc.). Importing from those adapters here would
+// create a circular dependency (config → providers → config), so we keep a
+// separate copy.
 export const PROVIDER_BASE_URLS: Record<Exclude<ProviderId, 'ollama'>, string> = {
   groq: 'https://api.groq.com/openai/v1',
   cerebras: 'https://api.cerebras.ai/v1',

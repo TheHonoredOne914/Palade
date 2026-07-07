@@ -98,6 +98,25 @@ export function isDailyLimitError(body: string): boolean {
   return FATAL_QUOTA_KEYWORDS.some((keyword) => lower.includes(keyword))
 }
 
+/**
+ * Returns the new maxTokens to retry with when a model silently consumed its
+ * full output budget but returned empty content (thinking-heavy models do this).
+ * Returns null when no retry is warranted. Shared by every HTTP adapter so
+ * the retry logic is one place, not five.
+ */
+export function emptyContentRetryTokens(
+  content: string,
+  outputTokens: number,
+  maxTokens: number,
+  attempt: number
+): number | null {
+  if (content.trim().length === 0 && outputTokens > 0 && attempt < 2) {
+    const newMax = Math.min(maxTokens * 2, 32768)
+    return newMax > maxTokens ? newMax : null
+  }
+  return null
+}
+
 export async function fetchWithRetry(
   url: string,
   init: RequestInit,

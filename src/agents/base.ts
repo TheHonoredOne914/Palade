@@ -91,7 +91,6 @@ export interface AgentContext {
   diffContext?: DiffContext
   annotations?: AnnotationSummary
   modeConfig?: ModeConfig
-  providerName?: string
   /** Optional user-provided architectural/business logic spec */
   spec?: string
   /** The formal constitution with behavioral guidelines for the agents */
@@ -123,7 +122,7 @@ export const SEVERITY_PENALTY: Record<Severity, number> = {
 // findings, so the JSON array gets cut off mid-stream (see
 // salvageTruncatedArray, which exists to patch over exactly this). Scale the
 // budget with batch size using the same shape as combined.ts's
-// `Math.max(8192, domains.length * 1500)`.
+// `Math.max(3000, domains.length * 600)`.
 export function computeMaxTokens(chunkCount: number): number {
   return Math.max(4096, chunkCount * 1000)
 }
@@ -412,7 +411,7 @@ export function buildSystemPrompt(
   return prompt
 }
 
-import { getProvider, type ProviderRole } from '../providers/router.js'
+import { getProvider } from '../providers/router.js'
 import type { IProvider } from '../providers/base.js'
 
 /**
@@ -438,7 +437,12 @@ export async function verifyCriticalHighFindings(
               (c.startLine <= f.lineStart && c.endLine >= f.lineStart))
         )
       : undefined
-    if (!codeChunk) return f
+    if (!codeChunk) {
+      // filePath is set but no chunk matches → most likely a hallucinated file reference;
+      // drop rather than auto-pass a critical/high we can't verify.
+      if (f.filePath) return null
+      return f // no filePath: valid non-location finding, keep it
+    }
     try {
       const verifyResponse = await provider.complete({
         systemPrompt: 'You are an expert verifier. Reply strictly YES or NO.',
@@ -521,8 +525,7 @@ export abstract class BaseSpecialistAgent implements IAgent {
     signal?: AbortSignal
   ): Promise<AgentFinding[]> {
     try {
-      const providerName = (context.providerName as ProviderRole) ?? 'primary'
-      const provider = getProvider(providerName)
+      const provider = getProvider('primary')
       const systemPrompt = buildSystemPrompt(
         this.getSystemPrompt(context),
         context,

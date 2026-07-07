@@ -75,6 +75,13 @@ export async function runSwarm(
     // Ghost mode or heavily filtered modes might only have 1 built-in agent.
     // Combining 1 agent defeats the purpose of economy mode (which is to batch N domains)
     // and just degrades prompt quality. So if <= 1 built-in agent, just run standard mode.
+    if (builtInAgents.length <= 1) {
+      console.warn(
+        chalk.yellow(
+          '⚠ Economy mode requested but only 1 built-in agent active — falling back to standard mode.'
+        )
+      )
+    }
     if (builtInAgents.length > 1) {
       const activeDomains = builtInAgents.map((a) => {
         const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
@@ -338,7 +345,7 @@ export async function runSwarm(
           lineStart: conflict.lineStart,
           lineEnd: conflict.lineEnd,
           severity: 'info',
-          tags: ['architectural-decision'],
+          tags: ['architectural-decision', 'arbitration-verdict'],
           scorePenalty: 0,
         })
       }
@@ -349,7 +356,11 @@ export async function runSwarm(
   // suppress ADR persistence and description mutation here just as it gates the
   // arbitration block above.
   for (const finding of options.noVerdict ? [] : finalFindings) {
-    if (finding.agentName === 'architecture' && finding.title.startsWith('[VERDICT]')) {
+    if (
+      finding.agentName === 'architecture' &&
+      finding.title.startsWith('[VERDICT]') &&
+      !finding.tags.includes('arbitration-verdict')
+    ) {
       // Parse tradeoff out of description. Models sometimes emit a literal
       // backslash-n instead of a real newline inside the JSON string, so
       // split on both.

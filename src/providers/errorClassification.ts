@@ -15,13 +15,5 @@ import { AuthError } from '../errors/types.js'
 // there avoid false positives on unrelated text that merely contains these
 // digits.
 export function isFatalAuthError(err: Error): boolean {
-  if (err instanceof AuthError) return true
-  const msg = err.message.toLowerCase()
-  return (
-    /\b401\b/.test(msg) ||
-    /\b403\b/.test(msg) ||
-    msg.includes('unauthorized') ||
-    msg.includes('invalid api key') ||
-    msg.includes('authentication')
-  )
+  return err instanceof AuthError
 }

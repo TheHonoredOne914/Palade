@@ -242,44 +242,6 @@ export async function walkProject(
 ): Promise<FileManifest[]> {
   const ig = await buildIgnoreFilter(projectRoot)
 
-  // Add default ignores
-  for (const pattern of DEFAULT_IGNORES) {
-    ig.add(pattern)
-  }
-
-  // Try to load .palade/ignore
-  try {
-    let ignoreContent = ''
-    try {
-      ignoreContent = await readFile(join(projectRoot, '.palade', 'ignore'), 'utf-8')
-    } catch {
-      ignoreContent = await readFile(join(projectRoot, '.paladeignore'), 'utf-8')
-    }
-    const customRules = ignoreContent
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith('#'))
-    for (const rule of customRules) {
-      ig.add(rule.replace(/\r/g, ''))
-    }
-  } catch {
-    // .palade/ignore not found — use defaults only
-  }
-
-  // Also load .gitignore if present
-  try {
-    const gitignoreContent = await readFile(join(projectRoot, '.gitignore'), 'utf-8')
-    const gitRules = gitignoreContent
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith('#'))
-    for (const rule of gitRules) {
-      ig.add(rule.replace(/\r/g, ''))
-    }
-  } catch {
-    // .gitignore not found — continue
-  }
-
   // 2. Start walk
   const state = { visitedDirs: new Set<string>(), filesScanned: 0 }
   let manifests = await walkDir(projectRoot, ig, projectRoot, state)

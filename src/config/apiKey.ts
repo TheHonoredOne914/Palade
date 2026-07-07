@@ -255,7 +255,7 @@ export async function saveConfigValue(
   try {
     content = await readFile(configPath, 'utf-8')
   } catch {
-    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: {\n    primary: 'opencode-zen',\n    synthesis: 'nvidia',\n    agentCount: 6\n  },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
+    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: {\n    primary: 'opencode-zen',\n    synthesis: 'nvidia',\n    agentCount: 8\n  },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
   }
 
   content = setNestedValue(content, dotPath, value)
@@ -291,7 +291,7 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
     const content = await readFile(configPath, 'utf-8')
     for (const p of PROVIDERS) {
       if (result[p.id]) continue
-      const re = new RegExp(`${p.id}[\\s\\S]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
+      const re = new RegExp(`${p.id}:\\s*\\{[\\s\\S]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
       const m = content.match(re)
       if (m) result[p.id] = m[1]
     }

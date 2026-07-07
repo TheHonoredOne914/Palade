@@ -34,7 +34,7 @@ describe('Conflict Detector', () => {
     expect(conflicts[0].sideB.agentName).toBe('Performance') // has 'remove', 'fast-path'
   })
 
-  it('ignores overlapping findings if they have the same valence', () => {
+  it('includes overlapping findings even if they have the same valence (LLM decides)', () => {
     const findings: AgentFinding[] = [
       {
         agentName: 'Security',
@@ -59,7 +59,10 @@ describe('Conflict Detector', () => {
     ]
 
     const conflicts = detectConflicts(findings)
-    expect(conflicts.length).toBe(0) // Both are 'harden'
+    // Both are 'harden' valence, but we no longer pre-filter — let the LLM's
+    // is_conflict field make the final call so we don't miss real conflicts that
+    // the keyword tally mis-classified as "agree".
+    expect(conflicts.length).toBe(1)
   })
 
   it('ignores findings from the same agent', () => {

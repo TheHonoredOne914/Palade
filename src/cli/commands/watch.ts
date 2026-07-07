@@ -29,7 +29,15 @@ export async function watchCommand(opts: {
 }): Promise<void> {
   const projectRoot = process.cwd()
   const sensitivity = opts.sensitivity ?? 'medium'
-  const debounceMs = DEBOUNCE_MS[sensitivity] ?? 2000
+  if (!(sensitivity in DEBOUNCE_MS)) {
+    console.error(
+      chalk.red(
+        `Invalid --sensitivity value "${sensitivity}". Valid values: ${Object.keys(DEBOUNCE_MS).join(', ')}`
+      )
+    )
+    throw new CliExitError(1)
+  }
+  const debounceMs = DEBOUNCE_MS[sensitivity]
   const isContinuous = opts.continuous === true
 
   let config
