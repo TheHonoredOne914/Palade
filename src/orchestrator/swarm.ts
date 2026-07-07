@@ -21,6 +21,7 @@ import {
   type Conflict,
   type Verdict,
 } from './verdict.js'
+import { applyLineIgnores } from '../ingestion/annotationParser.js'
 import { ReviewCancelledError, SwarmTimeoutError } from '../errors/types.js'
 
 export async function runSwarm(
@@ -227,7 +228,7 @@ export async function runSwarm(
         // was raised — otherwise the rethrow below skips the memory.record()
         // call further down in this same agent promise, silently losing
         // partial findings from batches that completed fine.
-        memory.record(agent.name, allFindings)
+        memory.record(agent.name, applyLineIgnores(allFindings, options.ignoredLines ?? []))
         throw agentError
       }
 
@@ -239,7 +240,13 @@ export async function runSwarm(
     }
 
     try {
-      memory.record(agent.name, allFindings)
+      // Drop @palade-ignored findings here, before they ever reach memory —
+      // crossReference() and mergeFindings() read straight from memory, and
+      // synthesis runs on their output, so filtering only the final result
+      // (as callers used to) let ignored findings leak into the executive
+      // summary and cross-agent penalties, which carry no per-line info and
+      // can't be filtered after the fact.
+      memory.record(agent.name, applyLineIgnores(allFindings, options.ignoredLines ?? []))
       agentTimings[agent.name] = Date.now() - agentStart
       options.onAgentComplete?.(
         agent.name,

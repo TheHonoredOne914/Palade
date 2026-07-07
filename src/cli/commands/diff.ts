@@ -23,14 +23,15 @@ import { printDiffBanner, printDiffSummary } from '../../reporters/terminal.js'
 import { theme } from '../../ui/theme.js'
 import { loadCustomAgents } from '../../agents/custom/loader.js'
 import { askConfirm } from '../../ui/prompt.js'
-import { buildAnnotationSummary, applyLineIgnores } from '../../ingestion/annotationParser.js'
+import { buildAnnotationSummary } from '../../ingestion/annotationParser.js'
+import { readOptionalProjectDoc } from '../../config/docs.js'
 import { renderBadge, getBadgeData } from '../../scorer/badge.js'
 import type { ScopeOptions } from '../../ingestion/types.js'
 import type { SwarmResult } from '../../orchestrator/types.js'
 import type { AgentContext, AgentFinding, AgentName, DiffContext } from '../../agents/base.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import chalk from 'chalk'
-import { mkdirSync, existsSync, writeFileSync, mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { mkdirSync, existsSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -103,9 +104,22 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     const manifests = await walkProject(projectRoot, scope)
     const chunks = await chunkFiles(manifests)
 
+    // Build the annotation summary before running the swarm (not after) so
+    // @palade-ignored files/lines are excluded from the review itself rather
+    // than filtered out of findings post-hoc — filtering only the final
+    // findings list let ignored content leak into the executive summary and
+    // cross-agent penalties, which can't be filtered after the fact.
+    const annotationSummary = buildAnnotationSummary(manifests, chunks)
+    const ignoredFileSet = new Set(
+      annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, ''))
+    )
+    const activeChunks = chunks.filter(
+      (c) => !ignoredFileSet.has(c.filePath.replace(/^\.?\/+/, ''))
+    )
+
     console.log(
       theme.dim(
-        `  Chunking: ${manifests.length} files → ${chunks.length} chunks (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
+        `  Chunking: ${manifests.length} files → ${activeChunks.length} chunks (~${estimateTotalTokens(activeChunks).toLocaleString()} tokens)`
       )
     )
 
@@ -129,7 +143,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     const context: AgentContext = {
       projectLanguages: (await detectLanguages(projectRoot, scope)).primary,
       totalFiles: manifests.length,
-      totalChunks: chunks.length,
+      totalChunks: activeChunks.length,
       mode: 'standard',
       diffContext,
       includeSkills: config.swarm.includeSkills,
@@ -139,25 +153,21 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     // pipeline (orchestrator/pipeline.ts) injects into AgentContext, so
     // `diff` reviews respect the same project conventions as `review` does.
     const specPath = config.swarm.specPath ?? 'palade.spec.md'
-    const absoluteSpecPath = join(projectRoot, specPath)
-    if (existsSync(absoluteSpecPath)) {
-      try {
-        context.spec = readFileSync(absoluteSpecPath, 'utf-8')
-        console.log(theme.dim(`  Loaded logic spec from ${specPath}`))
-      } catch {
-        console.log(chalk.yellow(`  Failed to read spec file: ${specPath}`))
-      }
+    const specDoc = readOptionalProjectDoc(projectRoot, specPath)
+    if (specDoc.status === 'ok') {
+      context.spec = specDoc.content
+      console.log(theme.dim(`  Loaded logic spec from ${specPath}`))
+    } else if (specDoc.status === 'error') {
+      console.log(chalk.yellow(`  Failed to read spec file: ${specPath}`))
     }
 
     const constitutionPath = config.swarm.constitutionPath ?? '.palade/constitution.md'
-    const absoluteConstitutionPath = join(projectRoot, constitutionPath)
-    if (existsSync(absoluteConstitutionPath)) {
-      try {
-        context.constitution = readFileSync(absoluteConstitutionPath, 'utf-8')
-        console.log(theme.dim(`  Loaded agent constitution from ${constitutionPath}`))
-      } catch {
-        console.log(chalk.yellow(`  Failed to read constitution file: ${constitutionPath}`))
-      }
+    const constitutionDoc = readOptionalProjectDoc(projectRoot, constitutionPath)
+    if (constitutionDoc.status === 'ok') {
+      context.constitution = constitutionDoc.content
+      console.log(theme.dim(`  Loaded agent constitution from ${constitutionPath}`))
+    } else if (constitutionDoc.status === 'error') {
+      console.log(chalk.yellow(`  Failed to read constitution file: ${constitutionPath}`))
     }
 
     const agentCount = config.swarm.agentCount
@@ -166,10 +176,17 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     throwIfAborted(opts.signal)
     console.log(theme.dim('  Starting analysis...'))
 
+    // Triage should rank/consider the same file set the swarm actually
+    // reviews — a manifest for an @palade-ignored file would otherwise still
+    // compete for the token budget even though its chunks are dropped above.
+    const triageManifests = manifests.filter(
+      (m) => !ignoredFileSet.has(m.path.replace(/^\.?\/+/, ''))
+    )
+
     let swarmResult: SwarmResult
     try {
       swarmResult = await runSwarm(
-        chunks,
+        activeChunks,
         context,
         {
           onAgentStart: (name: AgentName): void => {
@@ -211,9 +228,10 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           hardChunkLimit: config.swarm.economyMode
             ? Math.min(3000, config.swarm.hardChunkLimit)
             : config.swarm.hardChunkLimit,
+          ignoredLines: annotationSummary.ignoredLines,
           signal: opts.signal,
         },
-        manifests
+        triageManifests
       )
       console.log(
         theme.success(
@@ -226,20 +244,6 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       )
       throw err
     }
-
-    // Apply the same @palade-ignore annotation filtering that the shared
-    // review pipeline (orchestrator/pipeline.ts) applies, so diff findings
-    // honor ignored files/lines just like `review` does.
-    const annotationSummary = buildAnnotationSummary(manifests, chunks)
-    if (annotationSummary.ignoredFiles.length > 0) {
-      const norm = (p: string) => p.replace(/^\.?\/+/, '')
-      const ignoredFileSet = new Set(annotationSummary.ignoredFiles.map(norm))
-      swarmResult.findings = swarmResult.findings.filter((f: { filePath?: string }) => {
-        if (!f.filePath) return true
-        return !ignoredFileSet.has(norm(f.filePath))
-      })
-    }
-    swarmResult.findings = applyLineIgnores(swarmResult.findings, annotationSummary.ignoredLines)
 
     if (swarmResult.fallbackStats) {
       const fs = swarmResult.fallbackStats

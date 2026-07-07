@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { AgentFinding, AgentContext, IAgent } from '../agents/base.js'
 import type { CodeChunk } from '../ingestion/types.js'
+import { applyLineIgnores } from '../ingestion/annotationParser.js'
+import { AgentMemory } from './memory.js'
 
 // These tests pin down the swarm's per-batch timeout contract: when a batch
 // exceeds options.timeoutMs, the AbortController it created must be aborted so
@@ -132,4 +134,77 @@ describe('swarm per-batch timeout', () => {
     })()
     expect(findings).toEqual([])
   }, 5_000)
+})
+
+// Pins down the fix for the ignore-ordering bug: runSwarm used to filter
+// @palade-ignored lines out of the FINAL findings array, after
+// crossReference() and synthesis had already consumed the unfiltered
+// memory store. crossAgentFindings carries no per-finding line info, so an
+// ignored finding that slipped into a cross-agent cluster could never be
+// filtered out afterward. The fix filters each agent's findings with
+// applyLineIgnores() before they're ever recorded into AgentMemory — this
+// replicates that exact sequence (matching this file's convention of testing
+// the pattern directly rather than mocking runSwarm's module-level deps).
+describe('swarm ignore-ordering', () => {
+  function ignoredFinding(): AgentFinding {
+    return {
+      id: 'f-ignored',
+      agentName: 'security',
+      title: 'Ignored finding',
+      description: 'On a line carrying @palade ignore',
+      severity: 'high',
+      tags: [],
+      scorePenalty: 10,
+      filePath: 'src/a.ts',
+      lineStart: 10,
+      lineEnd: 10,
+    }
+  }
+
+  function otherAgentFindingSameSpot(): AgentFinding {
+    return {
+      id: 'f-other',
+      agentName: 'architecture',
+      title: 'Ignored finding',
+      description: 'A second agent flagging the same ignored line',
+      severity: 'high',
+      tags: [],
+      scorePenalty: 10,
+      filePath: 'src/a.ts',
+      lineStart: 10,
+      lineEnd: 10,
+    }
+  }
+
+  it('keeps an ignored finding out of crossReference() when filtered before recording', () => {
+    const ignoredLines = [{ filePath: 'src/a.ts', startLine: 10 }]
+    const memory = new AgentMemory()
+
+    // This is the fixed sequence: filter each agent's findings before
+    // memory.record(), so crossReference() never sees the ignored finding.
+    memory.record('security', applyLineIgnores([ignoredFinding()], ignoredLines))
+    memory.record('architecture', applyLineIgnores([otherAgentFindingSameSpot()], ignoredLines))
+
+    expect(memory.getAll()).toEqual([])
+    expect(memory.crossReference()).toEqual([])
+  })
+
+  it('demonstrates the old bug: filtering only the merged output after crossReference() leaks the finding', () => {
+    const ignoredLines = [{ filePath: 'src/a.ts', startLine: 10 }]
+    const memory = new AgentMemory()
+
+    // This is the old (buggy) sequence: record raw findings, compute
+    // crossReference() from them, and only filter the flat findings list
+    // afterward — the ignored finding still drives a cross-agent cluster.
+    memory.record('security', [ignoredFinding()])
+    memory.record('architecture', [otherAgentFindingSameSpot()])
+
+    const crossAgentFindings = memory.crossReference()
+    const filteredFindings = applyLineIgnores(memory.getAll(), ignoredLines)
+
+    expect(filteredFindings).toEqual([])
+    // The bug: the ignored finding still produced a cross-agent cluster,
+    // because crossReference() ran before the filter was applied.
+    expect(crossAgentFindings.length).toBeGreaterThan(0)
+  })
 })
