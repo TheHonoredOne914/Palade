@@ -106,10 +106,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       Array.from(chunksByPath.entries()).map(async ([filePath, fileChunks]) => {
         const absolutePath = join(opts.projectRoot, filePath)
         const annotations = await parseFile(absolutePath)
-        const linesOfCode = fileChunks.reduce(
-          (sum, c) => sum + (c.endLine - c.startLine + 1),
-          0
-        )
+        const linesOfCode = fileChunks.reduce((sum, c) => sum + (c.endLine - c.startLine + 1), 0)
         return {
           path: filePath,
           absolutePath,
@@ -165,10 +162,13 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   // for the token budget even though its chunks are dropped from review.
   const triageManifests = manifests.filter((m) => !ignoredSet.has(m.path.replace(/^\.?\/+/, '')))
 
-  // Line-level ignores are applied to FINDINGS after the swarm runs (see
-  // below), not by dropping chunks here — removing a whole chunk because one
-  // line inside it carries `@palade ignore` would silently hide up to a few
-  // hundred unrelated lines from review.
+  // Line-level ignores are applied to FINDINGS inside runSwarm — see
+  // annotationSummary.ignoredLines passed below — not by dropping chunks
+  // here. Removing a whole chunk because one line inside it carries
+  // `@palade ignore` would silently hide up to a few hundred unrelated lines
+  // from review. Filtering happens before cross-agent correlation and
+  // synthesis run (not on the final result), since those can't be filtered
+  // after the fact — see SwarmOptions.ignoredLines.
 
   // If --annotations flag: scope to only annotated chunks
   if (scope.annotationsOnly) {
