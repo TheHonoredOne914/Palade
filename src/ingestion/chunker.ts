@@ -26,16 +26,31 @@ export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
   let startIdx = 0
 
   while (startIdx < lines.length) {
-    const endIdx = Math.min(startIdx + CHUNK_LINES, lines.length)
-    const subContent = lines.slice(startIdx, endIdx).join('\n')
-    const startLine = chunk.startLine + startIdx
-    const endLine = chunk.startLine + endIdx - 1
-
     // Attach the parent's injected context only to the first sub-chunk so the
     // agent still sees it; repeating it on every sub-chunk would blow the token
     // limit that triggered the split in the first place.
     const isFirst = chunks.length === 0
     const contextPrefix = isFirst ? chunk.contextPrefix : undefined
+    const prefixChars = contextPrefix ? contextPrefix.length : 0
+
+    let endIdx = Math.min(startIdx + CHUNK_LINES, lines.length)
+    if (prefixChars > 0) {
+      // Shrink the first sub-chunk so prefix + content stays within MAX_TOKENS.
+      const maxContentChars = MAX_TOKENS * CHARS_PER_TOKEN - prefixChars
+      let charCount = 0
+      let adjustedEnd = startIdx
+      for (let i = startIdx; i < endIdx; i++) {
+        charCount += lines[i].length + 1
+        if (charCount > maxContentChars) break
+        adjustedEnd = i + 1
+      }
+      endIdx = Math.max(startIdx + 1, adjustedEnd)
+    }
+
+    const subContent = lines.slice(startIdx, endIdx).join('\n')
+    const startLine = chunk.startLine + startIdx
+    const endLine = chunk.startLine + endIdx - 1
+
     chunks.push({
       id: makeChunkId(chunk.filePath, startLine, endLine),
       filePath: chunk.filePath,

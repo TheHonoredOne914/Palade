@@ -291,7 +291,7 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
     const content = await readFile(configPath, 'utf-8')
     for (const p of PROVIDERS) {
       if (result[p.id]) continue
-      const re = new RegExp(`${p.id}:\\s*\\{[\\s\\S]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
+      const re = new RegExp(`${p.id}:\\s*\\{[^{}]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
       const m = content.match(re)
       if (m) result[p.id] = m[1]
     }

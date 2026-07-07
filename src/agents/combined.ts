@@ -202,6 +202,11 @@ export class CombinedAnalyzer implements IAgent {
  * invents one, the finding is DROPPED rather than filed under a wrong domain —
  * a misattributed finding would distort the per-category score breakdown.
  */
+// Economy-mode LLMs sometimes emit abbreviated or title-cased domain names.
+// Case normalization covers 'Security' → 'security'; this table covers
+// roots that differ from the canonical key ('Architect' ≠ 'architecture').
+const AGENT_NAME_ALIASES: Record<string, string> = { architect: 'architecture' }
+
 export function attributeFindings(
   findings: AgentFinding[],
   domains: DomainSpec[],
@@ -212,11 +217,14 @@ export function attributeFindings(
 
   const attributed: AgentFinding[] = []
   for (const f of findings) {
-    // Normalize case/whitespace variants the model may emit (e.g. 'Security' → 'security',
-    // 'Architect' → 'architecture') before checking membership.
+    // Normalize case/whitespace variants ('Security' → 'security') then apply
+    // alias table for abbreviated names ('Architect' → 'architecture').
     if (!validNames.has(f.agentName)) {
       const norm = f.agentName.trim().toLowerCase()
-      const canonical = Array.from(validNames).find((n) => n.toLowerCase() === norm)
+      const aliased = AGENT_NAME_ALIASES[norm]
+      const canonical =
+        Array.from(validNames).find((n) => n.toLowerCase() === norm) ??
+        (aliased && validNames.has(aliased) ? aliased : undefined)
       if (canonical) f.agentName = canonical
     }
     if (!validNames.has(f.agentName)) {

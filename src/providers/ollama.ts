@@ -30,13 +30,16 @@ export default class OllamaProvider implements IProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    return this.limiter(() => this.doComplete(req, req.maxTokens ?? 4096, 0))
+    return this.limiter(() =>
+      this.doComplete(req, req.maxTokens ?? 4096, 0, Date.now() + this.deadlineMs)
+    )
   }
 
   private async doComplete(
     req: CompletionRequest,
     maxTokens: number,
-    attempt: number
+    attempt: number,
+    deadline: number
   ): Promise<CompletionResponse> {
     const start = performance.now()
 
@@ -56,7 +59,7 @@ export default class OllamaProvider implements IProvider {
     // Combine the caller's cancellation signal with this provider's own hard
     // ceiling, matching every other adapter (groq/cerebras/nvidia/openrouter/
     // opencode-zen) — without this, a hung local Ollama server never times out.
-    const timeoutSignal = AbortSignal.timeout(this.deadlineMs)
+    const timeoutSignal = AbortSignal.timeout(Math.max(deadline - Date.now(), 1))
     const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
 
     try {
@@ -90,7 +93,7 @@ export default class OllamaProvider implements IProvider {
       // every other adapter (groq/cerebras/nvidia/openrouter/opencode-zen).
       if (shouldRetryEmptyContent(content, outputTokens, attempt)) {
         const newMax = nextRetryMaxTokens(maxTokens)
-        if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1)
+        if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1, deadline)
       }
 
       return {
