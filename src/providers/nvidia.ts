@@ -115,6 +115,7 @@ export class NvidiaProvider implements IProvider {
     const choices = data.choices as Array<{ message?: { content?: string } }> | undefined
     const content = choices?.[0]?.message?.content ?? ''
     const usage = data.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
+    const outputTokens = usage?.completion_tokens ?? 0
 
     // If content is empty but tokens were used, retry with more tokens (cap at 32768)
     if (shouldRetryEmptyContent(content, usage?.completion_tokens ?? 0, attempt)) {
@@ -125,7 +126,7 @@ export class NvidiaProvider implements IProvider {
     return {
       content,
       inputTokens: usage?.prompt_tokens ?? 0,
-      outputTokens: usage?.completion_tokens ?? 0,
+      outputTokens,
       durationMs,
       provider: this.name,
       model: this.model,

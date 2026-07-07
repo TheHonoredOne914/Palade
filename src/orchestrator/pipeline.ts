@@ -8,7 +8,11 @@ import { walkProject } from '../ingestion/walker.js'
 import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../ingestion/contextPacks.js'
-import { buildAnnotationSummary, applyLineIgnores } from '../ingestion/annotationParser.js'
+import {
+  buildAnnotationSummary,
+  applyLineIgnores,
+  parseFile,
+} from '../ingestion/annotationParser.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
 import { estimateTotalTokens } from './scheduler.js'
 import { runSwarm } from './swarm.js'
@@ -48,13 +52,15 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     for (const chunk of chunks) {
       if (seenPaths.has(chunk.filePath)) continue
       seenPaths.add(chunk.filePath)
+      const absolutePath = join(opts.projectRoot, chunk.filePath)
+      const annotations = await parseFile(absolutePath)
       manifests.push({
         path: chunk.filePath,
-        absolutePath: join(opts.projectRoot, chunk.filePath),
+        absolutePath,
         language: chunk.language,
         sizeBytes: 0,
         linesOfCode: chunk.endLine - chunk.startLine + 1,
-        annotations: [],
+        annotations,
         lastModified: new Date(),
       })
     }

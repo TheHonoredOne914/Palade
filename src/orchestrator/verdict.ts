@@ -154,21 +154,6 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
         const valA = getValence(a.title + ' ' + a.description)
         const valB = getValence(b.title + ' ' + b.description)
 
-        // Cheap pre-filter: skip only the pairs the keyword tally is confident
-        // AGREE (same non-neutral direction, no near-tie on either side) — those
-        // are almost certainly not a real conflict, so don't burn an LLM call.
-        // Everything else — opposite valences, a neutral side (no keyword hit
-        // at all, e.g. a real conflict phrased without any tracked word), or a
-        // near-tie — is a candidate: the actual conflict/no-conflict call is
-        // made by the LLM's own `is_conflict` field in arbitrateConflict, not
-        // by this tally.
-        const bothAgree =
-          valA.valence !== 'neutral' &&
-          valA.valence === valB.valence &&
-          valA.margin > NEAR_TIE_MARGIN &&
-          valB.margin > NEAR_TIE_MARGIN
-        if (bothAgree) continue
-
         const opposite =
           (valA.valence === 'harden' && valB.valence === 'relax') ||
           (valA.valence === 'relax' && valB.valence === 'harden')

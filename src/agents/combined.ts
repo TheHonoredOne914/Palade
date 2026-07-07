@@ -1,6 +1,6 @@
 import chalk from 'chalk'
 import type { CodeChunk } from '../ingestion/types.js'
-import { getProvider, type ProviderRole } from '../providers/router.js'
+import { getProvider } from '../providers/router.js'
 import {
   type AgentFinding,
   type AgentContext,
@@ -161,8 +161,7 @@ export class CombinedAnalyzer implements IAgent {
     signal?: AbortSignal
   ): Promise<AgentFinding[]> {
     try {
-      const providerName = (context.providerName as ProviderRole) ?? 'primary'
-      const provider = getProvider(providerName)
+      const provider = getProvider('primary')
       const systemPrompt = buildSystemPrompt(
         buildCombinedSystemPrompt(this.domains, context),
         context,
@@ -203,6 +202,11 @@ export class CombinedAnalyzer implements IAgent {
  * invents one, the finding is DROPPED rather than filed under a wrong domain —
  * a misattributed finding would distort the per-category score breakdown.
  */
+// Economy-mode LLMs sometimes emit abbreviated or title-cased domain names.
+// Case normalization covers 'Security' → 'security'; this table covers
+// roots that differ from the canonical key ('Architect' ≠ 'architecture').
+const AGENT_NAME_ALIASES: Record<string, string> = { architect: 'architecture' }
+
 export function attributeFindings(
   findings: AgentFinding[],
   domains: DomainSpec[],
@@ -210,18 +214,19 @@ export function attributeFindings(
   model?: string
 ): AgentFinding[] {
   const validNames = new Set(domains.map((d) => d.name))
-  // Map 'Architect' (used in economy-mode verdicts) to the closest semantic
-  // category so downstream scoring/reporting has a recognized key. Only do
-  // this when 'architecture' is actually one of the domains for this call —
-  // otherwise a hallucinated agentName could slip through as a false-valid
-  // 'architecture' alias even on a call that never included that domain.
-  const ARCHITECT_ALIAS = 'architecture'
-  if (validNames.has(ARCHITECT_ALIAS)) validNames.add(ARCHITECT_ALIAS)
 
   const attributed: AgentFinding[] = []
   for (const f of findings) {
-    // Remap 'Architect' to the canonical alias so downstream code handles it
-    if (f.agentName === 'Architect') f.agentName = ARCHITECT_ALIAS
+    // Normalize case/whitespace variants ('Security' → 'security') then apply
+    // alias table for abbreviated names ('Architect' → 'architecture').
+    if (!validNames.has(f.agentName)) {
+      const norm = f.agentName.trim().toLowerCase()
+      const aliased = AGENT_NAME_ALIASES[norm]
+      const canonical =
+        Array.from(validNames).find((n) => n.toLowerCase() === norm) ??
+        (aliased && validNames.has(aliased) ? aliased : undefined)
+      if (canonical) f.agentName = canonical
+    }
     if (!validNames.has(f.agentName)) {
       console.warn(
         chalk.yellow(

@@ -26,7 +26,27 @@ export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
   let startIdx = 0
 
   while (startIdx < lines.length) {
-    const endIdx = Math.min(startIdx + CHUNK_LINES, lines.length)
+    // Attach the parent's injected context only to the first sub-chunk so the
+    // agent still sees it; repeating it on every sub-chunk would blow the token
+    // limit that triggered the split in the first place.
+    const isFirst = chunks.length === 0
+    const contextPrefix = isFirst ? chunk.contextPrefix : undefined
+    const prefixChars = contextPrefix ? contextPrefix.length : 0
+
+    let endIdx = Math.min(startIdx + CHUNK_LINES, lines.length)
+    if (prefixChars > 0) {
+      // Shrink the first sub-chunk so prefix + content stays within MAX_TOKENS.
+      const maxContentChars = MAX_TOKENS * CHARS_PER_TOKEN - prefixChars
+      let charCount = 0
+      let adjustedEnd = startIdx
+      for (let i = startIdx; i < endIdx; i++) {
+        charCount += lines[i].length + 1
+        if (charCount > maxContentChars) break
+        adjustedEnd = i + 1
+      }
+      endIdx = Math.max(startIdx + 1, adjustedEnd)
+    }
+
     const subContent = lines.slice(startIdx, endIdx).join('\n')
     const startLine = chunk.startLine + startIdx
     const endLine = chunk.startLine + endIdx - 1
@@ -38,16 +58,15 @@ export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
       endLine,
       content: subContent,
       symbolName: chunk.symbolName,
-      // Carry over the parent chunk's contextPrefix so re-splitting a chunk
-      // that grew past MAX_TOKENS after context injection doesn't silently
-      // drop the injected keyword/dependency context.
-      contextPrefix: chunk.contextPrefix,
-      tokenCount: estimateTokens((chunk.contextPrefix ?? '') + subContent),
+      tokenCount: contextPrefix
+        ? estimateTokens(contextPrefix + subContent)
+        : estimateTokens(subContent),
       language: chunk.language,
       // Preserve the parent chunk's complexity so sub-chunks split off from
       // a complex function keep its complexity-based scoring multiplier
       // instead of losing it once split.
       complexity: chunk.complexity,
+      contextPrefix,
     })
 
     if (endIdx >= lines.length) break

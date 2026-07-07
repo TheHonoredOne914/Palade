@@ -13,7 +13,7 @@ function mockProvider(
     model,
     complete: vi.fn(async (): Promise<CompletionResponse> => {
       if (behavior === 'fail-retryable') throw new Error('503 service unavailable')
-      if (behavior === 'fail-fatal') throw new Error('invalid api key')
+      if (behavior === 'fail-fatal') throw new AuthError('invalid api key', 401, name)
       return {
         content: `response from ${name}`,
         inputTokens: 10,

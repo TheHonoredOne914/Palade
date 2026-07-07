@@ -5,10 +5,12 @@ import type { PaladeConfig } from '../config/schema.js'
 
 describe('estimateRunCost', () => {
   const dummyConfig = {
+    providers: {},
     swarm: { agentCount: 6, economyMode: false },
   } as PaladeConfig
 
   const economyConfig = {
+    providers: {},
     swarm: { agentCount: 6, economyMode: true },
   } as PaladeConfig
 
