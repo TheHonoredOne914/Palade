@@ -8,7 +8,11 @@ import { walkProject } from '../ingestion/walker.js'
 import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../ingestion/contextPacks.js'
-import { buildAnnotationSummary, applyLineIgnores, parseFile } from '../ingestion/annotationParser.js'
+import {
+  buildAnnotationSummary,
+  applyLineIgnores,
+  parseFile,
+} from '../ingestion/annotationParser.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
 import { estimateTotalTokens } from './scheduler.js'
 import { runSwarm } from './swarm.js'
