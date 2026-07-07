@@ -43,7 +43,7 @@ describe('ingestion/keywordIndex', () => {
     const context = getKeywordContext(chunks[0], index)
 
     expect(context).toContain('[REPOSITORY CONTEXT (KEYWORD)]')
-    expect(context).toContain('src/db/user.ts (User)') // the matching file and symbol
+    expect(context).toContain('src/db/user.ts (lines 1-5, User)') // the matching file, lines, and symbol
     expect(context).not.toContain('src/utils/math.ts') // irrelevant chunk should not be returned
     expect(context).not.toContain('src/auth/service.ts') // should not return itself
   })

@@ -1,5 +1,4 @@
 import crypto from 'node:crypto'
-import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
@@ -8,11 +7,7 @@ import { walkProject } from '../ingestion/walker.js'
 import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../ingestion/contextPacks.js'
-import {
-  buildAnnotationSummary,
-  applyLineIgnores,
-  parseFile,
-} from '../ingestion/annotationParser.js'
+import { buildAnnotationSummary, parseFile } from '../ingestion/annotationParser.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
 import { estimateTotalTokens } from './scheduler.js'
 import { runSwarm } from './swarm.js'
@@ -21,6 +16,7 @@ import { estimateRunCost } from '../ingestion/estimator.js'
 import { CliExitError } from '../errors/types.js'
 import { kvTable } from '../ui/layout.js'
 import type { PaladeConfig } from '../config/schema.js'
+import { readOptionalProjectDoc } from '../config/docs.js'
 
 export interface PipelineOptions {
   projectRoot: string
@@ -28,8 +24,57 @@ export interface PipelineOptions {
   context: AgentContext
   swarmOptions?: SwarmOptions
   target?: ResolvedTarget
-  allTargets?: ResolvedTarget[]
   dryRunConfig?: PaladeConfig
+}
+
+// Merge context from both sources, dedup by the (filePath, line range) the
+// header names — NOT the raw header line. buildRetrievedContext and
+// getKeywordContext format headers differently (score vs symbol name), so two
+// blocks describing the exact same source chunk would otherwise carry
+// different raw text and both survive, duplicating that chunk's content in
+// the prompt.
+export function contextBlockKey(header: string): string {
+  const pathMatch = header.match(/^\/\/ --- (\S+)/)
+  const lineMatch = header.match(/lines (\d+)-(\d+)/)
+  if (pathMatch && lineMatch) {
+    return `${pathMatch[1]}:${lineMatch[1]}-${lineMatch[2]}`
+  }
+  return header
+}
+
+export function mergeContexts(retrieved: string, keyword: string): string {
+  if (!retrieved) return keyword
+  if (!keyword) return retrieved
+  const seen = new Set<string>()
+  const blocks: string[] = []
+  for (const src of [retrieved, keyword]) {
+    const lines = src.split('\n')
+    let i = 0
+    while (i < lines.length) {
+      if (lines[i].startsWith('// --- ')) {
+        const key = contextBlockKey(lines[i])
+        if (!seen.has(key)) {
+          seen.add(key)
+          const blockLines: string[] = [lines[i]]
+          i++
+          while (i < lines.length && !lines[i].startsWith('// --- ')) {
+            blockLines.push(lines[i])
+            i++
+          }
+          blocks.push(blockLines.join('\n'))
+        } else {
+          i++
+          while (i < lines.length && !lines[i].startsWith('// --- ')) {
+            i++
+          }
+        }
+      } else {
+        i++
+      }
+    }
+  }
+  if (blocks.length === 0) return ''
+  return `\n\n/* [REPOSITORY CONTEXT] */\n${blocks.join('\n\n')}\n/* [END REPOSITORY CONTEXT] */\n\n`
 }
 
 export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
@@ -47,25 +92,34 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     // Build a minimal manifest stub per touched file so downstream code
     // (annotation summary, triage, cross-referencing) still has something to
     // work with, without paying for a full project walk we don't need here.
-    const seenPaths = new Set<string>()
-    manifests = []
+    // Chunks are grouped by file first (a file can contribute more than one
+    // chunk) so linesOfCode reflects every selected chunk's range, not just
+    // the first one seen, and parseFile — disk I/O — runs once per distinct
+    // file concurrently rather than serialized chunk-by-chunk.
+    const chunksByPath = new Map<string, CodeChunk[]>()
     for (const chunk of chunks) {
-      if (seenPaths.has(chunk.filePath)) continue
-      seenPaths.add(chunk.filePath)
-      const absolutePath = join(opts.projectRoot, chunk.filePath)
-      const annotations = await parseFile(absolutePath)
-      manifests.push({
-        path: chunk.filePath,
-        absolutePath,
-        language: chunk.language,
-        sizeBytes: 0,
-        linesOfCode: chunk.endLine - chunk.startLine + 1,
-        annotations,
-        lastModified: new Date(),
-      })
+      const existing = chunksByPath.get(chunk.filePath)
+      if (existing) existing.push(chunk)
+      else chunksByPath.set(chunk.filePath, [chunk])
     }
+    manifests = await Promise.all(
+      Array.from(chunksByPath.entries()).map(async ([filePath, fileChunks]) => {
+        const absolutePath = join(opts.projectRoot, filePath)
+        const annotations = await parseFile(absolutePath)
+        const linesOfCode = fileChunks.reduce((sum, c) => sum + (c.endLine - c.startLine + 1), 0)
+        return {
+          path: filePath,
+          absolutePath,
+          language: fileChunks[0].language,
+          sizeBytes: 0,
+          linesOfCode,
+          annotations,
+          lastModified: new Date(),
+        }
+      })
+    )
     console.log(
-      `[pipeline] Symbol-scoped: ${scope.symbolChunks.length} symbol(s) → ${chunks.length} chunk(s) (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
+      `[pipeline] Symbol-scoped: ${chunksByPath.size} file(s) → ${chunks.length} chunk(s) (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
     )
   } else {
     manifests = await walkProject(opts.projectRoot, scope)
@@ -108,10 +162,13 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   // for the token budget even though its chunks are dropped from review.
   const triageManifests = manifests.filter((m) => !ignoredSet.has(m.path.replace(/^\.?\/+/, '')))
 
-  // Line-level ignores are applied to FINDINGS after the swarm runs (see
-  // below), not by dropping chunks here — removing a whole chunk because one
-  // line inside it carries `@palade ignore` would silently hide up to a few
-  // hundred unrelated lines from review.
+  // Line-level ignores are applied to FINDINGS inside runSwarm — see
+  // annotationSummary.ignoredLines passed below — not by dropping chunks
+  // here. Removing a whole chunk because one line inside it carries
+  // `@palade ignore` would silently hide up to a few hundred unrelated lines
+  // from review. Filtering happens before cross-agent correlation and
+  // synthesis run (not on the final result), since those can't be filtered
+  // after the fact — see SwarmOptions.ignoredLines.
 
   // If --annotations flag: scope to only annotated chunks
   if (scope.annotationsOnly) {
@@ -133,41 +190,6 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   // pristine chunk corpus BEFORE mutating any chunk.content — otherwise an
   // earlier chunk's injected foreign-code block would leak into the retrieved
   // context of later chunks, making the result order-dependent.
-  // Merge context from both sources, dedup by chunk id to avoid duplicates.
-  function mergeContexts(retrieved: string, keyword: string): string {
-    if (!retrieved) return keyword
-    if (!keyword) return retrieved
-    const seen = new Set<string>()
-    const blocks: string[] = []
-    for (const src of [retrieved, keyword]) {
-      const lines = src.split('\n')
-      let i = 0
-      while (i < lines.length) {
-        if (lines[i].startsWith('// --- ')) {
-          const key = lines[i]
-          if (!seen.has(key)) {
-            seen.add(key)
-            const blockLines: string[] = [lines[i]]
-            i++
-            while (i < lines.length && !lines[i].startsWith('// --- ')) {
-              blockLines.push(lines[i])
-              i++
-            }
-            blocks.push(blockLines.join('\n'))
-          } else {
-            i++
-            while (i < lines.length && !lines[i].startsWith('// --- ')) {
-              i++
-            }
-          }
-        } else {
-          i++
-        }
-      }
-    }
-    if (blocks.length === 0) return ''
-    return `\n\n/* [REPOSITORY CONTEXT] */\n${blocks.join('\n\n')}\n/* [END REPOSITORY CONTEXT] */\n\n`
-  }
   const contextPrefixes = activeChunks.map((chunk) =>
     mergeContexts(buildRetrievedContext(chunk, chunks), getKeywordContext(chunk, keywordIndex))
   )
@@ -203,26 +225,22 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
 
   // Inject logic spec if available
   const specPath = opts.swarmOptions?.specPath ?? 'palade.spec.md'
-  const absoluteSpecPath = join(opts.projectRoot, specPath)
-  if (existsSync(absoluteSpecPath)) {
-    try {
-      context.spec = readFileSync(absoluteSpecPath, 'utf-8')
-      console.log(`[pipeline] Loaded logic spec from ${specPath}`)
-    } catch {
-      console.log(chalk.yellow(`[pipeline] Failed to read spec file: ${specPath}`))
-    }
+  const specDoc = readOptionalProjectDoc(opts.projectRoot, specPath)
+  if (specDoc.status === 'ok') {
+    context.spec = specDoc.content
+    console.log(`[pipeline] Loaded logic spec from ${specPath}`)
+  } else if (specDoc.status === 'error') {
+    console.log(chalk.yellow(`[pipeline] Failed to read spec file: ${specPath}`))
   }
 
   // Inject agent constitution if available
   const constitutionPath = opts.swarmOptions?.constitutionPath ?? '.palade/constitution.md'
-  const absoluteConstitutionPath = join(opts.projectRoot, constitutionPath)
-  if (existsSync(absoluteConstitutionPath)) {
-    try {
-      context.constitution = readFileSync(absoluteConstitutionPath, 'utf-8')
-      console.log(`[pipeline] Loaded agent constitution from ${constitutionPath}`)
-    } catch {
-      console.log(chalk.yellow(`[pipeline] Failed to read constitution file: ${constitutionPath}`))
-    }
+  const constitutionDoc = readOptionalProjectDoc(opts.projectRoot, constitutionPath)
+  if (constitutionDoc.status === 'ok') {
+    context.constitution = constitutionDoc.content
+    console.log(`[pipeline] Loaded agent constitution from ${constitutionPath}`)
+  } else if (constitutionDoc.status === 'error') {
+    console.log(chalk.yellow(`[pipeline] Failed to read constitution file: ${constitutionPath}`))
   }
 
   if (opts.dryRunConfig) {
@@ -261,14 +279,14 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     throw new CliExitError(0)
   }
 
-  const result = await runSwarm(
+  return runSwarm(
     activeChunks,
     context,
-    { ...opts.swarmOptions, projectRoot: opts.projectRoot },
+    {
+      ...opts.swarmOptions,
+      projectRoot: opts.projectRoot,
+      ignoredLines: annotationSummary.ignoredLines,
+    },
     triageManifests
   )
-
-  result.findings = applyLineIgnores(result.findings, annotationSummary.ignoredLines)
-
-  return result
 }

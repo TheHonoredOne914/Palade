@@ -86,6 +86,14 @@ export interface SwarmOptions {
   projectRoot?: string
   noVerdict?: boolean
   noSynthesis?: boolean
+  /**
+   * Lines carrying an `@palade ignore` annotation. Findings on these lines are
+   * dropped from each agent's results before cross-agent correlation and
+   * synthesis run, so ignored findings never leak into the executive summary
+   * or cross-agent penalties (which cannot be filtered after the fact — see
+   * CrossAgentFinding, which carries no per-finding line info).
+   */
+  ignoredLines?: { filePath: string; startLine: number }[]
   signal?: AbortSignal
   specPath?: string
   constitutionPath?: string

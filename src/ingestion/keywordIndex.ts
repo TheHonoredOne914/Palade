@@ -85,7 +85,10 @@ export function getKeywordContext(
     if (shortContent.length < fullContent.length) {
       shortContent += '\n... (truncated)'
     }
-    depContext += `\n// --- ${res.chunk.filePath} ${res.chunk.symbolName ? `(${res.chunk.symbolName})` : ''} ---\n${shortContent}\n`
+    const label = res.chunk.symbolName
+      ? `lines ${res.chunk.startLine}-${res.chunk.endLine}, ${res.chunk.symbolName}`
+      : `lines ${res.chunk.startLine}-${res.chunk.endLine}`
+    depContext += `\n// --- ${res.chunk.filePath} (${label}) ---\n${shortContent}\n`
   }
 
   depContext += '\n/* [END REPOSITORY CONTEXT] */\n\n'
