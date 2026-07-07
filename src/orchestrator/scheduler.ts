@@ -47,13 +47,13 @@ function splitChunk(chunk: CodeChunk): CodeChunk[] {
         ...chunk,
         id: `${chunk.id}-left`,
         content: leftChars,
-        tokenCount: estimateTokens(leftChars),
+        tokenCount: estimateTokens((chunk.contextPrefix ?? '') + leftChars),
       },
       {
         ...chunk,
         id: `${chunk.id}-right`,
         content: rightChars,
-        tokenCount: estimateTokens(rightChars),
+        tokenCount: estimateTokens((chunk.contextPrefix ?? '') + rightChars),
       },
     ]
   }
@@ -64,14 +64,14 @@ function splitChunk(chunk: CodeChunk): CodeChunk[] {
       id: `${chunk.id}-left`,
       endLine: chunk.startLine + splitIdx - 1,
       content: leftContent,
-      tokenCount: estimateTokens(leftContent),
+      tokenCount: estimateTokens((chunk.contextPrefix ?? '') + leftContent),
     },
     {
       ...chunk,
       id: `${chunk.id}-right`,
       startLine: chunk.startLine + splitPoint,
       content: rightContent,
-      tokenCount: estimateTokens(rightContent),
+      tokenCount: estimateTokens((chunk.contextPrefix ?? '') + rightContent),
     },
   ]
 }

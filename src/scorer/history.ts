@@ -53,9 +53,9 @@ export function parseHistoryEntries(raw: string): ScoreHistoryEntry[] {
       const breakdown: ScoreBreakdown = isValidBreakdown
         ? {
             ...(rawBreakdown as unknown as ScoreBreakdown),
-            categories: (rawBreakdown!.categories as unknown[]).every(isValidCategoryScore)
-              ? (rawBreakdown!.categories as CategoryScore[])
-              : [],
+            // Keep only the valid entries instead of discarding the whole
+            // array when a single CategoryScore element fails validation.
+            categories: (rawBreakdown!.categories as unknown[]).filter(isValidCategoryScore),
           }
         : {
             total: obj.score as number,
@@ -145,7 +145,11 @@ export function writeHistory(
 // `diff` running at once) don't both read-modify-write and clobber each
 // other's entry. `wx` fails if the lockfile already exists, giving us
 // exclusive-create semantics without a locking dependency.
-function acquireLock(historyPath: string): string | null {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function acquireLock(historyPath: string): Promise<string | null> {
   const dir = dirname(historyPath)
   try {
     mkdirSync(dir, { recursive: true })
@@ -159,11 +163,10 @@ function acquireLock(historyPath: string): string | null {
       writeFileSync(lockPath, String(process.pid), { flag: 'wx' })
       return lockPath
     } catch {
-      const until = Date.now() + 20
-      while (Date.now() < until) {
-        // ponytail: busy-wait spin, fine for a ~20ms lock wait; a stale
-        // lock (crashed process) still self-clears after maxAttempts below.
-      }
+      // Async sleep instead of a busy-wait spin — this blocks the whole
+      // single-threaded Node process on every lock contention otherwise.
+      // A stale lock (crashed process) still self-clears after maxAttempts.
+      await sleep(20)
     }
   }
   // Never acquired the lock (still held by another live process) — return
@@ -180,12 +183,12 @@ function releaseLock(lockPath: string): void {
   }
 }
 
-export function appendEntry(
+export async function appendEntry(
   historyPath: string,
   entry: ScoreHistoryEntry,
   maxEntries: number = MAX_HISTORY_ENTRIES
-): ScoreHistoryEntry[] {
-  const lockPath = acquireLock(historyPath)
+): Promise<ScoreHistoryEntry[]> {
+  const lockPath = await acquireLock(historyPath)
   try {
     const existing = readHistory(historyPath)
     existing.push(entry)

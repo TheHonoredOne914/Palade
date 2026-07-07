@@ -42,15 +42,12 @@ export function Autocomplete({
         query = (parts[1] ?? '').trim().toLowerCase()
       }
 
-      // Hide target suggestions if the user is typing something else (like --format)
-      if (
-        !isTargetFlag &&
-        rest.length > 0 &&
-        !rest.trim().startsWith('--target') &&
-        rest.trim() !== ''
-      ) {
-        // but if they are typing a target name directly after /review space?
-        // The user specifically asked for targets to appear for auto completion.
+      // Hide target suggestions while the user is typing an unrelated flag
+      // (like --dir or --format) — but not while typing a target name
+      // directly (no leading '--'), which should still autocomplete.
+      const trimmedRest = rest.trim()
+      if (!isTargetFlag && trimmedRest.startsWith('--') && !trimmedRest.startsWith('--target')) {
+        return []
       }
 
       const targetMatches = targets

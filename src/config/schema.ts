@@ -6,7 +6,7 @@ import {
   DEFAULT_CONFIG,
 } from './defaults.js'
 import { SEVERITY_PENALTY } from '../agents/base.js'
-import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS } from '../scorer/calculator.js'
+import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS, DEFAULT_PENALTY_CAPS } from '../scorer/calculator.js'
 
 export const ReportFormatSchema = z.enum(['html', 'json', 'md'])
 
@@ -105,6 +105,14 @@ export const PaladeConfigSchema = z
             lowFactor: z.number().default(0.5),
             highThreshold: z.number().int().min(0).default(20),
             highFactor: z.number().default(1.5),
+          })
+          .default({}),
+        // Category/total penalty caps used when computing the final score.
+        // Defaults match calculator.ts's previously-hardcoded constants.
+        penaltyCaps: z
+          .object({
+            categoryPenaltyCap: z.number().default(DEFAULT_PENALTY_CAPS.categoryPenaltyCap),
+            totalPenaltyCap: z.number().default(DEFAULT_PENALTY_CAPS.totalPenaltyCap),
           })
           .default({}),
       })

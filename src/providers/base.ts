@@ -27,6 +27,24 @@ export interface IProvider {
   model: string
   complete(req: CompletionRequest): Promise<CompletionResponse>
   isAvailable(): Promise<boolean>
+  /**
+   * Marks this provider instance exhausted/dead for the rest of the session.
+   * Optional so adapters that don't track exhaustion state (rare) can omit
+   * it. Exists so callers that wrap the same provider instance in multiple
+   * chains (e.g. router.ts's primary and synthesis FallbackProvider chains)
+   * can share one source of truth for "is this dead", instead of each chain
+   * keeping its own separate dead-tracking Set that can disagree with the
+   * others.
+   */
+  markDead?(): void
+  /**
+   * Synchronous "has markDead() been called on this instance" check. Kept
+   * distinct from isAvailable() (which is async and, for some adapters, does
+   * a live connectivity/quota probe unrelated to session-level dead marking)
+   * so a chain-local pre-attempt skip check reflects only explicit dead
+   * marking, not incidental unavailability.
+   */
+  isDead?(): boolean
 }
 
 // Intentionally fixed: these govern the low-level HTTP retry loop shared by
@@ -54,12 +72,28 @@ export const FATAL_QUOTA_KEYWORDS = [
 ]
 
 /**
- * Scans a raw response body for daily/per-day/quota-exhaustion language.
- * Shared by every adapter so daily-limit detection is a plain text scan
- * regardless of whether a provider's error body is JSON, wraps the message in
- * `error.message`, or isn't parseable JSON at all.
+ * Detects daily/per-day/quota-exhaustion errors. Shared by every adapter so a
+ * false match doesn't permanently mark a healthy key exhausted for the
+ * session. Prefers a structured `error.type`/`error.code` field from the
+ * parsed JSON body (e.g. OpenAI-style `insufficient_quota`) when the body is
+ * valid JSON and carries one — those fields are set deliberately by the
+ * provider, so matching against them is far less prone to false positives
+ * than scanning arbitrary text. Falls back to the plain-text substring scan
+ * only when the body doesn't parse as JSON or lacks a structured field.
  */
 export function isDailyLimitError(body: string): boolean {
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { type?: string; code?: string; message?: string }
+    }
+    const structured = parsed?.error?.type ?? parsed?.error?.code
+    if (typeof structured === 'string' && structured.length > 0) {
+      const lower = structured.toLowerCase()
+      return FATAL_QUOTA_KEYWORDS.some((keyword) => lower.includes(keyword))
+    }
+  } catch {
+    // Not parseable JSON (or not an object) — fall through to the raw scan.
+  }
   const lower = body.toLowerCase()
   return FATAL_QUOTA_KEYWORDS.some((keyword) => lower.includes(keyword))
 }
@@ -147,4 +181,23 @@ export function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
 
 export function createLimiter(maxConcurrency: number): LimitFunction {
   return pLimit(maxConcurrency)
+}
+
+// Shared by every adapter (groq/cerebras/nvidia/openrouter/opencode-zen/ollama):
+// if a model consumes its whole output-token budget but returns no visible
+// content (e.g. reasoning-only output), retrying with a larger token budget
+// often recovers real content instead of surfacing an empty response.
+const MAX_RETRY_TOKENS = 32768
+
+export function shouldRetryEmptyContent(
+  content: string,
+  outputTokens: number,
+  attempt: number,
+  maxAttempts = 2
+): boolean {
+  return content.trim().length === 0 && outputTokens > 0 && attempt < maxAttempts
+}
+
+export function nextRetryMaxTokens(maxTokens: number): number {
+  return Math.min(maxTokens * 2, MAX_RETRY_TOKENS)
 }

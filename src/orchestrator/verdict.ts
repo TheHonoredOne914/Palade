@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import crypto from 'node:crypto'
-import { readdir, readFile, unlink } from 'node:fs/promises'
+import { readdir, readFile, unlink, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import chalk from 'chalk'
 import { z } from 'zod'
@@ -340,7 +340,16 @@ ${verdict.confidence}%
   const existingFiles = await readdir(dir).catch(() => [] as string[])
   const mdFiles = existingFiles.filter((f) => f.endsWith('.md'))
   if (mdFiles.length >= MAX_DECISIONS) {
-    const toDelete = mdFiles.sort().slice(0, mdFiles.length - MAX_DECISIONS + 1)
+    // Sort by actual file mtime (oldest first), not filename, so the cap
+    // reliably prunes the oldest decisions rather than an alphabetical slice.
+    const withMtimes = await Promise.all(
+      mdFiles.map(async (f) => {
+        const stats = await stat(join(dir, f)).catch(() => null)
+        return { f, mtime: stats?.mtimeMs ?? 0 }
+      })
+    )
+    withMtimes.sort((a, b) => a.mtime - b.mtime)
+    const toDelete = withMtimes.slice(0, mdFiles.length - MAX_DECISIONS + 1).map((x) => x.f)
     await Promise.all(toDelete.map((f) => unlink(join(dir, f)).catch(() => {})))
   }
   const filepath = join(dir, `${slug}.md`)

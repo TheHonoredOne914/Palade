@@ -1,7 +1,6 @@
 import type { IProvider } from '../providers/base.js'
 import { getProvider } from '../providers/router.js'
 import type { AgentContext, AgentFinding } from './base.js'
-import { SEVERITY_PENALTY } from './base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import { penaltyFor } from '../scorer/calculator.js'
 

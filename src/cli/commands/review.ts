@@ -399,12 +399,14 @@ export async function reviewCommand(
         specPath: config.swarm.specPath,
         constitutionPath: config.swarm.constitutionPath,
         maxConcurrentBatches: config.swarm.maxConcurrentBatches,
-        softTokenLimit: (opts.economy ?? config.swarm.economyMode)
-          ? Math.min(6000, config.swarm.softTokenLimit)
-          : config.swarm.softTokenLimit,
-        hardChunkLimit: (opts.economy ?? config.swarm.economyMode)
-          ? Math.min(3000, config.swarm.hardChunkLimit)
-          : config.swarm.hardChunkLimit,
+        softTokenLimit:
+          (opts.economy ?? config.swarm.economyMode)
+            ? Math.min(6000, config.swarm.softTokenLimit)
+            : config.swarm.softTokenLimit,
+        hardChunkLimit:
+          (opts.economy ?? config.swarm.economyMode)
+            ? Math.min(3000, config.swarm.hardChunkLimit)
+            : config.swarm.hardChunkLimit,
       },
       target: resolvedTarget,
       dryRunConfig: opts.dryRun ? config : undefined,
@@ -444,12 +446,14 @@ export async function reviewCommand(
     {
       severityWeights: config.score.severityWeights,
       crossAgentPenalty: config.score.crossAgentPenalty,
+      complexityPenalties: config.score.complexityPenalties,
+      penaltyCaps: config.score.penaltyCaps,
     },
     swarmResult.agentsRun
   )
 
   // 10. Append to history
-  appendEntry(
+  await appendEntry(
     historyPath,
     {
       timestamp: new Date().toISOString(),

@@ -1,5 +1,11 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { fetchWithRetry, createLimiter, isDailyLimitError } from './base.js'
+import {
+  fetchWithRetry,
+  createLimiter,
+  isDailyLimitError,
+  shouldRetryEmptyContent,
+  nextRetryMaxTokens,
+} from './base.js'
 import { AuthError } from '../errors/types.js'
 
 const DEFAULT_DEADLINE_MS = 300_000
@@ -111,8 +117,8 @@ export class NvidiaProvider implements IProvider {
     const usage = data.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
 
     // If content is empty but tokens were used, retry with more tokens (cap at 32768)
-    if (content.trim().length === 0 && (usage?.completion_tokens ?? 0) > 0 && attempt < 2) {
-      const newMax = Math.min(maxTokens * 2, 32768)
+    if (shouldRetryEmptyContent(content, usage?.completion_tokens ?? 0, attempt)) {
+      const newMax = nextRetryMaxTokens(maxTokens)
       if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1, deadline)
     }
 
@@ -124,6 +130,18 @@ export class NvidiaProvider implements IProvider {
       provider: this.name,
       model: this.model,
     }
+  }
+
+  // Shared dead/exhausted state: lets multiple FallbackProvider chains
+  // wrapping this same instance (e.g. router.ts's primary and synthesis
+  // chains) agree on whether this provider is dead, instead of each chain
+  // keeping its own separate dead-tracking Set.
+  markDead(): void {
+    this.dailyLimitExhausted = true
+  }
+
+  isDead(): boolean {
+    return this.dailyLimitExhausted
   }
 
   // Quota-only check: reflects whether we have locally observed a daily-limit

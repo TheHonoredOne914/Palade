@@ -14,7 +14,13 @@ import { mergeFindings } from './merger.js'
 import { scheduleBatches, estimateTotalTokens } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
 import { isFatalAuthError } from '../providers/errorClassification.js'
-import { detectConflicts, arbitrateConflict, saveDecision, type Conflict, type Verdict } from './verdict.js'
+import {
+  detectConflicts,
+  arbitrateConflict,
+  saveDecision,
+  type Conflict,
+  type Verdict,
+} from './verdict.js'
 import { ReviewCancelledError, SwarmTimeoutError } from '../errors/types.js'
 
 export async function runSwarm(
@@ -94,7 +100,15 @@ export async function runSwarm(
   // options.hardChunkLimit (the actual formal SwarmOptions fields).
   const agentPromises = agents.map(async (agent) => {
     const agentStart = Date.now()
-    options.onAgentStart?.(agent.name)
+    try {
+      options.onAgentStart?.(agent.name)
+    } catch (err) {
+      console.warn(
+        chalk.yellow(
+          `⚠ Error in agent start callback for ${agent.name}: ${err instanceof Error ? err.message : String(err)}`
+        )
+      )
+    }
 
     const allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
@@ -255,6 +269,12 @@ export async function runSwarm(
     }
   }
 
+  // Safety-net check: in the current control flow this is practically
+  // unreachable, since any settled promise (fulfilled or rejected) already
+  // sets agentTimings before we get here, and fatal/cancelled errors above
+  // already rethrow before reaching this line. Left in place (rather than
+  // removed) as a defensive guard against a future code path that awaits
+  // agentResults without recording timings for every settled agent.
   const elapsed = Date.now() - startTime
   const timeoutMs = options.timeoutMs ?? 600_000
   const completedCount = Object.keys(agentTimings).length
@@ -363,26 +383,32 @@ export async function runSwarm(
         const winningLensMatch = decisionStr.match(/(\w+) says/i)
         const winningLens = winningLensMatch ? winningLensMatch[1] : 'Unknown (parse failed)'
 
-        const fakeConflict = {
+        const fakeConflict: Conflict = {
           filePath: finding.filePath || 'unknown',
           lineStart: finding.lineStart || 0,
           lineEnd: finding.lineEnd || 0,
+          // This conflict is reconstructed after the fact from rendered text
+          // (economy mode never ran it through detectConflicts), so the
+          // keyword-tally confidence is unknown — 'low' is the honest default.
+          confidence: 'low',
           sideA: {
-            agentName: winningLens as any,
+            id: crypto.randomUUID(),
+            agentName: winningLens as AgentName,
             title: `[VERDICT DECISION] ${finding.title.replace('[VERDICT] ', '')}`,
             description: decisionStr,
             severity: 'info',
             tags: [],
-          } as any,
+          },
           sideB: {
-            agentName: losingStr as any,
+            id: crypto.randomUUID(),
+            agentName: losingStr as AgentName,
             title: `[REJECTED] ${finding.title.replace('[VERDICT] ', '')}`,
             description: `This lens was rejected in favor of the tradeoff.`,
             severity: 'info',
             tags: [],
-          } as any,
+          },
         }
-        const verdict = {
+        const verdict: Verdict = {
           is_conflict: true,
           decision: decisionStr,
           tradeoff_accepted: tradeoffStr,
@@ -400,7 +426,7 @@ export async function runSwarm(
           )
         } else {
           try {
-            const slug = await saveDecision(projectRoot, fakeConflict as any, verdict)
+            const slug = await saveDecision(projectRoot, fakeConflict, verdict)
             finding.description += `\nSaved as: ${slug}.md`
           } catch (err) {
             console.warn(

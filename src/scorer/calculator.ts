@@ -13,9 +13,51 @@ import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from '
 // crossAgentPenalty — they bound how the score can move regardless of config,
 // so they're deliberately not exposed via config.score.
 const CATEGORY_SCORE_FLOOR = 10
-const CATEGORY_PENALTY_CAP = 90
+const DEFAULT_CATEGORY_PENALTY_CAP = 90
 const TOTAL_SCORE_FLOOR = 5
-const TOTAL_PENALTY_CAP = 95
+const DEFAULT_TOTAL_PENALTY_CAP = 95
+
+/** Category/total penalty caps, overridable via `config.score.penaltyCaps`. */
+export interface PenaltyCaps {
+  categoryPenaltyCap: number
+  totalPenaltyCap: number
+}
+
+export const DEFAULT_PENALTY_CAPS: PenaltyCaps = {
+  categoryPenaltyCap: DEFAULT_CATEGORY_PENALTY_CAP,
+  totalPenaltyCap: DEFAULT_TOTAL_PENALTY_CAP,
+}
+
+/** Complexity-multiplier thresholds/factors, overridable via `config.score.complexityPenalties`. */
+export interface ComplexityPenalties {
+  lowThreshold: number
+  lowFactor: number
+  highThreshold: number
+  highFactor: number
+}
+
+export const DEFAULT_COMPLEXITY_PENALTIES: ComplexityPenalties = {
+  lowThreshold: 5,
+  lowFactor: 0.5,
+  highThreshold: 20,
+  highFactor: 1.5,
+}
+
+/**
+ * Scales a finding's penalty by the complexity of the code it was found in:
+ * simpler code gets a lighter penalty, very complex code a heavier one.
+ * Shared by calculateCategoryScore and calculateTotalPenalty so the two
+ * don't drift out of sync (scorer-002).
+ */
+export function applyComplexityMultiplier(
+  complexity: number,
+  penalty: number,
+  thresholds: ComplexityPenalties = DEFAULT_COMPLEXITY_PENALTIES
+): number {
+  if (complexity < thresholds.lowThreshold) return penalty * thresholds.lowFactor
+  if (complexity > thresholds.highThreshold) return penalty * thresholds.highFactor
+  return penalty
+}
 
 /** Per-severity penalty weights, overridable via `config.score.severityWeights`. */
 export type SeverityWeights = Record<Severity, number>
@@ -42,7 +84,10 @@ export const DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS: CrossAgentPenaltyWeights = {
  * CustomAgent's per-severity override feature dead code — an agent configured
  * with { critical: 50 } still got penalized at 10.
  */
-export function penaltyFor(f: AgentFinding, severityWeights: SeverityWeights = SEVERITY_PENALTY): number {
+export function penaltyFor(
+  f: AgentFinding,
+  severityWeights: SeverityWeights = SEVERITY_PENALTY
+): number {
   return typeof f.scorePenalty === 'number' ? f.scorePenalty : severityWeights[f.severity]
 }
 
@@ -68,7 +113,9 @@ export function countBySeverity(
 export function calculateCategoryScore(
   findings: AgentFinding[],
   category: ScoreCategory,
-  severityWeights: SeverityWeights = SEVERITY_PENALTY
+  severityWeights: SeverityWeights = SEVERITY_PENALTY,
+  complexityPenalties: ComplexityPenalties = DEFAULT_COMPLEXITY_PENALTIES,
+  categoryPenaltyCap: number = DEFAULT_CATEGORY_PENALTY_CAP
 ): CategoryScore {
   const agentName = category
   const { total, critical, high } = countBySeverity(findings, agentName)
@@ -78,16 +125,14 @@ export function calculateCategoryScore(
     if (f.agentName === agentName) {
       let fPenalty = penaltyFor(f, severityWeights)
       if (agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
-        if (f.complexity < 5)
-          fPenalty *= 0.5 // simple function, minor maintainability issue
-        else if (f.complexity > 20) fPenalty *= 1.5 // complex function, major maintainability issue
+        fPenalty = applyComplexityMultiplier(f.complexity, fPenalty, complexityPenalties)
       }
       penalty += fPenalty
     }
   }
 
   // Cap category penalty so a single category can't zero out the score
-  const cappedPenalty = Math.min(penalty, CATEGORY_PENALTY_CAP)
+  const cappedPenalty = Math.min(penalty, categoryPenaltyCap)
   const score = Math.max(CATEGORY_SCORE_FLOOR, Math.round(100 - cappedPenalty))
 
   return {
@@ -103,14 +148,14 @@ export const MAINTAINABILITY_AGENT = 'maintainability'
 
 export function calculateTotalPenalty(
   findings: AgentFinding[],
-  severityWeights: SeverityWeights = SEVERITY_PENALTY
+  severityWeights: SeverityWeights = SEVERITY_PENALTY,
+  complexityPenalties: ComplexityPenalties = DEFAULT_COMPLEXITY_PENALTIES
 ): number {
   let penalty = 0
   for (const f of findings) {
     let fPenalty = penaltyFor(f, severityWeights)
     if (f.agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
-      if (f.complexity < 5) fPenalty *= 0.5
-      else if (f.complexity > 20) fPenalty *= 1.5
+      fPenalty = applyComplexityMultiplier(f.complexity, fPenalty, complexityPenalties)
     }
     penalty += fPenalty
   }
@@ -139,6 +184,8 @@ export function calculateCrossAgentPenalty(
 export interface ScoreWeightsConfig {
   severityWeights?: Partial<SeverityWeights>
   crossAgentPenalty?: Partial<CrossAgentPenaltyWeights>
+  complexityPenalties?: Partial<ComplexityPenalties>
+  penaltyCaps?: Partial<PenaltyCaps>
 }
 
 export function calculateScore(
@@ -164,6 +211,14 @@ export function calculateScore(
     ...DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
     ...scoreConfig?.crossAgentPenalty,
   }
+  const complexityPenalties: ComplexityPenalties = {
+    ...DEFAULT_COMPLEXITY_PENALTIES,
+    ...scoreConfig?.complexityPenalties,
+  }
+  const penaltyCaps: PenaltyCaps = {
+    ...DEFAULT_PENALTY_CAPS,
+    ...scoreConfig?.penaltyCaps,
+  }
 
   const allBaseCategories: ScoreCategory[] = [
     'security',
@@ -184,19 +239,29 @@ export function calculateScore(
   const categories = Array.from(new Set([...baseCategories, ...uniqueAgents]))
 
   const categoryScores = categories.map((cat) =>
-    calculateCategoryScore(findings, cat, severityWeights)
+    calculateCategoryScore(
+      findings,
+      cat,
+      severityWeights,
+      complexityPenalties,
+      penaltyCaps.categoryPenaltyCap
+    )
   )
 
-  const findingPenalty = calculateTotalPenalty(findings, severityWeights)
+  const findingPenalty = calculateTotalPenalty(findings, severityWeights, complexityPenalties)
   const crossAgentPenalty = calculateCrossAgentPenalty(crossAgentFindings, crossAgentWeights)
   const totalPenalty = findingPenalty + crossAgentPenalty
-  // Average category scores for a balanced overall score
+  // Average category scores for a balanced overall score. Falls back to a
+  // clean 100 when there are no categories (e.g. a custom-agent-only run
+  // with zero findings) instead of dividing by zero and producing NaN.
   const avgCategoryScore =
-    categoryScores.reduce((sum, c) => sum + c.score, 0) / categoryScores.length
+    categoryScores.length === 0
+      ? 100
+      : categoryScores.reduce((sum, c) => sum + c.score, 0) / categoryScores.length
   // Blend: 60% average category score, 40% penalty-based score
   const penaltyScore = Math.max(
     TOTAL_SCORE_FLOOR,
-    Math.round(100 - Math.min(totalPenalty, TOTAL_PENALTY_CAP))
+    Math.round(100 - Math.min(totalPenalty, penaltyCaps.totalPenaltyCap))
   )
   const total = Math.round(avgCategoryScore * 0.6 + penaltyScore * 0.4)
 

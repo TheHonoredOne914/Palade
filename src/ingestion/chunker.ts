@@ -38,7 +38,11 @@ export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
       endLine,
       content: subContent,
       symbolName: chunk.symbolName,
-      tokenCount: estimateTokens(subContent),
+      // Carry over the parent chunk's contextPrefix so re-splitting a chunk
+      // that grew past MAX_TOKENS after context injection doesn't silently
+      // drop the injected keyword/dependency context.
+      contextPrefix: chunk.contextPrefix,
+      tokenCount: estimateTokens((chunk.contextPrefix ?? '') + subContent),
       language: chunk.language,
       // Preserve the parent chunk's complexity so sub-chunks split off from
       // a complex function keep its complexity-based scoring multiplier

@@ -84,13 +84,20 @@ async function runClassicCLI(): Promise<void> {
     handleFatalError(reason)
   })
 
-  process.on('SIGINT', () => {
-    console.log(chalk.dim('\n  Interrupted. Exiting cleanly.'))
-    process.exit(0)
-  })
-
   const isQuiet = process.argv.includes('--quiet')
   const isTuiCommand = process.argv.includes('tui')
+
+  // Don't install the classic-CLI SIGINT handler when dispatching to the
+  // 'tui' subcommand: it calls process.exit(0) immediately, which would hard-kill
+  // the process on Ctrl+C before the TUI's own SIGINT handler (installed once
+  // <App/> mounts) gets a chance to gracefully abort the running command.
+  if (!isTuiCommand) {
+    process.on('SIGINT', () => {
+      console.log(chalk.dim('\n  Interrupted. Exiting cleanly.'))
+      process.exit(0)
+    })
+  }
+
   if (!isQuiet && !isTuiCommand) {
     printBanner({ version: pkg.version })
   }

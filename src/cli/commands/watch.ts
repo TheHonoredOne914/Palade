@@ -294,7 +294,10 @@ export async function watchCommand(opts: {
     }
   })
 
-  watcher.on('change', (path: string) => {
+  // Enqueue a changed or newly-created file for review, debounced the same
+  // way for both — a brand-new file created while `palade watch` is running
+  // must be scanned just like a modified one, not silently skipped.
+  const enqueueFileEvent = (path: string) => {
     const existing = debounceTimers.get(path)
     if (existing) clearTimeout(existing)
     debounceTimers.set(
@@ -317,7 +320,10 @@ export async function watchCommand(opts: {
         void processNext()
       }, debounceMs)
     )
-  })
+  }
+
+  watcher.on('change', enqueueFileEvent)
+  watcher.on('add', enqueueFileEvent)
 
   process.on('exit', () => {
     watcher.close()
