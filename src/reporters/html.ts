@@ -56,10 +56,7 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;')
 }
 
-function renderCategoryScoreHtml(
-  category: ScoreCategory,
-  score: number
-): string {
+function renderCategoryScoreHtml(category: ScoreCategory, score: number): string {
   const safeScore = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0
   const color = getScoreColor(safeScore)
   const label =
@@ -428,7 +425,10 @@ export function startLocalServer(
   htmlServer.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       htmlServer = null
-      if (serverTimeout) { clearTimeout(serverTimeout); serverTimeout = null }
+      if (serverTimeout) {
+        clearTimeout(serverTimeout)
+        serverTimeout = null
+      }
       console.log(`Palade report server port ${port} is already in use. Opening file directly...`)
       if (options.openBrowser !== false) {
         // Fallback to opening the local file URI if the server can't start

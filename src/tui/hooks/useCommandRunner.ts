@@ -142,7 +142,10 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               mode: flag('mode') ?? 'standard',
               annotations: hasFlag('annotations'),
               pick: hasFlag('pick'),
-              depth: flag('depth') ? parseInt(flag('depth')!, 10) || 1 : 1,
+              depth: (() => {
+                const d = flag('depth') ? parseInt(flag('depth')!, 10) : 1
+                return Number.isNaN(d) ? 1 : d
+              })(),
               format: flag('format'),
               open: hasFlag('no-open') ? false : hasFlag('open') ? true : undefined,
               quiet: false,

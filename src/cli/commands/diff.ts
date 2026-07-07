@@ -234,12 +234,10 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     if (annotationSummary.ignoredFiles.length > 0) {
       const norm = (p: string) => p.replace(/^\.?\/+/, '')
       const ignoredFileSet = new Set(annotationSummary.ignoredFiles.map(norm))
-      swarmResult.findings = swarmResult.findings.filter(
-        (f: { filePath?: string }) => {
-          if (!f.filePath) return true
-          return !ignoredFileSet.has(norm(f.filePath))
-        }
-      )
+      swarmResult.findings = swarmResult.findings.filter((f: { filePath?: string }) => {
+        if (!f.filePath) return true
+        return !ignoredFileSet.has(norm(f.filePath))
+      })
     }
     swarmResult.findings = applyLineIgnores(swarmResult.findings, annotationSummary.ignoredLines)
 
@@ -267,11 +265,13 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       {
         severityWeights: config.score.severityWeights,
         crossAgentPenalty: config.score.crossAgentPenalty,
+        complexityPenalties: config.score.complexityPenalties,
+        penaltyCaps: config.score.penaltyCaps,
       },
       swarmResult.agentsRun
     )
 
-    const updatedHistory = appendEntry(
+    const updatedHistory = await appendEntry(
       historyPath,
       {
         timestamp: new Date().toISOString(),

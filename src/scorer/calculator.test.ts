@@ -128,7 +128,7 @@ describe('scorer/calculator', () => {
       expect(result.delta).toBe(7) // 97 - 90
       expect(result.previousScore).toBe(90)
       expect(result.breakdown.findingCount).toBe(2)
-      expect(result.breakdown.categories).toHaveLength(6)
+      expect(result.breakdown.categories).toHaveLength(8)
     })
 
     it('delta is 0 when no previous score', () => {

@@ -1,6 +1,11 @@
 import type { CompletionRequest, CompletionResponse, IProvider } from './base.js'
-import { createLimiter, fetchWithRetry } from './base.js'
-import { OllamaNotRunningError } from '../errors/types.js'
+import {
+  createLimiter,
+  fetchWithRetry,
+  shouldRetryEmptyContent,
+  nextRetryMaxTokens,
+} from './base.js'
+import { OllamaNotRunningError, AuthError } from '../errors/types.js'
 
 const DEFAULT_DEADLINE_MS = 300_000
 
@@ -10,6 +15,7 @@ export default class OllamaProvider implements IProvider {
   private baseUrl: string
   private readonly deadlineMs: number
   private readonly limiter: ReturnType<typeof createLimiter>
+  private dead = false
 
   constructor(
     model?: string,
@@ -24,10 +30,14 @@ export default class OllamaProvider implements IProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    return this.limiter(() => this.doComplete(req))
+    return this.limiter(() => this.doComplete(req, req.maxTokens ?? 4096, 0))
   }
 
-  private async doComplete(req: CompletionRequest): Promise<CompletionResponse> {
+  private async doComplete(
+    req: CompletionRequest,
+    maxTokens: number,
+    attempt: number
+  ): Promise<CompletionResponse> {
     const start = performance.now()
 
     const body = {
@@ -39,7 +49,7 @@ export default class OllamaProvider implements IProvider {
       stream: false,
       options: {
         temperature: req.temperature ?? 0.0,
-        num_predict: req.maxTokens ?? 4096,
+        num_predict: maxTokens,
       },
     }
 
@@ -58,16 +68,35 @@ export default class OllamaProvider implements IProvider {
       })
 
       if (!res.ok) {
+        // Attach a structured status (matching every other adapter's AuthError)
+        // so callers can classify fatal auth errors without pattern-matching text.
+        if (res.status === 401 || res.status === 403) {
+          throw new AuthError(
+            `Ollama HTTP error: ${res.status} ${res.statusText}`,
+            res.status,
+            this.name
+          )
+        }
         throw new Error(`Ollama HTTP error: ${res.status} ${res.statusText}`)
       }
 
       const data = await res.json()
       const end = performance.now()
+      const content = data.message?.content ?? ''
+      const outputTokens = data.eval_count ?? 0
+
+      // If content is empty but tokens were used, the model consumed its whole
+      // budget thinking — retry with more tokens (cap at 32768), same pattern as
+      // every other adapter (groq/cerebras/nvidia/openrouter/opencode-zen).
+      if (shouldRetryEmptyContent(content, outputTokens, attempt)) {
+        const newMax = nextRetryMaxTokens(maxTokens)
+        if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1)
+      }
 
       return {
-        content: data.message?.content ?? '',
+        content,
         inputTokens: data.prompt_eval_count ?? 0,
-        outputTokens: data.eval_count ?? 0,
+        outputTokens,
         durationMs: end - start,
         provider: this.name,
         model: this.model,
@@ -83,7 +112,20 @@ export default class OllamaProvider implements IProvider {
     }
   }
 
+  // Shared dead state: lets multiple FallbackProvider chains wrapping this
+  // same instance (e.g. router.ts's primary and synthesis chains) agree on
+  // whether this provider is dead, instead of each chain keeping its own
+  // separate dead-tracking Set.
+  markDead(): void {
+    this.dead = true
+  }
+
+  isDead(): boolean {
+    return this.dead
+  }
+
   async isAvailable(): Promise<boolean> {
+    if (this.dead) return false
     try {
       const res = await fetch(`${this.baseUrl}/api/tags`, {
         method: 'GET',

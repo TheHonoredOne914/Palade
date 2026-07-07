@@ -90,7 +90,9 @@ export async function generateTarget(
       focus: Array.isArray(parsed.focus) ? (parsed.focus as string[]) : [],
     }
   } catch (err) {
-    console.error(`[generator] Failed to parse JSON response from LLM: ${err instanceof Error ? err.message : String(err)}`)
+    console.error(
+      `[generator] Failed to parse JSON response from LLM: ${err instanceof Error ? err.message : String(err)}`
+    )
     return null
   }
 

@@ -25,13 +25,16 @@ export class ProviderPool implements IProvider {
     // error that gets the whole pool marked dead while healthy keys remain.
     const n = this.providers.length
     let candidate: IProvider | undefined
+    // Claim and advance the index synchronously, before any `await`, so
+    // concurrent calls each observe a distinct startIdx instead of racing on
+    // the same stale `this.index` and piling onto the same provider.
     const startIdx = this.index
+    this.index = (startIdx + 1) % n
     for (let offset = 0; offset < n; offset++) {
       const idx = (startIdx + offset) % n
       const provider = this.providers[idx]
       if (await provider.isAvailable()) {
         candidate = provider
-        this.index = (idx + 1) % n
         break
       }
     }
@@ -44,5 +47,20 @@ export class ProviderPool implements IProvider {
   async isAvailable(): Promise<boolean> {
     const results = await Promise.all(this.providers.map((p) => p.isAvailable()))
     return results.some((r) => r)
+  }
+
+  // Delegate to every member so the pool's own isAvailable()/isDead()
+  // aggregation reflects the mark — this is normally only called once every
+  // member is already unavailable (see router.ts's stillAvailable check),
+  // but keeps the pool consistent with the shared-instance dead-tracking
+  // used by every other IProvider implementation.
+  markDead(): void {
+    for (const p of this.providers) p.markDead?.()
+  }
+
+  // Dead only once every member is dead — a pool with any healthy key left
+  // must still be tried.
+  isDead(): boolean {
+    return this.providers.every((p) => p.isDead?.() ?? false)
   }
 }

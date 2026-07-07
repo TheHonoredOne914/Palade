@@ -69,8 +69,8 @@ export function estimateRunCost(
   const primaryName = config.swarm.primary || 'opencode-zen'
   const synthesisName = config.swarm.synthesis || primaryName
 
-  const primaryConfig = config.providers[primaryName as keyof PaladeConfig['providers']]
-  const synthesisConfig = config.providers[synthesisName as keyof PaladeConfig['providers']]
+  const primaryConfig = config.providers?.[primaryName as keyof PaladeConfig['providers']]
+  const synthesisConfig = config.providers?.[synthesisName as keyof PaladeConfig['providers']]
 
   const primaryKey = getProviderModelKey(primaryName, primaryConfig)
   const synthesisKey = getProviderModelKey(synthesisName, synthesisConfig)

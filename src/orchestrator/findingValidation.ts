@@ -13,7 +13,7 @@ function getMatchingChunkAndClamp(finding: AgentFinding, chunk: CodeChunk): Agen
   if (finding.lineStart === undefined) return finding
   if (!Number.isInteger(finding.lineStart)) return null
   if (finding.lineStart < chunk.startLine || finding.lineStart > chunk.endLine) return null
-  
+
   const clamped = { ...finding }
   if (clamped.lineEnd !== undefined) {
     if (!Number.isInteger(clamped.lineEnd)) {
@@ -36,7 +36,6 @@ function fingerprintFor(finding: AgentFinding): string {
       : 'file'
   const tagKey = [...new Set((finding.tags ?? []).filter((t) => typeof t === 'string'))]
     .sort()
-    .slice(0, 3)
     .join(',')
   const basis = `${finding.agentName}:${finding.severity}:${file}:${symbol}:${lineBucket}:${tagKey}`
   const digest = crypto.createHash('sha1').update(basis).digest('hex').slice(0, 12)

@@ -81,14 +81,16 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
 
   return {
     ...keep,
-    scorePenalty: (keep.scorePenalty !== undefined || discard.scorePenalty !== undefined)
-      ? Math.max(keep.scorePenalty ?? 0, discard.scorePenalty ?? 0)
-      : undefined,
+    scorePenalty:
+      keep.scorePenalty !== undefined || discard.scorePenalty !== undefined
+        ? Math.max(keep.scorePenalty ?? 0, discard.scorePenalty ?? 0)
+        : undefined,
     tags: Array.from(tagSet),
     description: mergedDescription,
-    mergedFromAgents: [keep.agentName, discard.agentName].filter(
-      (n, i, arr) => arr.indexOf(n) === i
-    ),
+    mergedFromAgents: [
+      ...(keep.mergedFromAgents ?? [keep.agentName]),
+      ...(discard.mergedFromAgents ?? [discard.agentName]),
+    ].filter((n, i, arr) => arr.indexOf(n) === i),
   }
 }
 

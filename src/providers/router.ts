@@ -129,7 +129,6 @@ export class FallbackProvider implements IProvider {
   private chain: IProvider[]
   private _fallbackCount = 0
   private _totalCount = 0
-  private deadProviders = new Set<string>()
 
   constructor(primary: IProvider, fallbacks: IProvider[]) {
     this.chain = [primary, ...fallbacks]
@@ -172,7 +171,15 @@ export class FallbackProvider implements IProvider {
     for (let i = 0; i < this.chain.length; i++) {
       const provider = this.chain[i]
 
-      if (this.deadProviders.has(provider.name)) {
+      // Check the provider instance's own dead flag rather than a chain-local
+      // Set — the same instance can be wrapped by multiple FallbackProvider
+      // chains (e.g. router.ts's primary and synthesis chains), so
+      // dead/exhausted state must live on the shared instance to stay in
+      // sync across chains. Uses the dedicated isDead() (not isAvailable(),
+      // which can be false for unrelated reasons, e.g. a live connectivity
+      // probe) so this only skips providers explicitly marked dead this
+      // session.
+      if (provider.isDead?.()) {
         attempts.push({
           provider: provider.name,
           finalError: 'skipped — marked dead earlier this session (hard quota limit)',
@@ -215,7 +222,7 @@ export class FallbackProvider implements IProvider {
               )
             )
           } else {
-            this.deadProviders.add(provider.name)
+            provider.markDead?.()
             console.warn(
               chalk.red(`[router] provider ${provider.name} marked as DEAD (hard quota limit)`)
             )
@@ -264,7 +271,6 @@ export class FallbackProvider implements IProvider {
     // the primary is down (e.g. daily quota exhausted) even though fallbacks
     // could still serve requests.
     for (const p of this.chain) {
-      if (this.deadProviders.has(p.name)) continue
       if (await p.isAvailable()) return true
     }
     return false

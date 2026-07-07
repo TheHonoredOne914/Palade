@@ -264,7 +264,7 @@ export async function saveConfigValue(
 
 export async function readCurrentKeys(projectRoot: string): Promise<Record<string, string>> {
   const result: Record<string, string> = {}
-  
+
   for (const p of PROVIDERS) {
     if (process.env[p.env]) {
       result[p.id] = process.env[p.env]!
@@ -281,7 +281,9 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
         if (match) result[p.id] = match[1]
       }
     }
-  } catch {}
+  } catch {
+    // .env file may not exist — that's fine, just skip it
+  }
 
   const configPath = resolveConfigPath(projectRoot)
   if (!existsSync(configPath)) return result

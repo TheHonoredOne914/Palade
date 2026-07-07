@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { theme } from '../../ui/theme.js'
 import { loadConfig } from '../../config/loader.js'
 import { PaladeConfigSchema } from '../../config/schema.js'
+import { DEFAULT_CONFIG } from '../../config/defaults.js'
 import { PROVIDERS, saveApiKey, setNestedValue, type ProviderId } from '../../config/apiKey.js'
 import { CliExitError } from '../../errors/types.js'
 import { askConfirm, askList, askQuestion } from '../../ui/prompt.js'
@@ -103,7 +104,9 @@ async function showCurrentConfig(projectRoot: string): Promise<void> {
     console.log(theme.bold('  Swarm:'))
     console.log(`    Primary:    ${chalk.cyan(config.swarm?.primary ?? 'opencode-zen')}`)
     console.log(`    Synthesis:  ${chalk.cyan(config.swarm?.synthesis ?? 'nvidia')}`)
-    console.log(`    Agents:     ${chalk.cyan(String(config.swarm?.agentCount ?? 6))}`)
+    console.log(
+      `    Agents:     ${chalk.cyan(String(config.swarm?.agentCount ?? DEFAULT_CONFIG.swarm?.agentCount ?? 8))}`
+    )
     console.log(`    Timeout:    ${chalk.cyan(String(config.swarm?.timeoutMs ?? 600000))}ms`)
 
     if (config.output) {

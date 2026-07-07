@@ -7,11 +7,13 @@ import { AuthError } from '../errors/types.js'
 // extracted here to avoid a repeat. Lives under providers/ (not orchestrator/)
 // so router.ts can import it without swarm.ts -> router.ts -> swarm.ts cycle.
 //
-// Providers don't expose a structured status/code field on thrown errors —
-// they're plain Errors with the status baked into the message string (see
-// src/providers/*.ts, e.g. `Cerebras error 401: ...`) — so we're stuck
-// pattern-matching on the message. Word-boundary regexes avoid false
-// positives on unrelated text that merely contains these digits.
+// Every adapter (groq/cerebras/nvidia/openrouter/opencode-zen/ollama) attaches
+// a structured `status` by throwing AuthError on a 401/403 response — prefer
+// that structured field first. The message-text scan below is only a fallback
+// for errors that didn't come through that path (e.g. a fetch-level failure
+// or a provider error type we haven't wrapped yet); word-boundary regexes
+// there avoid false positives on unrelated text that merely contains these
+// digits.
 export function isFatalAuthError(err: Error): boolean {
   if (err instanceof AuthError) return true
   const msg = err.message.toLowerCase()

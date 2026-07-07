@@ -172,7 +172,7 @@ export class CombinedAnalyzer implements IAgent {
       // A single call has to fit findings for every domain, so the output
       // budget must scale with how many domains are combined into it — a flat
       // cap starves runs with more domains and truncates the JSON array.
-      const maxTokens = Math.min(4096, Math.max(3000, this.domains.length * 600))
+      const maxTokens = Math.max(3000, this.domains.length * 600)
       const response = await provider.complete({
         systemPrompt,
         userPrompt,
@@ -211,9 +211,12 @@ export function attributeFindings(
 ): AgentFinding[] {
   const validNames = new Set(domains.map((d) => d.name))
   // Map 'Architect' (used in economy-mode verdicts) to the closest semantic
-  // category so downstream scoring/reporting has a recognized key.
+  // category so downstream scoring/reporting has a recognized key. Only do
+  // this when 'architecture' is actually one of the domains for this call —
+  // otherwise a hallucinated agentName could slip through as a false-valid
+  // 'architecture' alias even on a call that never included that domain.
   const ARCHITECT_ALIAS = 'architecture'
-  validNames.add(ARCHITECT_ALIAS)
+  if (validNames.has(ARCHITECT_ALIAS)) validNames.add(ARCHITECT_ALIAS)
 
   const attributed: AgentFinding[] = []
   for (const f of findings) {
