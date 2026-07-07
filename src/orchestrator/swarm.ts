@@ -306,50 +306,60 @@ export async function runSwarm(
 
   if (!options.noVerdict) {
     const conflicts = detectConflicts(memory.getAll())
-    for (const conflict of conflicts) {
-      // detectConflicts already pre-filters out pairs the keyword tally is
-      // confident actually agree — everything it returns (including
-      // 'low'-confidence entries: near-ties, one-sided, or no keyword signal
-      // at all) is a real candidate. Let the LLM's own `is_conflict` field
-      // below make the final call instead of gating on the tally here.
-      options.onVerdictDetected?.(
-        conflict.filePath,
-        conflict.sideA.agentName,
-        conflict.sideB.agentName
-      )
-
-      const verdict = (await arbitrateConflict(conflict, context, options.signal)) as any
-      if (verdict && verdict.is_conflict) {
-        options.onVerdictDecided?.(verdict.decision, verdict.confidence)
-
-        // Save to ADR — a failed disk write must not abort the review
-        let savedNote = ''
-        try {
-          const slug = await saveDecision(projectRoot, conflict, verdict)
-          savedNote = `\nSaved as: ${slug}.md`
-        } catch (err) {
-          console.warn(
-            chalk.yellow(
-              `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
-            )
+    // Conflicts used to be arbitrated one at a time (await inside a for-of
+    // loop), so N conflicts meant N sequential LLM round-trips stacking up
+    // pure latency at the end of the run. Arbitration calls are independent
+    // of each other, so run them concurrently under the same per-agent batch
+    // concurrency cap used elsewhere in the swarm.
+    const limit = pLimit(options.maxConcurrentBatches ?? 5)
+    await Promise.allSettled(
+      conflicts.map((conflict) =>
+        limit(async () => {
+          // detectConflicts already pre-filters out pairs the keyword tally is
+          // confident actually agree — everything it returns (including
+          // 'low'-confidence entries: near-ties, one-sided, or no keyword signal
+          // at all) is a real candidate. Let the LLM's own `is_conflict` field
+          // below make the final call instead of gating on the tally here.
+          options.onVerdictDetected?.(
+            conflict.filePath,
+            conflict.sideA.agentName,
+            conflict.sideB.agentName
           )
-        }
 
-        // Inject into findings for synthesis
-        finalFindings.push({
-          id: crypto.randomUUID(),
-          agentName: 'architecture',
-          title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
-          description: `Decision: ${verdict.decision}\nTradeoff: ${verdict.tradeoff_accepted}${savedNote}`,
-          filePath: conflict.filePath,
-          lineStart: conflict.lineStart,
-          lineEnd: conflict.lineEnd,
-          severity: 'info',
-          tags: ['architectural-decision', 'arbitration-verdict'],
-          scorePenalty: 0,
+          const verdict = (await arbitrateConflict(conflict, context, options.signal)) as any
+          if (verdict && verdict.is_conflict) {
+            options.onVerdictDecided?.(verdict.decision, verdict.confidence)
+
+            // Save to ADR — a failed disk write must not abort the review
+            let savedNote = ''
+            try {
+              const slug = await saveDecision(projectRoot, conflict, verdict)
+              savedNote = `\nSaved as: ${slug}.md`
+            } catch (err) {
+              console.warn(
+                chalk.yellow(
+                  `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
+                )
+              )
+            }
+
+            // Inject into findings for synthesis
+            finalFindings.push({
+              id: crypto.randomUUID(),
+              agentName: 'architecture',
+              title: `[VERDICT] ${conflict.filePath}:${conflict.lineStart}-${conflict.lineEnd}`,
+              description: `Decision: ${verdict.decision}\nTradeoff: ${verdict.tradeoff_accepted}${savedNote}`,
+              filePath: conflict.filePath,
+              lineStart: conflict.lineStart,
+              lineEnd: conflict.lineEnd,
+              severity: 'info',
+              tags: ['architectural-decision', 'arbitration-verdict'],
+              scorePenalty: 0,
+            })
+          }
         })
-      }
-    }
+      )
+    )
   }
 
   // Handle Economy Mode internal verdicts. Respect --no-verdict: it must

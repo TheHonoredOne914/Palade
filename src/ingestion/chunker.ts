@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import type { FileManifest, CodeChunk, Language } from './types.js'
 import ts from 'typescript'
+import pLimit from 'p-limit'
 
 export const MAX_TOKENS = 6000
 const CHUNK_LINES = 150
@@ -76,28 +77,46 @@ export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
   return chunks
 }
 
+function isComplexityNode(n: ts.Node): boolean {
+  return (
+    ts.isIfStatement(n) ||
+    ts.isForStatement(n) ||
+    ts.isForInStatement(n) ||
+    ts.isForOfStatement(n) ||
+    ts.isWhileStatement(n) ||
+    ts.isDoStatement(n) ||
+    ts.isCaseClause(n) ||
+    ts.isCatchClause(n) ||
+    ts.isConditionalExpression(n) ||
+    (ts.isBinaryExpression(n) &&
+      (n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+        n.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken))
+  )
+}
+
 function calculateComplexity(node: ts.Node): number {
   let complexity = 1
   ts.forEachChild(node, function visit(n) {
-    if (
-      ts.isIfStatement(n) ||
-      ts.isForStatement(n) ||
-      ts.isForInStatement(n) ||
-      ts.isForOfStatement(n) ||
-      ts.isWhileStatement(n) ||
-      ts.isDoStatement(n) ||
-      ts.isCaseClause(n) ||
-      ts.isCatchClause(n) ||
-      ts.isConditionalExpression(n) ||
-      (ts.isBinaryExpression(n) &&
-        (n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-          n.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
-          n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken))
-    ) {
-      complexity++
-    }
+    if (isComplexityNode(n)) complexity++
     ts.forEachChild(n, visit)
   })
+  return complexity
+}
+
+// Same traversal as calculateComplexity, but over a list of already-parsed
+// top-level nodes instead of re-parsing their concatenated text into a
+// synthetic source file. A chunk spans one or more top-level nodes from the
+// ORIGINAL sourceFile; treating each of them the way calculateComplexity
+// treats a direct child of its root (checked, then recursed into) reproduces
+// the exact same count without a second full parse per chunk.
+function calculateComplexityForNodes(nodes: ts.Node[]): number {
+  let complexity = 1
+  const visit = (n: ts.Node) => {
+    if (isComplexityNode(n)) complexity++
+    ts.forEachChild(n, visit)
+  }
+  for (const node of nodes) visit(node)
   return complexity
 }
 
@@ -126,6 +145,7 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
   const chunks: CodeChunk[] = []
   let currentStartNode: ts.Node | null = null
   let currentEndNode: ts.Node | null = null
+  let currentNodes: ts.Node[] = []
   let currentTokenCount = 0
 
   const finishChunk = () => {
@@ -134,9 +154,7 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
     const end = sourceFile.getLineAndCharacterOfPosition(currentEndNode.getEnd())
     const chunkContent = content.substring(currentStartNode.getStart(), currentEndNode.getEnd())
     const symbolName = getTopLevelSymbolName(currentStartNode)
-
-    const tempFile = ts.createSourceFile('temp.ts', chunkContent, ts.ScriptTarget.Latest, true)
-    const complexity = calculateComplexity(tempFile)
+    const complexity = calculateComplexityForNodes(currentNodes)
 
     chunks.push({
       id: makeChunkId(filePath, start.line + 1, end.line + 1),
@@ -152,26 +170,33 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
 
     currentStartNode = null
     currentEndNode = null
+    currentNodes = []
     currentTokenCount = 0
   }
 
   ts.forEachChild(sourceFile, (node) => {
     const nodeTokens = estimateTokens(node.getText(sourceFile))
 
-    if (nodeTokens > 2000) {
+    // Flush thresholds match MAX_TOKENS (the actual per-chunk cap downstream)
+    // instead of a stale lower constant — the old 2000/3000 values predated
+    // MAX_TOKENS being raised to 6000 and were silently doubling chunk count
+    // (and every downstream batch/provider call) on TypeScript-heavy codebases.
+    if (nodeTokens > MAX_TOKENS) {
       finishChunk()
       currentStartNode = node
       currentEndNode = node
+      currentNodes = [node]
       finishChunk()
       return
     }
 
-    if (currentTokenCount + nodeTokens > 3000) {
+    if (currentTokenCount + nodeTokens > MAX_TOKENS) {
       finishChunk()
     }
 
     if (!currentStartNode) currentStartNode = node
     currentEndNode = node
+    currentNodes.push(node)
     currentTokenCount += nodeTokens
   })
 
@@ -336,68 +361,77 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
   return chunks
 }
 
-export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]> {
-  const allChunks: CodeChunk[] = []
+const MAX_CONCURRENT_FILE_READS = 16
 
-  for (const manifest of manifests) {
-    let content: string
-    try {
-      content = await readFile(manifest.absolutePath, 'utf-8')
-      if (content.includes('�')) {
-        console.warn(
-          `[chunker] Warning: File ${manifest.path} contains invalid UTF-8 characters and may degrade analysis.`
-        )
-      }
-    } catch (err) {
+async function chunkOneFile(manifest: FileManifest): Promise<CodeChunk[]> {
+  let content: string
+  try {
+    content = await readFile(manifest.absolutePath, 'utf-8')
+    if (content.includes('�')) {
       console.warn(
-        `[chunker] Failed to read ${manifest.path}: ${err instanceof Error ? err.message : String(err)}`
+        `[chunker] Warning: File ${manifest.path} contains invalid UTF-8 characters and may degrade analysis.`
       )
-      continue
     }
-
-    const isAstLanguage = manifest.language === 'typescript' || manifest.language === 'javascript'
-    // Guard against handing huge files to the AST parser: a pathologically
-    // large file can make full-program parsing slow/memory-heavy. Fall back
-    // to the cheaper line/bracket-based chunking strategy above these caps.
-    const lineCount = content.length === 0 ? 0 : content.split('\n').length
-    const byteSize = Buffer.byteLength(content, 'utf-8')
-    const exceedsParseLimits = lineCount > MAX_TREE_SITTER_LINES || byteSize > MAX_TREE_SITTER_BYTES
-
-    let chunks: CodeChunk[]
-    if (isAstLanguage && !exceedsParseLimits) {
-      chunks = chunkByAST(content, manifest.path, manifest.language)
-    } else {
-      if (isAstLanguage && exceedsParseLimits) {
-        console.warn(
-          `[chunker] File ${manifest.path} (${lineCount} lines, ${byteSize} bytes) exceeds the ` +
-            `AST parsing size guard (${MAX_TREE_SITTER_LINES} lines / ${MAX_TREE_SITTER_BYTES} bytes) — ` +
-            `falling back to line-based chunking.`
-        )
-      }
-      // chunkByBrackets caps blocks at 300 lines, but very long lines can still
-      // push a chunk past MAX_TOKENS — enforce the token cap explicitly.
-      chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap(splitLargeChunk)
-    }
-
-    if (chunks.length > MAX_CHUNKS_PER_FILE) {
-      const droppedCount = chunks.length - MAX_CHUNKS_PER_FILE
-      // Use console.error (not warn) so this is unmissable: a file this large
-      // silently loses review coverage on its tail, which is easy to miss in
-      // noisy logs otherwise.
-      console.error(
-        `[chunker] TRUNCATED: ${manifest.path} produced ${chunks.length} chunks, exceeding the ` +
-          `${MAX_CHUNKS_PER_FILE}-chunk cap (kept ${MAX_CHUNKS_PER_FILE}, dropped ${droppedCount}) — ` +
-          `the last ${droppedCount} chunk(s) of this file were NOT reviewed.`
-      )
-      chunks.length = MAX_CHUNKS_PER_FILE
-      // Mark the final surviving chunk so callers can programmatically detect
-      // truncation (not just via log output).
-      const lastChunk = chunks[chunks.length - 1]
-      if (lastChunk) lastChunk.truncated = true
-    }
-
-    allChunks.push(...chunks)
+  } catch (err) {
+    console.warn(
+      `[chunker] Failed to read ${manifest.path}: ${err instanceof Error ? err.message : String(err)}`
+    )
+    return []
   }
 
-  return allChunks
+  const isAstLanguage = manifest.language === 'typescript' || manifest.language === 'javascript'
+  // Guard against handing huge files to the AST parser: a pathologically
+  // large file can make full-program parsing slow/memory-heavy. Fall back
+  // to the cheaper line/bracket-based chunking strategy above these caps.
+  const lineCount = content.length === 0 ? 0 : content.split('\n').length
+  const byteSize = Buffer.byteLength(content, 'utf-8')
+  const exceedsParseLimits = lineCount > MAX_TREE_SITTER_LINES || byteSize > MAX_TREE_SITTER_BYTES
+
+  let chunks: CodeChunk[]
+  if (isAstLanguage && !exceedsParseLimits) {
+    chunks = chunkByAST(content, manifest.path, manifest.language)
+  } else {
+    if (isAstLanguage && exceedsParseLimits) {
+      console.warn(
+        `[chunker] File ${manifest.path} (${lineCount} lines, ${byteSize} bytes) exceeds the ` +
+          `AST parsing size guard (${MAX_TREE_SITTER_LINES} lines / ${MAX_TREE_SITTER_BYTES} bytes) — ` +
+          `falling back to line-based chunking.`
+      )
+    }
+    // chunkByBrackets caps blocks at 300 lines, but very long lines can still
+    // push a chunk past MAX_TOKENS — enforce the token cap explicitly.
+    chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap(splitLargeChunk)
+  }
+
+  if (chunks.length > MAX_CHUNKS_PER_FILE) {
+    const droppedCount = chunks.length - MAX_CHUNKS_PER_FILE
+    // Use console.error (not warn) so this is unmissable: a file this large
+    // silently loses review coverage on its tail, which is easy to miss in
+    // noisy logs otherwise.
+    console.error(
+      `[chunker] TRUNCATED: ${manifest.path} produced ${chunks.length} chunks, exceeding the ` +
+        `${MAX_CHUNKS_PER_FILE}-chunk cap (kept ${MAX_CHUNKS_PER_FILE}, dropped ${droppedCount}) — ` +
+        `the last ${droppedCount} chunk(s) of this file were NOT reviewed.`
+    )
+    chunks.length = MAX_CHUNKS_PER_FILE
+    // Mark the final surviving chunk so callers can programmatically detect
+    // truncation (not just via log output).
+    const lastChunk = chunks[chunks.length - 1]
+    if (lastChunk) lastChunk.truncated = true
+  }
+
+  return chunks
+}
+
+export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]> {
+  // Files were previously read and chunked one at a time (await inside a
+  // for-of loop), fully serializing disk I/O across the whole project. A
+  // bounded-concurrency map keeps output order stable (Promise.all resolves
+  // in input order regardless of completion order) while letting multiple
+  // file reads/parses overlap.
+  const limit = pLimit(MAX_CONCURRENT_FILE_READS)
+  const perFileChunks = await Promise.all(
+    manifests.map((manifest) => limit(() => chunkOneFile(manifest)))
+  )
+  return perFileChunks.flat()
 }
