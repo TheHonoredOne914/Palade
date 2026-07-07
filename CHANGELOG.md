@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-rc.2] - 2026-07-07
+
+### Fixed
+- **Reasoning Model Self-Consistency**: Increased verification `maxTokens` to 1024, unlocking native support for reasoning models (e.g., DeepSeek, OpenCode Zen) by allowing sufficient token budget for `<thinking>` blocks. Resolves a bug where reasoning models dropped critical findings as false positives.
+- **Strict Validation Overflow**: Updated `findingValidation.ts` to clamp overflow line numbers instead of silently dropping valid findings when line references exceed chunk boundaries.
+- **Economy Mode Overload**: Enforced a 4096 token hard ceiling on fallback providers in Economy Mode to eliminate `413 Payload Too Large` errors during heavy analysis.
+- **Lockfile Deadlock**: Fixed a silent crash triggered on initial `.palade` directory creation by properly asserting directory existence prior to lock acquisition.
+
 ## [1.0.0-rc.1] - 2026-06-27
 
 ### Added
