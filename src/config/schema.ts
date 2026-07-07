@@ -40,6 +40,12 @@ export const PaladeConfigSchema = z
         synthesis: z
           .enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
           .default('nvidia'),
+        // Optional cheap/fast tier for the triage ranking call (a single call
+        // per run that just ranks file paths, not a deep review). Falls back
+        // to `primary` when unset — see router.ts's initRouter.
+        triage: z
+          .enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
+          .optional(),
         agentCount: z.number().int().min(1).max(12).default(8),
         timeoutMs: z.number().int().default(600000),
         maxReviewTokens: z.number().int().min(10_000).default(200_000),

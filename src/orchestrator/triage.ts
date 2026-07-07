@@ -62,12 +62,19 @@ export async function triageFiles(
     .join('\n')
 
   try {
-    const provider = getProvider('primary')
+    const provider = getProvider('triage')
+
+    // The LLM must return every file path in the ranked JSON array — a fixed
+    // 2048-token cap silently truncates that array on any project with more
+    // than ~250 files (~30 chars/path), which breaks the JSON.parse below and
+    // makes triage silently fall back to heuristicSelect() with no error
+    // surfaced. Scale the budget with the actual number of paths to rank.
+    const maxTokens = Math.max(2048, manifests.length * 15)
 
     const response = await provider.complete({
       systemPrompt: TRIAGE_SYSTEM_PROMPT,
       userPrompt: `Project files:\n${compactManifest}\n\nRank all files by importance. Return the full ranked list as a JSON array.`,
-      maxTokens: 2048,
+      maxTokens,
       temperature: 0.1,
     })
 

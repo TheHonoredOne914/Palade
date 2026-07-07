@@ -41,6 +41,23 @@ function identifierTerms(content: string): Set<string> {
   return terms
 }
 
+// buildRetrievedContext is called once per subject chunk, and each call scans
+// every OTHER chunk as a candidate — so without caching, every chunk's
+// identifierTerms() (a regex scan over its full content) gets recomputed once
+// per subject that considers it, i.e. O(chunks^2) regex scans instead of
+// O(chunks). Keyed by object identity since pipeline.ts reuses the same
+// CodeChunk objects as candidates across every subject's call.
+const identifierTermsCache = new WeakMap<CodeChunk, Set<string>>()
+
+function getIdentifierTerms(chunk: CodeChunk): Set<string> {
+  let terms = identifierTermsCache.get(chunk)
+  if (!terms) {
+    terms = identifierTerms(chunk.content)
+    identifierTermsCache.set(chunk, terms)
+  }
+  return terms
+}
+
 function expectedTestBases(filePath: string): string[] {
   const base = withoutExtension(filePath)
   return [
@@ -76,7 +93,7 @@ function scoreRelatedChunk(
   if (subjectBase && candidate.content.includes(subjectBase)) score += 4
 
   if (subjectTerms.size > 0) {
-    const candidateTerms = identifierTerms(candidate.content)
+    const candidateTerms = getIdentifierTerms(candidate)
     let overlap = 0
     for (const term of subjectTerms) {
       if (candidateTerms.has(term)) overlap++
@@ -90,7 +107,7 @@ function scoreRelatedChunk(
 export function buildRetrievedContext(subject: CodeChunk, allChunks: CodeChunk[]): string {
   // Hoist subject-only computations out of the per-candidate loop to avoid O(N²)
   const subjectImports = extractImportSpecifiers(subject.content, subject.filePath)
-  const subjectTerms = identifierTerms(subject.content)
+  const subjectTerms = getIdentifierTerms(subject)
   const subjectTestBases = expectedTestBases(subject.filePath)
   const subjectBase = withoutExtension(toPosix(subject.filePath)).split('/').pop()
 

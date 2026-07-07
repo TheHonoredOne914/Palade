@@ -95,28 +95,75 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
 }
 
 export function mergeFindings(findings: AgentFinding[]): AgentFinding[] {
-  const result = [...findings]
-  const merged = new Set<number>()
+  const n = findings.length
+  const parent = Array.from({ length: n }, (_, i) => i)
+  const find = (x: number): number => {
+    if (parent[x] !== x) parent[x] = find(parent[x])
+    return parent[x]
+  }
+  const union = (x: number, y: number): void => {
+    const rx = find(x)
+    const ry = find(y)
+    if (rx !== ry) parent[rx] = ry
+  }
 
-  for (let i = 0; i < result.length; i++) {
-    if (merged.has(i)) continue
-    // Snapshot the current result[i] so that mutations from mergeTwo don't
-    // affect subsequent shouldMerge comparisons in this inner loop. Without
-    // this, merging result[i] with result[j] changes result[i] in-place, and
-    // later j iterations compare against the merged (mutated) version, which
-    // can produce cascading, unpredictable merges.
-    let currentI = result[i]
-    for (let j = i + 1; j < result.length; j++) {
-      if (merged.has(j)) continue
-      if (shouldMerge(currentI, result[j])) {
-        currentI = mergeTwo(currentI, result[j])
-        result[i] = currentI
-        merged.add(j)
+  // Fast path: an exact findingFingerprint match is an unambiguous duplicate
+  // regardless of filePath (shouldMerge's first branch) — group those in
+  // O(n) up front instead of relying on the O(n^2) scan below to find them.
+  const byFingerprint = new Map<string, number[]>()
+  for (let i = 0; i < n; i++) {
+    const fp = findings[i].findingFingerprint
+    if (!fp) continue
+    const bucket = byFingerprint.get(fp)
+    if (bucket) {
+      for (const j of bucket) union(i, j)
+      bucket.push(i)
+    } else {
+      byFingerprint.set(fp, [i])
+    }
+  }
+
+  // shouldMerge's remaining (proximity + title-similarity) branch only ever
+  // fires between findings that share the same filePath, so bucketing by file
+  // before the pairwise comparison turns one O(total^2) scan across every
+  // finding in the run into many small O(perFile^2) scans — the dominant cost
+  // once a large codebase produces thousands of findings across hundreds of
+  // files.
+  const byFile = new Map<string, number[]>()
+  for (let i = 0; i < n; i++) {
+    const key = findings[i].filePath ?? `__nofile_${i}`
+    const bucket = byFile.get(key)
+    if (bucket) bucket.push(i)
+    else byFile.set(key, [i])
+  }
+
+  for (const indices of byFile.values()) {
+    for (let a = 0; a < indices.length; a++) {
+      const i = indices[a]
+      for (let b = a + 1; b < indices.length; b++) {
+        const j = indices[b]
+        if (find(i) === find(j)) continue
+        if (shouldMerge(findings[i], findings[j])) union(i, j)
       }
     }
   }
 
-  const deduped = result.filter((_, idx) => !merged.has(idx))
+  const clusters = new Map<number, number[]>()
+  for (let i = 0; i < n; i++) {
+    const root = find(i)
+    const bucket = clusters.get(root)
+    if (bucket) bucket.push(i)
+    else clusters.set(root, [i])
+  }
+
+  const deduped: AgentFinding[] = []
+  for (const indices of clusters.values()) {
+    let mergedFinding = findings[indices[0]]
+    for (let k = 1; k < indices.length; k++) {
+      mergedFinding = mergeTwo(mergedFinding, findings[indices[k]])
+    }
+    deduped.push(mergedFinding)
+  }
 
   deduped.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
 

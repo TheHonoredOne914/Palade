@@ -36,11 +36,12 @@ function isFatalMessage(message: string): boolean {
   return FATAL_KEYWORDS.some((keyword) => lower.includes(keyword))
 }
 
-export type ProviderRole = 'primary' | 'synthesis'
+export type ProviderRole = 'primary' | 'synthesis' | 'triage'
 
 export interface ProviderAssignment {
   primary: IProvider
   synthesis: IProvider
+  triage: IProvider
 }
 
 interface ProviderConfig {
@@ -324,9 +325,24 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   const primaryWithFallback = new FallbackProvider(primary, getFallbackChain(primary.name))
   const synthesisWithFallback = new FallbackProvider(synthesis, getFallbackChain(synthesis.name))
 
+  // Assign triage: an explicit cheap/fast tier if configured and available,
+  // otherwise reuse the already-wrapped primary chain rather than building a
+  // redundant fallback chain around the same provider.
+  const preferredTriage = config.swarm.triage
+  let triageWithFallback: IProvider = primaryWithFallback
+  if (
+    preferredTriage &&
+    allProviders.has(preferredTriage) &&
+    availability[names.indexOf(preferredTriage)]
+  ) {
+    const triage = allProviders.get(preferredTriage)!
+    triageWithFallback = new FallbackProvider(triage, getFallbackChain(triage.name))
+  }
+
   const result: ProviderAssignment = {
     primary: primaryWithFallback,
     synthesis: synthesisWithFallback,
+    triage: triageWithFallback,
   }
   assignment = result
 
@@ -337,7 +353,9 @@ export function getProvider(role: ProviderRole): IProvider {
   if (!assignment) {
     throw new Error('Router not initialized. Call initRouter() first.')
   }
-  return role === 'primary' ? assignment.primary : assignment.synthesis
+  if (role === 'primary') return assignment.primary
+  if (role === 'synthesis') return assignment.synthesis
+  return assignment.triage
 }
 
 export interface FallbackStats {

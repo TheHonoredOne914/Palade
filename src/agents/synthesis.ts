@@ -146,6 +146,42 @@ function parseSynthesisResponse(raw: string): SynthesisResult | null {
   }
 }
 
+/**
+ * Picks which findings get sent to the synthesis LLM when there are more
+ * than the cap. A plain top-N-by-penalty sort lets one hot file with 50+
+ * findings crowd out every other file's issues from synthesis entirely on a
+ * large codebase — this reserves one slot per distinct file (the file's own
+ * highest-penalty finding) before filling remaining capacity by raw penalty,
+ * so systemic patterns spread across many files stay visible.
+ */
+function selectFindingsForSynthesis(sorted: AgentFinding[], cap: number): AgentFinding[] {
+  if (sorted.length <= cap) return sorted
+
+  const seenFiles = new Set<string>()
+  const selected = new Set<AgentFinding>()
+  const rest: AgentFinding[] = []
+
+  for (let i = 0; i < sorted.length; i++) {
+    const finding = sorted[i]
+    const key = finding.filePath ?? `__nofile_${i}`
+    if (!seenFiles.has(key) && selected.size < cap) {
+      seenFiles.add(key)
+      selected.add(finding)
+    } else {
+      rest.push(finding)
+    }
+  }
+
+  for (const finding of rest) {
+    if (selected.size >= cap) break
+    selected.add(finding)
+  }
+
+  // Restore penalty ordering — the breadth-first pass above interleaved
+  // selection order across files.
+  return sorted.filter((f) => selected.has(f))
+}
+
 /** Computes exact severity counts from the full finding set (not an LLM estimate). */
 function computeDebtCounts(
   findings: AgentFinding[]
@@ -184,8 +220,9 @@ export async function synthesize(
     const provider: IProvider = getProvider('synthesis')
 
     const sorted = [...allFindings].sort((a, b) => penaltyFor(b) - penaltyFor(a))
-    const cappedFindings = sorted.slice(0, maxSynthesisFindings)
-    const droppedFindings = sorted.slice(maxSynthesisFindings)
+    const cappedFindings = selectFindingsForSynthesis(sorted, maxSynthesisFindings)
+    const cappedSet = new Set(cappedFindings)
+    const droppedFindings = sorted.filter((f) => !cappedSet.has(f))
 
     // Scale the output budget with the finding cap so raising
     // maxSynthesisFindings doesn't risk truncated JSON — same pattern as
