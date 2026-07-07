@@ -455,7 +455,7 @@ ${codeChunk.content}
 \`\`\`
 
 Reply strictly YES or NO.`,
-        maxTokens: 10,
+        maxTokens: 1024,
         temperature: 0,
         signal,
       })
