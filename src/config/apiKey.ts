@@ -264,7 +264,7 @@ export async function saveConfigValue(
 
 export async function readCurrentKeys(projectRoot: string): Promise<Record<string, string>> {
   const result: Record<string, string> = {}
-  
+
   for (const p of PROVIDERS) {
     if (process.env[p.env]) {
       result[p.id] = process.env[p.env]!
