@@ -281,7 +281,9 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
         if (match) result[p.id] = match[1]
       }
     }
-  } catch {}
+  } catch {
+    // .env file may not exist — that's fine, just skip it
+  }
 
   const configPath = resolveConfigPath(projectRoot)
   if (!existsSync(configPath)) return result
