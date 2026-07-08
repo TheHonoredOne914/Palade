@@ -32,6 +32,38 @@ export function jaccardSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : overlap / union
 }
 
+// Shared with memory.ts's cross-agent correlation (isNearMatch below) so the
+// two "same issue, different location" checks can't silently drift apart if
+// one file's literal is edited without the other.
+//
+// The 60-line window (not 5) covers duplicates produced by the chunk
+// splitter, whose halves overlap by up to 50 lines (scheduler.ts), so the
+// same defect can be reported from both halves.
+//
+// Different agents can also flag the exact same defect near the same lines
+// (e.g. security and architecture both catching a hardcoded secret) — allow
+// the proximity merge across agents too, but require a stricter
+// title-similarity bar (0.7 vs 0.5) to stay conservative, since cross-agent
+// titles are less likely to coincidentally share wording than two passes of
+// the same agent.
+export const NEAR_MATCH_WINDOW_LINES = 60
+export const NEAR_MATCH_SAME_AGENT_THRESHOLD = 0.5
+export const NEAR_MATCH_CROSS_AGENT_THRESHOLD = 0.7
+
+/**
+ * True when two findings are close enough in location and similar enough in
+ * title to be considered "the same issue, reported near the same place" —
+ * shared by merger.ts's own dedup (below) and memory.ts's cross-agent
+ * correlation.
+ */
+export function isNearMatch(a: AgentFinding, b: AgentFinding): boolean {
+  if (a.lineStart === undefined || b.lineStart === undefined) return false
+  if (Math.abs(a.lineStart - b.lineStart) > NEAR_MATCH_WINDOW_LINES) return false
+  const threshold =
+    a.agentName === b.agentName ? NEAR_MATCH_SAME_AGENT_THRESHOLD : NEAR_MATCH_CROSS_AGENT_THRESHOLD
+  return jaccardSimilarity(a.title, b.title) > threshold
+}
+
 function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
   if (
     a.findingFingerprint &&
@@ -48,20 +80,8 @@ function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
       }
       // Nearby lines: only merge when the titles actually describe the same
       // issue — proximity alone collapses unrelated findings and loses one of
-      // them. The 60-line window (not 5) covers duplicates produced by the
-      // chunk splitter, whose halves overlap by up to 50 lines (scheduler.ts),
-      // so the same defect can be reported from both halves.
-      //
-      // Different agents can also flag the exact same defect near the same
-      // lines (e.g. security and architecture both catching a hardcoded
-      // secret) — allow the proximity merge across agents too, but require a
-      // stricter title-similarity bar (0.7 vs 0.5) to stay conservative, since
-      // cross-agent titles are less likely to coincidentally share wording
-      // than two passes of the same agent.
-      if (Math.abs(a.lineStart - b.lineStart) <= 60) {
-        const threshold = a.agentName === b.agentName ? 0.5 : 0.7
-        if (jaccardSimilarity(a.title, b.title) > threshold) return true
-      }
+      // them.
+      if (isNearMatch(a, b)) return true
     }
   }
   return false

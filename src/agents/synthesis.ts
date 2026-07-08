@@ -197,6 +197,32 @@ function computeDebtCounts(
   return counts
 }
 
+/**
+ * Debt mode's synthesisPromptSuffix (see modes/debt.ts) instructs the model
+ * to "sum all finding.estimatedHours per severity tier", but the LLM's own
+ * arithmetic isn't trusted for the numeric debtEstimate fields (same
+ * reasoning as computeDebtCounts above) — so this computes the sum
+ * deterministically in code instead. A finding with no estimatedHours
+ * contributes 0 rather than throwing or being skipped.
+ */
+function computeDebtHours(
+  findings: AgentFinding[]
+): Pick<DebtEstimate, 'critical' | 'high' | 'medium' | 'low' | 'total'> {
+  const sums = { critical: 0, high: 0, medium: 0, low: 0, total: 0 }
+  for (const f of findings) {
+    const hours =
+      typeof f.estimatedHours === 'number' && Number.isFinite(f.estimatedHours)
+        ? f.estimatedHours
+        : 0
+    if (f.severity === 'critical') sums.critical += hours
+    else if (f.severity === 'high') sums.high += hours
+    else if (f.severity === 'medium') sums.medium += hours
+    else if (f.severity === 'low') sums.low += hours
+  }
+  sums.total = sums.critical + sums.high + sums.medium + sums.low
+  return sums
+}
+
 export interface SynthesizeOptions {
   /** Max findings (by severity) sent to the LLM for synthesis. Default 50. */
   maxSynthesisFindings?: number
@@ -213,7 +239,10 @@ export async function synthesize(
   options: SynthesizeOptions = {}
 ): Promise<SynthesisResult> {
   const { maxSynthesisFindings = 50, synthesisTimeoutMs = 180_000, signal } = options
-  const debtCounts = computeDebtCounts(allFindings)
+  // Debt mode reports hours of debt, not a finding tally — sum
+  // finding.estimatedHours per severity tier instead of counting findings.
+  const debtCounts =
+    context.mode === 'debt' ? computeDebtHours(allFindings) : computeDebtCounts(allFindings)
   // Define cleanup function at function scope so catch can access it
   let onExternalAbort: (() => void) | undefined
   try {

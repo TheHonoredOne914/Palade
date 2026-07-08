@@ -1,25 +1,7 @@
 import type { AgentFinding, AgentName, Severity } from '../agents/base.js'
 import { SEVERITY_PENALTY } from '../agents/base.js'
 import type { CrossAgentFinding } from './types.js'
-import { SEVERITY_RANK, jaccardSimilarity } from './merger.js'
-
-// Mirrors merger.ts's shouldMerge proximity window: chunk overlap (up to 60
-// lines, see scheduler.ts) means two agents can flag the same bug from
-// slightly different chunk boundaries, a few lines apart rather than on the
-// exact same line.
-const LOCATION_WINDOW = 60
-
-// Same proximity+similarity pattern as merger.ts's shouldMerge, reused here
-// so "same issue, different agent" detection doesn't drift between the two
-// call sites. Cross-agent titles are less likely to coincidentally share
-// wording than two passes of the same agent, so a stricter bar (0.7) is used
-// when the two findings come from different agents.
-function isNearMatch(a: AgentFinding, b: AgentFinding): boolean {
-  if (a.lineStart === undefined || b.lineStart === undefined) return false
-  if (Math.abs(a.lineStart - b.lineStart) > LOCATION_WINDOW) return false
-  const threshold = a.agentName === b.agentName ? 0.5 : 0.7
-  return jaccardSimilarity(a.title, b.title) > threshold
-}
+import { SEVERITY_RANK, isNearMatch } from './merger.js'
 
 // Derived from merger.ts's SEVERITY_RANK (rather than a separately maintained
 // array) so the two orderings can't drift apart.

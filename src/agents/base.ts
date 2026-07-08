@@ -303,8 +303,16 @@ export function parseFindingsResponse(
       typeof (item as Record<string, unknown>).severity === 'string'
     ) {
       const obj = item as Record<string, unknown>
-      const severity = obj.severity as Severity
-      if (!Object.hasOwn(SEVERITY_PENALTY, severity)) continue
+      const rawSeverity = obj.severity as string
+      const severity = rawSeverity.trim().toLowerCase() as Severity
+      if (!Object.hasOwn(SEVERITY_PENALTY, severity)) {
+        console.warn(
+          chalk.yellow(
+            `⚠ ${agentName}: dropped finding "${(obj.title as string) ?? 'untitled'}" with unrecognized severity "${rawSeverity}"`
+          )
+        )
+        continue
+      }
 
       const title = obj.title as string
       if (!title || title.trim().length === 0) continue
@@ -404,6 +412,10 @@ export function buildSystemPrompt(
     prompt += `\n\n${HARDCODED_SKILLS}`
   }
 
+  if (context.spec) {
+    prompt += `\n\n=== BUSINESS LOGIC SPECIFICATION ===\n${context.spec}\n====================================\n\nCRITICAL: Cross-reference the code against the business logic specification above to ensure it is implemented correctly.`
+  }
+
   if (context.constitution) {
     prompt += `\n\nAGENT CONSTITUTION (BEHAVIORAL GUIDELINES):\n${context.constitution}`
   }
@@ -412,7 +424,7 @@ export function buildSystemPrompt(
 }
 
 import { getProvider } from '../providers/router.js'
-import type { IProvider } from '../providers/base.js'
+import { createLimiter, type IProvider } from '../providers/base.js'
 
 /**
  * Re-asks the model a strict YES/NO question to confirm each critical/high
@@ -483,10 +495,13 @@ Reply strictly YES or NO.`,
     }
   }
 
+  // Cap concurrency to match the swarm's documented "max 5 concurrent
+  // batches" limit instead of firing one provider call per finding at once.
+  const limit = createLimiter(5)
   const validated = await Promise.all(
     findings.map((f) => {
       if (f.severity === 'critical' || f.severity === 'high') {
-        return verifyOne(f)
+        return limit(() => verifyOne(f))
       }
       return Promise.resolve(f)
     })

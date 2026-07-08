@@ -14,13 +14,7 @@ import { mergeFindings } from './merger.js'
 import { scheduleBatches, estimateTotalTokens } from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
 import { isFatalAuthError } from '../providers/errorClassification.js'
-import {
-  detectConflicts,
-  arbitrateConflict,
-  saveDecision,
-  type Conflict,
-  type Verdict,
-} from './verdict.js'
+import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 import { applyLineIgnores } from '../ingestion/annotationParser.js'
 import { ReviewCancelledError, SwarmTimeoutError } from '../errors/types.js'
 
@@ -229,6 +223,11 @@ export async function runSwarm(
         // call further down in this same agent promise, silently losing
         // partial findings from batches that completed fine.
         memory.record(agent.name, applyLineIgnores(allFindings, options.ignoredLines ?? []))
+        // Attach the partial findings collected so far to the thrown error so
+        // a caller that catches it (review.ts, diff.ts currently just log the
+        // message) COULD recover them instead of the generic re-throw making
+        // this "preserve partial findings" step unreachable in practice.
+        Object.assign(agentError, { partialFindings: memory.getAll() })
         throw agentError
       }
 
@@ -333,7 +332,7 @@ export async function runSwarm(
             conflict.sideB.agentName
           )
 
-          const verdict = (await arbitrateConflict(conflict, context, options.signal)) as any
+          const verdict = await arbitrateConflict(conflict, context, options.signal)
           if (verdict && verdict.is_conflict) {
             options.onVerdictDecided?.(verdict.decision, verdict.confidence)
 
@@ -367,105 +366,6 @@ export async function runSwarm(
         })
       )
     )
-  }
-
-  // Handle Economy Mode internal verdicts. Respect --no-verdict: it must
-  // suppress ADR persistence and description mutation here just as it gates the
-  // arbitration block above.
-  for (const finding of options.noVerdict ? [] : finalFindings) {
-    if (
-      finding.agentName === 'architecture' &&
-      finding.title.startsWith('[VERDICT]') &&
-      !finding.tags.includes('arbitration-verdict')
-    ) {
-      // Parse tradeoff out of description. Models sometimes emit a literal
-      // backslash-n instead of a real newline inside the JSON string, so
-      // split on both.
-      const lines = finding.description.split(/\r?\n|\\n/)
-      const decisionStr =
-        lines
-          .find((l) => l.startsWith('Decision:'))
-          ?.replace('Decision:', '')
-          .trim() || ''
-      const tradeoffStr =
-        lines
-          .find((l) => l.startsWith('Tradeoff:'))
-          ?.replace('Tradeoff:', '')
-          .trim() || ''
-      const confidenceStr =
-        lines
-          .find((l) => l.startsWith('Confidence:'))
-          ?.replace('Confidence:', '')
-          .replace('%', '')
-          .trim() || '50'
-      const losingStr =
-        lines
-          .find((l) => l.startsWith('Losing side:'))
-          ?.replace('Losing side:', '')
-          .trim() || 'Unknown'
-
-      // Save to disk if not already saved (hasn't been run through the arbitrateConflict loop above)
-      if (!lines.some((l) => l.includes('Saved as:'))) {
-        // The combined analyzer's verdict returns a single "Architect" finding.
-        // Try to figure out the winning vs losing sides from the text so the ADR isn't blank.
-        const winningLensMatch = decisionStr.match(/(\w+) says/i)
-        const winningLens = winningLensMatch ? winningLensMatch[1] : 'Unknown (parse failed)'
-
-        const fakeConflict: Conflict = {
-          filePath: finding.filePath || 'unknown',
-          lineStart: finding.lineStart || 0,
-          lineEnd: finding.lineEnd || 0,
-          // This conflict is reconstructed after the fact from rendered text
-          // (economy mode never ran it through detectConflicts), so the
-          // keyword-tally confidence is unknown — 'low' is the honest default.
-          confidence: 'low',
-          sideA: {
-            id: crypto.randomUUID(),
-            agentName: winningLens as AgentName,
-            title: `[VERDICT DECISION] ${finding.title.replace('[VERDICT] ', '')}`,
-            description: decisionStr,
-            severity: 'info',
-            tags: [],
-          },
-          sideB: {
-            id: crypto.randomUUID(),
-            agentName: losingStr as AgentName,
-            title: `[REJECTED] ${finding.title.replace('[VERDICT] ', '')}`,
-            description: `This lens was rejected in favor of the tradeoff.`,
-            severity: 'info',
-            tags: [],
-          },
-        }
-        const verdict: Verdict = {
-          is_conflict: true,
-          decision: decisionStr,
-          tradeoff_accepted: tradeoffStr,
-          confidence: Number.isNaN(parseInt(confidenceStr, 10)) ? 50 : parseInt(confidenceStr, 10),
-          losing_side: losingStr,
-        }
-        // A reworded/relabeled combined-mode output can fail the "Decision:"/
-        // "Tradeoff:" line matching above, leaving both fields blank — don't
-        // persist an empty ADR to disk in that case.
-        if (!decisionStr && !tradeoffStr) {
-          console.warn(
-            chalk.yellow(
-              `⚠ Could not parse economy-mode verdict for ${finding.filePath ?? 'unknown'} (empty decision/tradeoff) — skipping ADR save`
-            )
-          )
-        } else {
-          try {
-            const slug = await saveDecision(projectRoot, fakeConflict, verdict)
-            finding.description += `\nSaved as: ${slug}.md`
-          } catch (err) {
-            console.warn(
-              chalk.yellow(
-                `⚠ Failed to save ADR decision: ${err instanceof Error ? err.message : String(err)}`
-              )
-            )
-          }
-        }
-      }
-    }
   }
 
   if (!options.noSynthesis) {

@@ -4,10 +4,9 @@ import {
   fetchWithRetry,
   shouldRetryEmptyContent,
   nextRetryMaxTokens,
+  DEFAULT_DEADLINE_MS,
 } from './base.js'
 import { OllamaNotRunningError, AuthError } from '../errors/types.js'
-
-const DEFAULT_DEADLINE_MS = 300_000
 
 export default class OllamaProvider implements IProvider {
   name = 'ollama'

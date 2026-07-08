@@ -85,7 +85,13 @@ async function runClassicCLI(): Promise<void> {
   })
 
   const isQuiet = process.argv.includes('--quiet')
-  const isTuiCommand = process.argv.includes('tui')
+  // Identify the actual subcommand token (mirrors the hasCommand scan above:
+  // the first non-flag arg, excluding --config's value) instead of scanning
+  // the whole argv for the literal string 'tui' — that scan misfired on e.g.
+  // `palade diff --base tui` (a branch literally named "tui"), which supplies
+  // 'tui' as an option VALUE, not the subcommand.
+  const subcommandToken = commandScanArgs.find((a) => !a.startsWith('-'))
+  const isTuiCommand = subcommandToken === 'tui'
 
   // Don't install the classic-CLI SIGINT handler when dispatching to the
   // 'tui' subcommand: it calls process.exit(0) immediately, which would hard-kill
@@ -125,7 +131,7 @@ async function runClassicCLI(): Promise<void> {
     .option('--mode <mode>', 'Review mode: standard|security|onboard|debt|ghost', 'standard')
     .option('--annotations', 'Only review @palade-annotated items')
     .option('--pick', 'Interactive file picker')
-    .option('--depth <n>', 'Symbol dependency trace depth', parseInt, 1)
+    .option('--depth <n>', 'Symbol dependency trace depth', (v) => parseInt(v, 10), 1)
     .option('--format <formats>', 'Output formats: html,json,md (default: from config)')
     .option('--no-open', 'Do not open browser after review')
     .option('--quiet', 'Minimal terminal output (no spinners)')
@@ -180,7 +186,7 @@ async function runClassicCLI(): Promise<void> {
   program
     .command('decisions [action] [slug]')
     .description('Manage architecture decisions (Verdict Mode ADRs)')
-    .option('--days <number>', 'Number of days for stale check', parseInt, 30)
+    .option('--days <number>', 'Number of days for stale check', (v) => parseInt(v, 10), 30)
     .action(
       async (
         action: string | undefined,

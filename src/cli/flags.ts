@@ -11,4 +11,5 @@ export const VALUE_FLAGS = new Set([
   'days',
   'sensitivity',
   'set',
+  'config',
 ])
