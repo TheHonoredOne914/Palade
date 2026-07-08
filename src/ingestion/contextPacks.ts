@@ -11,7 +11,7 @@ function toPosix(path: string): string {
 
 function withoutExtension(path: string): string {
   return path.replace(
-    /\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|cs|cpp|cc|c|h|hpp|rb|php|swift|kt|dart)$/,
+    /\.(tsx?|jsx?|mts|cts|mjs|cjs|py|go|rs|java|cs|cpp|cc|c|h|hpp|rb|php|swift|kt|dart)$/,
     ''
   )
 }

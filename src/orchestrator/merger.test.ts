@@ -58,6 +58,48 @@ describe('orchestrator/merger', () => {
       expect(merged).toHaveLength(2)
     })
 
+    it('does not merge cross-agent same-line findings below the cross-agent threshold', () => {
+      // Jaccard(a.title, b.title) = 4/6 ≈ 0.667 — above the old flat 0.4 bar
+      // the same-line branch used to apply regardless of agent (a bug: it
+      // bypassed the stricter 0.7 cross-agent threshold isNearMatch enforces
+      // for every other pair), but below the correct 0.7 cross-agent bar.
+      const a = finding({
+        severity: 'high',
+        filePath: 'src/auth.ts',
+        lineStart: 10,
+        title: 'alpha beta gamma delta epsilon',
+        agentName: 'security',
+      })
+      const b = finding({
+        severity: 'high',
+        filePath: 'src/auth.ts',
+        lineStart: 10,
+        title: 'alpha beta gamma delta zeta',
+        agentName: 'architecture',
+      })
+      const merged = mergeFindings([a, b])
+      expect(merged).toHaveLength(2)
+    })
+
+    it('still merges same-agent same-line findings above the same-agent threshold', () => {
+      const a = finding({
+        severity: 'high',
+        filePath: 'src/auth.ts',
+        lineStart: 10,
+        title: 'alpha beta gamma delta epsilon',
+        agentName: 'security',
+      })
+      const b = finding({
+        severity: 'high',
+        filePath: 'src/auth.ts',
+        lineStart: 10,
+        title: 'alpha beta gamma delta zeta',
+        agentName: 'security',
+      })
+      const merged = mergeFindings([a, b])
+      expect(merged).toHaveLength(1)
+    })
+
     it('keeps findings on different files separate', () => {
       const out = mergeFindings([
         finding({ severity: 'high', filePath: 'src/a.ts', lineStart: 1 }),

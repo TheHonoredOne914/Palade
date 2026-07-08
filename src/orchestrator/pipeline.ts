@@ -183,15 +183,25 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     )
   }
 
-  // Build Keyword Index over ALL chunks (even unannotated/unscoped) so we have a global knowledge base
-  const keywordIndex = buildKeywordIndex(chunks)
+  // Build Keyword Index over every NON-IGNORED chunk (even unannotated/unscoped
+  // ones) so we have a global knowledge base — but an @palade ignore-file'd
+  // file must not be a source of injected context either, or its source gets
+  // quoted into other prompts (and sent to third-party LLMs) despite being
+  // excluded from review itself.
+  const contextSourceChunks = chunks.filter(
+    (c) => !ignoredSet.has(c.filePath.replace(/^\.?\/+/, ''))
+  )
+  const keywordIndex = buildKeywordIndex(contextSourceChunks)
 
   // Inject KEYWORD context into active chunks. Compute every prefix against the
   // pristine chunk corpus BEFORE mutating any chunk.content — otherwise an
   // earlier chunk's injected foreign-code block would leak into the retrieved
   // context of later chunks, making the result order-dependent.
   const contextPrefixes = activeChunks.map((chunk) =>
-    mergeContexts(buildRetrievedContext(chunk, chunks), getKeywordContext(chunk, keywordIndex))
+    mergeContexts(
+      buildRetrievedContext(chunk, contextSourceChunks),
+      getKeywordContext(chunk, keywordIndex)
+    )
   )
   activeChunks.forEach((chunk, i) => {
     const contextPrefix = contextPrefixes[i]

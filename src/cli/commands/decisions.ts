@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import chalk from 'chalk'
 import { theme } from '../../ui/theme.js'
 
@@ -58,6 +58,12 @@ export async function decisionsCommand(
       return
     }
     const filepath = join(dir, slug.endsWith('.md') ? slug : `${slug}.md`)
+    // Guard against path traversal — `palade decisions show ../../../x.md`
+    // must not read files outside .palade/decisions.
+    if (filepath !== dir && !filepath.startsWith(dir + sep)) {
+      console.error(chalk.red(`Invalid decision slug: ${slug}`))
+      return
+    }
     if (!existsSync(filepath)) {
       console.error(chalk.red(`Decision not found: ${slug}`))
       return

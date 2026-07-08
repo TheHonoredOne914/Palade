@@ -71,7 +71,14 @@ export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
     })
 
     if (endIdx >= lines.length) break
-    startIdx = endIdx - CHUNK_OVERLAP
+    // Clamp forward progress the same way chunkByBrackets does: a large
+    // contextPrefix on the first sub-chunk can shrink endIdx down to just
+    // startIdx+1, and endIdx - CHUNK_OVERLAP from there would go negative —
+    // slicing from the wrong end of `lines` and emitting a negative
+    // startLine. Fall back to endIdx itself when the overlap step wouldn't
+    // move forward.
+    const nextStart = endIdx - CHUNK_OVERLAP
+    startIdx = nextStart > startIdx ? nextStart : endIdx
   }
 
   return chunks
@@ -205,14 +212,37 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
   return chunks.flatMap(splitLargeChunk)
 }
 
+// Keywords after which a '/' is unambiguously a regex start even though the
+// preceding significant character is a letter (e.g. `return /foo/`,
+// `typeof /foo/`, `case /foo/:`) — without tracking the actual word, these
+// were misread as division, and a brace inside that misread "division"
+// corrupted bracket-depth chunk boundaries.
+const REGEX_ALLOWED_AFTER_KEYWORDS = new Set([
+  'return',
+  'typeof',
+  'case',
+  'in',
+  'of',
+  'delete',
+  'void',
+  'throw',
+  'instanceof',
+  'new',
+  'yield',
+  'await',
+])
+
 // A leading '/' starts a regex literal unless it more plausibly means
 // division/comment-adjacent — i.e. unless the previous significant
-// character is an identifier/number char, or a closing ')'/']', or the end
-// of a string literal. This is a simple heuristic (matches the pattern the
-// audit fix sketch asked for), not a full JS grammar.
-function isRegexStartAllowed(lastSignificantChar: string): boolean {
+// character is an identifier/number char (and that identifier isn't one of
+// the keywords above), or a closing ')'/']', or the end of a string literal.
+// This is a simple heuristic (matches the pattern the audit fix sketch
+// asked for), not a full JS grammar.
+function isRegexStartAllowed(lastSignificantChar: string, lastWord: string): boolean {
   if (!lastSignificantChar) return true
-  if (/[A-Za-z0-9_$]/.test(lastSignificantChar)) return false
+  if (/[A-Za-z0-9_$]/.test(lastSignificantChar)) {
+    return REGEX_ALLOWED_AFTER_KEYWORDS.has(lastWord)
+  }
   if (
     lastSignificantChar === ')' ||
     lastSignificantChar === ']' ||
@@ -243,6 +273,12 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
     let inRegex = false
     let inRegexCharClass = false
     let lastSignificantChar = ''
+    // Last run of identifier characters seen (e.g. "return", "typeof") — used
+    // alongside lastSignificantChar so isRegexStartAllowed can special-case
+    // regex-allowed keywords instead of treating any preceding letter as
+    // division.
+    let lastWord = ''
+    let wordBuffer = ''
     // Whether any '{' has been seen in this chunk. Brace-less languages
     // (Python, Ruby, etc.) never increment depth above 0, so without this the
     // depth<=0 break below fires after every 5 lines — shredding the whole
@@ -310,7 +346,7 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
           inString = ch
           continue
         }
-        if (ch === '/' && isRegexStartAllowed(lastSignificantChar)) {
+        if (ch === '/' && isRegexStartAllowed(lastSignificantChar, lastWord)) {
           inRegex = true
           continue
         }
@@ -319,6 +355,13 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
           depth++
           sawBrace = true
         } else if (ch === '}') depth--
+
+        if (/[A-Za-z0-9_$]/.test(ch)) {
+          wordBuffer += ch
+        } else if (wordBuffer) {
+          lastWord = wordBuffer
+          wordBuffer = ''
+        }
 
         if (!/\s/.test(ch)) lastSignificantChar = ch
       }
@@ -389,7 +432,18 @@ async function chunkOneFile(manifest: FileManifest): Promise<CodeChunk[]> {
 
   let chunks: CodeChunk[]
   if (isAstLanguage && !exceedsParseLimits) {
-    chunks = chunkByAST(content, manifest.path, manifest.language)
+    try {
+      chunks = chunkByAST(content, manifest.path, manifest.language)
+    } catch (err) {
+      // chunkByAST is documented to fall back to line-based chunking on parse
+      // failure, but that fallback only actually happens if we catch here —
+      // an uncaught throw would reject this file's entry in the chunkFiles()
+      // Promise.all and crash the whole pipeline instead.
+      console.warn(
+        `[chunker] AST parsing failed for ${manifest.path} (${err instanceof Error ? err.message : String(err)}) — falling back to line-based chunking.`
+      )
+      chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap(splitLargeChunk)
+    }
   } else {
     if (isAstLanguage && exceedsParseLimits) {
       console.warn(

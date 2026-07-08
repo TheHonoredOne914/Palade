@@ -43,7 +43,6 @@ export interface HtmlTemplateData {
   projectName: string
   score: number
   scoreColor: string
-  scoreGrade: string
   delta: number
   deltaText: string
   executiveSummary: string
@@ -53,7 +52,6 @@ export interface HtmlTemplateData {
   crossAgentFindingsHtml: string
   findingsSummaryHtml: string
   findingsDetailHtml: string
-  debtEstimateHtml: string
   sparklineData: string
   sparklineLabels: string
   agentTimingsHtml: string

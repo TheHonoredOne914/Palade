@@ -26,6 +26,18 @@ export interface IProvider {
   name: string
   model: string
   complete(req: CompletionRequest): Promise<CompletionResponse>
+  /**
+   * Whether this provider can currently serve requests. For every cloud
+   * adapter (groq/cerebras/nvidia/openrouter/opencode-zen) this is a
+   * quota-only check — it reflects locally observed daily-limit exhaustion
+   * (see markDead/isDead), NOT a live connectivity/auth probe, so an invalid
+   * API key or an unreachable endpoint still reports available=true here.
+   * OllamaProvider is the one adapter that does an actual live probe (a GET
+   * against its /api/tags endpoint), since a local server being down is the
+   * common case worth detecting up front. initRouter's primary-provider
+   * selection can therefore still pick a cloud provider with a dead key —
+   * that failure surfaces on the first real complete() call instead.
+   */
   isAvailable(): Promise<boolean>
   /**
    * Marks this provider instance exhausted/dead for the rest of the session.
@@ -145,7 +157,13 @@ export async function fetchWithRetry(
         continue
       }
       if ([500, 502, 503, 504].includes(res.status) && attempt < retries) {
-        await sleep(Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS), externalSignal)
+        // Same jitter as the 429 and network-error retry paths below — without
+        // it, concurrent batches hitting the same outage all retry in lockstep
+        // instead of spreading their retries out.
+        await sleep(
+          Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS) * (0.5 + Math.random() * 0.5),
+          externalSignal
+        )
         continue
       }
       return res

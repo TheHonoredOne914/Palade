@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import type { ReporterContext, ReporterOutput, MarkdownTableOptions } from './types.js'
 import { CATEGORY_LABELS } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
+import { scoreGrade } from '../ui/layout.js'
 
 const SEVERITY_EMOJI: Record<Severity, string> = {
   critical: '🔴',
@@ -15,16 +16,6 @@ const SEVERITY_EMOJI: Record<Severity, string> = {
 const DEFAULT_OPTIONS: MarkdownTableOptions = {
   maxWidth: 120,
   truncateChar: '…',
-}
-
-function getScoreGrade(score: number): string {
-  if (score >= 90) return 'A+'
-  if (score >= 80) return 'A'
-  if (score >= 75) return 'B+'
-  if (score >= 70) return 'B'
-  if (score >= 60) return 'C'
-  if (score >= 40) return 'D'
-  return 'F'
 }
 
 function truncate(text: string, maxWidth: number, truncateChar: string): string {
@@ -201,7 +192,7 @@ function renderAgentTimings(timings: Record<string, number>): string {
 
 export function buildMarkdownReport(ctx: ReporterContext): string {
   const score = ctx.score.score
-  const grade = getScoreGrade(score)
+  const grade = scoreGrade(score)
   const delta = ctx.score.delta
   const deltaText = delta === 0 ? '→ No change' : delta > 0 ? `↑ +${delta}` : `↓ ${delta}`
 

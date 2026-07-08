@@ -76,7 +76,16 @@ function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
   if (a.filePath && b.filePath && a.filePath === b.filePath) {
     if (a.lineStart !== undefined && b.lineStart !== undefined) {
       if (a.lineStart === b.lineStart) {
-        if (jaccardSimilarity(a.title, b.title) > 0.4) return true
+        // Same-agent findings on the exact same line only need the looser
+        // same-agent bar; cross-agent findings must clear the stricter
+        // cross-agent threshold isNearMatch enforces for every other pair —
+        // this branch used to apply the loose 0.4 bar regardless of agent,
+        // bypassing that threshold for the same-line case.
+        const threshold =
+          a.agentName === b.agentName
+            ? NEAR_MATCH_SAME_AGENT_THRESHOLD
+            : NEAR_MATCH_CROSS_AGENT_THRESHOLD
+        if (jaccardSimilarity(a.title, b.title) > threshold) return true
       }
       // Nearby lines: only merge when the titles actually describe the same
       // issue — proximity alone collapses unrelated findings and loses one of

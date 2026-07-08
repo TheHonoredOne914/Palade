@@ -23,6 +23,9 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     maxConcurrentBatches: 5,
     softTokenLimit: 16000,
     hardChunkLimit: 6000,
+    maxSynthesisFindings: 50,
+    synthesisTimeoutMs: 180_000,
+    decisionsRetentionLimit: 100,
   },
   output: {
     dir: '.palade/reports',

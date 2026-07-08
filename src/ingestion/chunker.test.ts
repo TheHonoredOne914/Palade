@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { chunkFiles } from './chunker.js'
-import type { FileManifest } from './types.js'
+import { chunkFiles, splitLargeChunk, MAX_TOKENS, CHARS_PER_TOKEN } from './chunker.js'
+import type { CodeChunk, FileManifest } from './types.js'
 import { writeFile, mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -87,6 +87,37 @@ function build(name: string) {
       expect(chunks[0].content).toContain('function build')
     } finally {
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not let a large contextPrefix push startIdx negative (regression for ingestion-004)', () => {
+    const lineCount = 400
+    const lines = Array.from({ length: lineCount }, (_, i) => `const line${i} = ${i};`)
+    const content = lines.join('\n')
+    // Leaves only a few chars of budget for the first sub-chunk's content,
+    // forcing endIdx down to startIdx+1 — the scenario that used to send the
+    // next startIdx (endIdx - CHUNK_OVERLAP) negative.
+    const contextPrefix = 'x'.repeat(MAX_TOKENS * CHARS_PER_TOKEN - 10)
+    const chunk: CodeChunk = {
+      id: 'test.ts:1-400',
+      filePath: 'test.ts',
+      startLine: 1,
+      endLine: lineCount,
+      content,
+      contextPrefix,
+      tokenCount: MAX_TOKENS + 1000, // force splitLargeChunk to actually split
+      language: 'typescript',
+    }
+    const result = splitLargeChunk(chunk)
+    expect(result.length).toBeGreaterThan(1)
+    for (const c of result) {
+      expect(c.startLine).toBeGreaterThanOrEqual(1)
+      expect(c.endLine).toBeGreaterThanOrEqual(c.startLine)
+    }
+    // Forward progress: each sub-chunk must start no earlier than the
+    // previous one — a negative startIdx used to walk lines() backwards.
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i].startLine).toBeGreaterThanOrEqual(result[i - 1].startLine)
     }
   })
 

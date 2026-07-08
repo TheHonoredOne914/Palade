@@ -332,6 +332,7 @@ export async function reviewCommand(
         totalChunks: 0,
         mode,
         modeConfig,
+        includeSkills: config.swarm.includeSkills,
       },
       swarmOptions: {
         onAgentStart: (name: AgentName): void => {
@@ -407,6 +408,9 @@ export async function reviewCommand(
           (opts.economy ?? config.swarm.economyMode)
             ? Math.min(3000, config.swarm.hardChunkLimit)
             : config.swarm.hardChunkLimit,
+        maxSynthesisFindings: config.swarm.maxSynthesisFindings,
+        synthesisTimeoutMs: config.swarm.synthesisTimeoutMs,
+        decisionsRetentionLimit: config.swarm.decisionsRetentionLimit,
       },
       target: resolvedTarget,
       dryRunConfig: opts.dryRun ? config : undefined,

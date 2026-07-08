@@ -9,7 +9,6 @@ import type { ScoreCategory } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
 
 import { CATEGORY_LABELS } from '../scorer/types.js'
-import { scoreGrade } from '../ui/layout.js'
 import { SCORE_THRESHOLDS } from '../ui/theme.js'
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
@@ -21,9 +20,11 @@ const SEVERITY_CLASSES: Record<Severity, string> = {
 }
 
 function getScoreGradeClass(score: number): string {
-  if (score >= 90) return 'grade-a-plus'
+  // Must match the .score-circle.grade-* rules actually defined in
+  // templates/report.html — that stylesheet only has a/b/c/d/f tiers, no
+  // "-plus" variants, so emitting grade-a-plus/grade-b-plus left the
+  // best-scoring runs' score circle with no color at all.
   if (score >= 80) return 'grade-a'
-  if (score >= 75) return 'grade-b-plus'
   if (score >= 70) return 'grade-b'
   if (score >= 60) return 'grade-c'
   if (score >= 40) return 'grade-d'
@@ -268,7 +269,6 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
   const projectName = ctx.config?.projectName ?? 'Project'
   const timestamp = ctx.config?.runTimestamp ?? new Date().toISOString()
   const score = ctx.score.score
-  const grade = scoreGrade(score)
 
   const categoryScoresHtml = ctx.score.breakdown.categories
     .map((c) => renderCategoryScoreHtml(c.category, c.score))
@@ -307,7 +307,6 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
     projectName,
     score,
     scoreColor: getScoreColor(score),
-    scoreGrade: grade,
     delta: ctx.score.delta,
     deltaText: formatDeltaText(ctx.score.delta),
     executiveSummary: escapeHtml(ctx.synthesis.executiveSummary),
@@ -317,7 +316,6 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
     crossAgentFindingsHtml,
     findingsSummaryHtml,
     findingsDetailHtml,
-    debtEstimateHtml: '',
     sparklineData: JSON.stringify(sparklineData),
     sparklineLabels: JSON.stringify(sparklineData.map((_, i) => `Run ${i + 1}`)),
     agentTimingsHtml,
@@ -346,7 +344,6 @@ function replacePlaceholders(
     PROJECT_NAME: escapeHtml(data.projectName),
     SCORE: String(data.score),
     SCORE_COLOR: data.scoreColor,
-    SCORE_GRADE: data.scoreGrade,
     SCORE_GRADE_CLASS: getScoreGradeClass(data.score),
     DELTA: String(data.delta),
     DELTA_TEXT: data.deltaText,

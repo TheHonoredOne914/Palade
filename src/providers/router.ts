@@ -229,6 +229,14 @@ export class FallbackProvider implements IProvider {
               chalk.red(`[router] provider ${provider.name} marked as DEAD (hard quota limit)`)
             )
           }
+        } else if (isFatalAuthError(lastError)) {
+          // A 401/403 means the key itself is invalid — unlike the quota case
+          // above, isAvailable() is a quota-only check and can never detect
+          // this, so gating on "stillAvailable" would never mark the provider
+          // dead and it would be retried as primary on every subsequent call
+          // for the rest of the run. Mark it dead unconditionally instead.
+          provider.markDead?.()
+          console.warn(chalk.red(`[router] provider ${provider.name} marked as DEAD (auth error)`))
         }
 
         // Default to trying the next provider regardless of error type — an

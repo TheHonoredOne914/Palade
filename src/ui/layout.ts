@@ -33,10 +33,6 @@ export function sectionBox(title: string, content: string): string {
   return drawBox(content, title)
 }
 
-export function infoBox(lines: string[]): string {
-  return drawBox(lines.join('\n'))
-}
-
 export function formatDriftAlert(filePath: string, findings: AgentFinding[]): string {
   const lines: string[] = []
 
