@@ -188,7 +188,9 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   // file must not be a source of injected context either, or its source gets
   // quoted into other prompts (and sent to third-party LLMs) despite being
   // excluded from review itself.
-  const contextSourceChunks = chunks.filter((c) => !ignoredSet.has(c.filePath.replace(/^\.?\/+/, '')))
+  const contextSourceChunks = chunks.filter(
+    (c) => !ignoredSet.has(c.filePath.replace(/^\.?\/+/, ''))
+  )
   const keywordIndex = buildKeywordIndex(contextSourceChunks)
 
   // Inject KEYWORD context into active chunks. Compute every prefix against the
