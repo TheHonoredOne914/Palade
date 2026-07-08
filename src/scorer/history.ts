@@ -228,6 +228,17 @@ export async function appendEntry(
   maxEntries: number = MAX_HISTORY_ENTRIES
 ): Promise<ScoreHistoryEntry[]> {
   const lockPath = await acquireLock(historyPath)
+  if (!lockPath) {
+    // Never acquired the lock (still held by another live process after
+    // acquireLock's own ~1s retry budget) — a read-modify-write here would
+    // race whichever process holds it and could silently clobber its write,
+    // defeating the whole point of the lock. Skip persisting this entry
+    // instead of writing unlocked.
+    console.warn(
+      `[palade] Could not acquire history.json lock — this run's score was not persisted to disk.`
+    )
+    return readHistory(historyPath)
+  }
   try {
     const existing = readHistory(historyPath)
     existing.push(entry)

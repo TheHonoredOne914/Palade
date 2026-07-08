@@ -15,16 +15,27 @@ const LINE_TOLERANCE = 10
  * Parse a unified diff for a single file and return the HEAD line ranges
  * that were added or modified (i.e. the `+` lines). Findings whose line range
  * overlaps these regions are considered "in scope" for this diff.
+ *
+ * Exported so orchestrator/verdict.ts's checkDecisionDrift can reuse this
+ * same parser instead of maintaining its own inline copy — the two used to
+ * drift apart, including sharing this same header-vs-content bug.
  */
-function addedLineRanges(diff: string): Array<[number, number]> {
+export function addedLineRanges(diff: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = []
   let headLine = 0
   let rangeStart: number | null = null
   let rangeEnd: number | null = null
+  // The real `+++`/`---` file-header lines appear exactly once, before the
+  // first `@@` hunk marker. After that, a line starting with `+++`/`---` is
+  // real content whose text happens to start with `++`/`--` (e.g. an added
+  // `++counter;` line renders as `+++counter;`) — treating it as a header
+  // unconditionally dropped genuinely added/deleted lines from the range.
+  let seenHunk = false
 
   const lines = diff.split('\n')
   for (const line of lines) {
     if (line.startsWith('@@')) {
+      seenHunk = true
       if (rangeStart !== null && rangeEnd !== null) {
         ranges.push([rangeStart, rangeEnd])
       }
@@ -34,7 +45,7 @@ function addedLineRanges(diff: string): Array<[number, number]> {
       headLine = match ? parseInt(match[1], 10) : 0
       continue
     }
-    if (line.startsWith('+++') || line.startsWith('---')) continue
+    if (!seenHunk && (line.startsWith('+++') || line.startsWith('---'))) continue
 
     if (line.startsWith('+')) {
       if (rangeStart === null) {

@@ -88,7 +88,11 @@ export function penaltyFor(
   f: AgentFinding,
   severityWeights: SeverityWeights = SEVERITY_PENALTY
 ): number {
-  return typeof f.scorePenalty === 'number' ? f.scorePenalty : severityWeights[f.severity]
+  // Number.isFinite (not typeof === 'number') so a NaN/Infinity scorePenalty
+  // — e.g. from a misconfigured custom-agent severityPenalty override —
+  // can't propagate into category/total penalty sums and corrupt the whole
+  // score. history.ts already guards its own score field the same way.
+  return Number.isFinite(f.scorePenalty) ? (f.scorePenalty as number) : severityWeights[f.severity]
 }
 
 export function countBySeverity(

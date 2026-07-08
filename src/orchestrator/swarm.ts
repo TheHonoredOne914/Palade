@@ -238,15 +238,18 @@ export async function runSwarm(
       )
     }
 
+    // Drop @palade-ignored findings here, before they ever reach memory —
+    // crossReference() and mergeFindings() read straight from memory, and
+    // synthesis runs on their output, so filtering only the final result
+    // (as callers used to) let ignored findings leak into the executive
+    // summary and cross-agent penalties, which carry no per-line info and
+    // can't be filtered after the fact. Left outside the try/catch below —
+    // that catch exists only to guard the user-supplied onAgentComplete
+    // callback, not this bookkeeping; a throw here must propagate instead of
+    // being silently swallowed with a misleading "callback error" warning.
+    memory.record(agent.name, applyLineIgnores(allFindings, options.ignoredLines ?? []))
+    agentTimings[agent.name] = Date.now() - agentStart
     try {
-      // Drop @palade-ignored findings here, before they ever reach memory —
-      // crossReference() and mergeFindings() read straight from memory, and
-      // synthesis runs on their output, so filtering only the final result
-      // (as callers used to) let ignored findings leak into the executive
-      // summary and cross-agent penalties, which carry no per-line info and
-      // can't be filtered after the fact.
-      memory.record(agent.name, applyLineIgnores(allFindings, options.ignoredLines ?? []))
-      agentTimings[agent.name] = Date.now() - agentStart
       options.onAgentComplete?.(
         agent.name,
         allFindings.length,
@@ -339,7 +342,12 @@ export async function runSwarm(
             // Save to ADR — a failed disk write must not abort the review
             let savedNote = ''
             try {
-              const slug = await saveDecision(projectRoot, conflict, verdict)
+              const slug = await saveDecision(
+                projectRoot,
+                conflict,
+                verdict,
+                options.decisionsRetentionLimit
+              )
               savedNote = `\nSaved as: ${slug}.md`
             } catch (err) {
               console.warn(
@@ -372,7 +380,11 @@ export async function runSwarm(
     try {
       options.onSynthesisStart?.()
       const synthStart = Date.now()
-      synthesis = await analyzeSynthesis(finalFindings, crossAgentFindings, context)
+      synthesis = await analyzeSynthesis(finalFindings, crossAgentFindings, context, {
+        signal: options.signal,
+        maxSynthesisFindings: options.maxSynthesisFindings,
+        synthesisTimeoutMs: options.synthesisTimeoutMs,
+      })
       options.onSynthesisComplete?.(Date.now() - synthStart)
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))

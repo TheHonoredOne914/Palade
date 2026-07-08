@@ -40,10 +40,14 @@ export class NvidiaProvider implements IProvider {
     // doesn't specify a budget we default generously. But we never override an
     // explicit caller request (e.g. triage's 512-token cheap calls).
     const maxTokens = req.maxTokens ?? 8192
-    // One deadline for the whole logical call: internal empty-content retries
-    // share it, so the ceiling holds across attempts instead of per attempt.
-    const deadline = Date.now() + this.deadlineMs
-    return this.limiter(() => this.doComplete(req, maxTokens, 0, deadline))
+    // Compute the deadline inside the limiter callback (not before it), so
+    // time spent queued behind other in-flight requests at this concurrency
+    // limit doesn't eat into the request's own deadline budget — matching
+    // every sibling adapter (groq/cerebras/openrouter/opencode-zen/ollama).
+    return this.limiter(() => {
+      const deadline = Date.now() + this.deadlineMs
+      return this.doComplete(req, maxTokens, 0, deadline)
+    })
   }
 
   private async doComplete(

@@ -29,6 +29,9 @@ export default class OllamaProvider implements IProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
+    if (this.dead) {
+      throw new Error('Ollama provider marked dead for this session')
+    }
     return this.limiter(() =>
       this.doComplete(req, req.maxTokens ?? 4096, 0, Date.now() + this.deadlineMs)
     )

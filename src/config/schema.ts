@@ -67,6 +67,16 @@ export const PaladeConfigSchema = z
         maxConcurrentBatches: z.number().int().min(1).default(5),
         softTokenLimit: z.number().int().min(1).default(16_000),
         hardChunkLimit: z.number().int().min(1).default(6_000),
+        // Max findings (by severity) sent to the synthesis LLM. Previously
+        // hardcoded in agents/synthesis.ts with no way for the sole caller
+        // (swarm.ts) to actually override it.
+        maxSynthesisFindings: z.number().int().min(1).default(50),
+        // Timeout in ms for the synthesis provider call. Same "hardcoded with
+        // no way to override" history as maxSynthesisFindings above.
+        synthesisTimeoutMs: z.number().int().min(1000).default(180_000),
+        // Retention cap for .palade/decisions/ ADR files (oldest pruned
+        // first), unlike every other swarm cap previously not config-backed.
+        decisionsRetentionLimit: z.number().int().min(1).default(100),
       })
       .default(() => ({ ...(DEFAULT_CONFIG.swarm as Record<string, unknown>) })),
     output: z

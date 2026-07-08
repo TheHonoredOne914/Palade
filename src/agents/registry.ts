@@ -58,15 +58,30 @@ export function getAgentsForMode(
   // Merge built-in + custom for lookup
   const allAgents = new Map<string, IAgent>([...BUILTIN_AGENTS, ...customAgents])
 
-  if (agentOverrides && agentOverrides.length > 0) {
+  // In practice swarm.ts always threads context.modeConfig.agentOverrides
+  // through as `agentOverrides`, so this fallback only fires for direct
+  // callers that skip modeConfig (e.g. tests). Derive it from
+  // GHOST_MODE.agentOverrides itself rather than a separately hardcoded name,
+  // so there's a single source of truth for "what agents ghost mode runs" —
+  // and route it through the SAME branch below as an explicit override, so
+  // ghost mode also gets the additive custom-agent merge instead of
+  // hand-rolling a single-agent array that silently drops every custom agent.
+  const effectiveOverrides =
+    agentOverrides && agentOverrides.length > 0
+      ? agentOverrides
+      : mode === 'ghost'
+        ? (GHOST_MODE.agentOverrides ?? ['deadCode'])
+        : undefined
+
+  if (effectiveOverrides && effectiveOverrides.length > 0) {
     const agents: IAgent[] = []
-    for (const name of agentOverrides) {
+    for (const name of effectiveOverrides) {
       const agent = allAgents.get(name)
       if (agent) agents.push(agent)
     }
     if (agents.length === 0) {
       throw new PaladeConfigError(
-        `agentOverrides contains no recognized agent names: ${agentOverrides.join(', ')}`,
+        `agentOverrides contains no recognized agent names: ${effectiveOverrides.join(', ')}`,
         'agentOverrides',
         `Available agents: ${[...allAgents.keys()].join(', ')}`
       )
@@ -81,15 +96,6 @@ export function getAgentsForMode(
       if (!overriddenNames.has(customAgent.name)) agents.push(customAgent)
     }
     return agents
-  }
-  // In practice swarm.ts always threads context.modeConfig.agentOverrides
-  // through as `agentOverrides` above, so this only fires for direct callers
-  // that skip modeConfig (e.g. tests). Derive the agent list from
-  // GHOST_MODE.agentOverrides itself rather than a separately hardcoded name,
-  // so there's a single source of truth for "what agents ghost mode runs".
-  if (mode === 'ghost') {
-    const ghostAgentName = GHOST_MODE.agentOverrides?.[0] ?? 'deadCode'
-    return [allAgents.get(ghostAgentName) ?? BUILTIN_AGENTS.get('deadCode')!]
   }
   // Custom agents are additive and never counted against the cap — the cap
   // is on built-in specialist parallelism (matches config.swarm.agentCount's

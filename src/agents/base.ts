@@ -495,8 +495,13 @@ Reply strictly YES or NO.`,
     }
   }
 
-  // Cap concurrency to match the swarm's documented "max 5 concurrent
-  // batches" limit instead of firing one provider call per finding at once.
+  // Cap concurrency within THIS analyze() call so a batch with many
+  // critical/high findings doesn't fire one provider call per finding at
+  // once. Note this limiter is created fresh per call, not shared across the
+  // run — it bounds per-batch verification concurrency, not the swarm's
+  // separate global "max 5 concurrent batches" cap (scheduler.ts), so total
+  // verification concurrency across all batches/agents is not itself capped
+  // at 5.
   const limit = createLimiter(5)
   const validated = await Promise.all(
     findings.map((f) => {

@@ -48,18 +48,49 @@ function detectLanguage(filePath: string): Language {
   return EXT_MAP[ext] ?? 'unknown'
 }
 
+// Converts a glob pattern containing `**` (matches zero or more path segments)
+// anywhere in the pattern — not just as a trailing `/**` — into a RegExp. `*`
+// matches within a single path segment (no `/`); `**` matches across segment
+// boundaries, including zero segments (so "src/**/*.ts" matches "src/x.ts").
+function globToRegex(pattern: string): RegExp {
+  let re = ''
+  for (let i = 0; i < pattern.length; i++) {
+    if (pattern[i] === '*' && pattern[i + 1] === '*') {
+      // Consume a "**" segment together with an adjacent "/" on either side
+      // so "src/**/*.ts" (and a leading "**/*.ts") don't require a literal
+      // empty segment — "**/" matches zero or more path segments.
+      if ((i === 0 || pattern[i - 1] === '/') && pattern[i + 2] === '/') {
+        re += '(?:.*/)?'
+        i += 2 // skip trailing '/'
+      } else {
+        re += '.*'
+        i += 1
+      }
+    } else if (pattern[i] === '*') {
+      re += '[^/]*'
+    } else if (pattern[i] === '?') {
+      re += '[^/]'
+    } else {
+      re += pattern[i].replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    }
+  }
+  return new RegExp(`^${re}$`)
+}
+
 function matchesGlobs(filePath: string, globs: string[]): boolean {
   for (const pattern of globs) {
+    // Recursive globs (`**` anywhere in the pattern) need real segment-aware
+    // matching — handle them with a compiled regex instead of the simpler
+    // substring heuristics below, which can't express "zero or more path
+    // segments".
+    if (pattern.includes('**')) {
+      if (globToRegex(pattern).test(filePath)) return true
+      continue
+    }
     // *.ext — suffix match (e.g. "*.service.ts" matches "src/x.service.ts")
     if (pattern.startsWith('*.')) {
       const suffix = pattern.slice(1) // keep the leading "."
       if (filePath.endsWith(suffix)) return true
-      continue
-    }
-    // dir/** — recursive directory match
-    if (pattern.endsWith('/**')) {
-      const prefix = pattern.slice(0, -3) // remove '/**'
-      if (filePath.startsWith(prefix + '/') || filePath === prefix) return true
       continue
     }
     // dir/* or dir/ — prefix match on a path segment boundary
@@ -278,7 +309,12 @@ export async function walkProject(
 
   try {
     const { execSync } = await import('node:child_process')
-    const gitLog = execSync('git log --name-only --pretty=format:', {
+    // --relative makes the reported paths relative to cwd (projectRoot)
+    // instead of the repo root — without it, a monorepo subdirectory
+    // projectRoot would get repo-root-relative paths that never match
+    // manifests' projectRoot-relative m.path, leaving churnCount at 0 for
+    // every file.
+    const gitLog = execSync('git log --name-only --relative --pretty=format:', {
       cwd: projectRoot,
       encoding: 'utf-8',
       maxBuffer: 10 * 1024 * 1024, // 10 MB — repos with extensive history can exceed the 1 MB default

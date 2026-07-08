@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { getProvider } from '../providers/router.js'
 import type { AgentFinding, AgentContext } from '../agents/base.js'
 import type { ChangedFile } from '../diff/types.js'
+import { addedLineRanges } from '../diff/comparator.js'
 
 export interface Conflict {
   filePath: string
@@ -281,7 +282,8 @@ Please provide your verdict.`
 export async function saveDecision(
   projectRoot: string,
   conflict: Conflict,
-  verdict: Verdict
+  verdict: Verdict,
+  retentionLimit: number = 100
 ): Promise<string> {
   const slugBase =
     conflict.filePath
@@ -320,12 +322,11 @@ ${verdict.losing_side}
 ${verdict.confidence}%
 `
 
-  const MAX_DECISIONS = 100
   const dir = join(projectRoot, '.palade', 'decisions')
   await mkdir(dir, { recursive: true })
   const existingFiles = await readdir(dir).catch(() => [] as string[])
   const mdFiles = existingFiles.filter((f) => f.endsWith('.md'))
-  if (mdFiles.length >= MAX_DECISIONS) {
+  if (mdFiles.length >= retentionLimit) {
     // Sort by actual file mtime (oldest first), not filename, so the cap
     // reliably prunes the oldest decisions rather than an alphabetical slice.
     const withMtimes = await Promise.all(
@@ -335,7 +336,7 @@ ${verdict.confidence}%
       })
     )
     withMtimes.sort((a, b) => a.mtime - b.mtime)
-    const toDelete = withMtimes.slice(0, mdFiles.length - MAX_DECISIONS + 1).map((x) => x.f)
+    const toDelete = withMtimes.slice(0, mdFiles.length - retentionLimit + 1).map((x) => x.f)
     await Promise.all(toDelete.map((f) => unlink(join(dir, f)).catch(() => {})))
   }
   const filepath = join(dir, `${slug}.md`)
@@ -355,27 +356,13 @@ export async function checkDecisionDrift(
   const mdFiles = files.filter((f) => f.endsWith('.md'))
   if (mdFiles.length === 0) return []
 
-  // Build map of diff additions by file
-  const addedByPath = new Map<string, number[]>()
+  // Build map of diff additions by file — reuses the same unified-diff parser
+  // diff/comparator.ts uses for its own "introduced findings" scoping, rather
+  // than maintaining a separate inline copy that can drift apart from it.
+  const addedByPath = new Map<string, Array<[number, number]>>()
   for (const cf of changedFiles) {
     if (cf.diff && cf.status !== 'deleted') {
-      const lines: number[] = []
-      let headLine = 0
-      for (const line of cf.diff.split('\n')) {
-        if (line.startsWith('@@')) {
-          const match = line.match(/\+(\d+)/)
-          if (match) headLine = parseInt(match[1], 10)
-          continue
-        }
-        if (line.startsWith('+++ ') || line.startsWith('--- ')) continue
-        if (line.startsWith('+')) {
-          lines.push(headLine)
-          headLine++
-        } else if (!line.startsWith('-')) {
-          headLine++
-        }
-      }
-      addedByPath.set(cf.path, lines)
+      addedByPath.set(cf.path, addedLineRanges(cf.diff))
     }
   }
 
@@ -390,10 +377,10 @@ export async function checkDecisionDrift(
     const start = parseInt(match[2], 10)
     const end = parseInt(match[3], 10)
 
-    const editedLines = addedByPath.get(decisionPath)
-    if (!editedLines) continue
+    const editedRanges = addedByPath.get(decisionPath)
+    if (!editedRanges) continue
 
-    const overlaps = editedLines.some((l) => l >= start && l <= end)
+    const overlaps = editedRanges.some(([rStart, rEnd]) => rStart <= end && rEnd >= start)
     if (!overlaps) continue
 
     // There is an overlap! Trigger LLM check to see if it violates

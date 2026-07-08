@@ -59,6 +59,28 @@ describe('diff/comparator', () => {
       )
       expect(scoped).toHaveLength(1)
     })
+
+    it('does not drop an added line whose content starts with "++" (regression for diff-001)', () => {
+      // The added line's content is "++counter;" with no leading whitespace,
+      // so the diff line itself is "+++counter;" — before the fix this was
+      // mistaken for the "+++ b/file" unified-diff header (which only
+      // legitimately appears once, before the first @@ hunk) and dropped
+      // from the added-line range entirely.
+      const plusPlusChanged: ChangedFile[] = [
+        {
+          path: 'src/counter.ts',
+          status: 'modified',
+          additions: 1,
+          deletions: 0,
+          diff: `--- a/src/counter.ts\n+++ b/src/counter.ts\n@@ -1,2 +1,3 @@\n function f() {\n+++counter;\n }`,
+        },
+      ]
+      const scoped = scopeToDiff(
+        [finding({ severity: 'high', filePath: 'src/counter.ts', lineStart: 2 })],
+        plusPlusChanged
+      )
+      expect(scoped).toHaveLength(1)
+    })
   })
 
   describe('compareFindings', () => {

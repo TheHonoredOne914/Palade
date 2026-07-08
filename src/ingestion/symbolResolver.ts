@@ -44,7 +44,11 @@ export async function resolveSymbol(
   if (language === 'typescript' || language === 'javascript') {
     const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
 
-    function visit(node: ts.Node): ts.Node | undefined {
+    // Only search top-level statements — recursing into nested scopes (e.g.
+    // ts.forEachChild across an entire function body) could match a local
+    // declaration that happens to share the target's name, returning the
+    // wrong chunk for a file::Symbol lookup.
+    function matchTopLevel(node: ts.Node): ts.Node | undefined {
       let nodeName = ''
       if (
         ts.isFunctionDeclaration(node) ||
@@ -63,15 +67,14 @@ export async function resolveSymbol(
           }
         }
       }
-
-      if (nodeName === symbolName) {
-        return node
-      }
-
-      return ts.forEachChild(node, visit)
+      return nodeName === symbolName ? node : undefined
     }
 
-    const foundNode = visit(sourceFile)
+    let foundNode: ts.Node | undefined
+    for (const stmt of sourceFile.statements) {
+      foundNode = matchTopLevel(stmt)
+      if (foundNode) break
+    }
 
     if (foundNode) {
       const start = sourceFile.getLineAndCharacterOfPosition(foundNode.getStart())

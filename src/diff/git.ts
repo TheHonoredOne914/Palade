@@ -73,11 +73,22 @@ export async function getChangedFiles(baseBranch: string, cwd: string): Promise<
           encoding: 'utf-8',
         })
 
-        // Parse additions/deletions from diff
+        // Parse additions/deletions from diff. The real `+++`/`---` file
+        // headers appear exactly once, before the first `@@` hunk marker —
+        // after that, a line starting with `+++`/`---` is real added/deleted
+        // content whose text happens to start with `++`/`--` (e.g. an added
+        // `++counter;` line renders as `+++counter;`), so only special-case
+        // the header lines before the first hunk.
         const diffLines = diff.split('\n')
+        let seenHunk = false
         for (const dl of diffLines) {
-          if (dl.startsWith('+') && !dl.startsWith('+++')) additions++
-          if (dl.startsWith('-') && !dl.startsWith('---')) deletions++
+          if (dl.startsWith('@@')) {
+            seenHunk = true
+            continue
+          }
+          if (!seenHunk && (dl.startsWith('+++') || dl.startsWith('---'))) continue
+          if (dl.startsWith('+')) additions++
+          else if (dl.startsWith('-')) deletions++
         }
       } catch {
         // Diff failed — file might be binary or newly added

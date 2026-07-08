@@ -223,6 +223,30 @@ function computeDebtHours(
   return sums
 }
 
+/**
+ * Ghost mode's systemPromptSuffix (see modes/ghost.ts) instructs the model to
+ * add a "hoursWasted" field to every finding, but — same reasoning as
+ * computeDebtHours above — that number isn't trusted from the LLM for the
+ * numeric debtEstimate fields, and computeDebtCounts's plain finding tally
+ * doesn't reflect hours at all. Sum hoursWasted deterministically instead. A
+ * finding with no hoursWasted contributes 0.
+ */
+function computeGhostHours(
+  findings: AgentFinding[]
+): Pick<DebtEstimate, 'critical' | 'high' | 'medium' | 'low' | 'total'> {
+  const sums = { critical: 0, high: 0, medium: 0, low: 0, total: 0 }
+  for (const f of findings) {
+    const hours =
+      typeof f.hoursWasted === 'number' && Number.isFinite(f.hoursWasted) ? f.hoursWasted : 0
+    if (f.severity === 'critical') sums.critical += hours
+    else if (f.severity === 'high') sums.high += hours
+    else if (f.severity === 'medium') sums.medium += hours
+    else if (f.severity === 'low') sums.low += hours
+  }
+  sums.total = sums.critical + sums.high + sums.medium + sums.low
+  return sums
+}
+
 export interface SynthesizeOptions {
   /** Max findings (by severity) sent to the LLM for synthesis. Default 50. */
   maxSynthesisFindings?: number
@@ -241,8 +265,14 @@ export async function synthesize(
   const { maxSynthesisFindings = 50, synthesisTimeoutMs = 180_000, signal } = options
   // Debt mode reports hours of debt, not a finding tally — sum
   // finding.estimatedHours per severity tier instead of counting findings.
+  // Ghost mode similarly reports hours wasted on dead code — sum
+  // finding.hoursWasted instead.
   const debtCounts =
-    context.mode === 'debt' ? computeDebtHours(allFindings) : computeDebtCounts(allFindings)
+    context.mode === 'debt'
+      ? computeDebtHours(allFindings)
+      : context.mode === 'ghost'
+        ? computeGhostHours(allFindings)
+        : computeDebtCounts(allFindings)
   // Define cleanup function at function scope so catch can access it
   let onExternalAbort: (() => void) | undefined
   try {

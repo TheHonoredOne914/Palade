@@ -13,6 +13,15 @@ const HASH_FOCUS_RE = /#\s*@palade\s+focus\s*:\s*(.+)/i
 const HASH_FILE_IGNORE_RE = /#\s*@palade\s+ignore-file\b/i
 const HASH_IGNORE_RE = /#\s*@palade\s+ignore\b/i
 
+// Same-line string-literal stripper — good enough to stop a `// @palade
+// ignore` (or `# @palade ignore`) substring INSIDE a quoted string/template
+// literal from being read as a real comment annotation, without needing a
+// full tokenizer. Doesn't handle multi-line strings/templates, but those are
+// rare for a line that also happens to contain literal "@palade" text.
+function stripStringLiterals(line: string): string {
+  return line.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '')
+}
+
 export function parseFile(
   absolutePath: string,
   isHashComment: boolean = false
@@ -34,23 +43,27 @@ async function parseFileAsync(absolutePath: string, isHashComment: boolean): Pro
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const lineNum = i + 1
+    // Match against the string-stripped line so a string/template literal
+    // containing literal `// @palade ignore` text doesn't suppress findings
+    // on that line — only a real comment token should count as an annotation.
+    const scanLine = stripStringLiterals(line)
 
     if (isHashComment) {
-      const reviewMatch = line.match(HASH_REVIEW_RE)
+      const reviewMatch = scanLine.match(HASH_REVIEW_RE)
       if (reviewMatch) {
         annotations.push({ type: 'review', value: reviewMatch[1].trim(), line: lineNum })
         continue
       }
-      const focusMatch = line.match(HASH_FOCUS_RE)
+      const focusMatch = scanLine.match(HASH_FOCUS_RE)
       if (focusMatch) {
         annotations.push({ type: 'focus', value: focusMatch[1].trim(), line: lineNum })
         continue
       }
-      if (line.match(HASH_FILE_IGNORE_RE)) {
+      if (scanLine.match(HASH_FILE_IGNORE_RE)) {
         annotations.push({ type: 'ignore', line: lineNum, fileLevel: true })
         continue
       }
-      if (line.match(HASH_IGNORE_RE)) {
+      if (scanLine.match(HASH_IGNORE_RE)) {
         annotations.push({ type: 'ignore', line: lineNum })
         continue
       }
@@ -60,21 +73,21 @@ async function parseFileAsync(absolutePath: string, isHashComment: boolean): Pro
       continue
     }
 
-    const reviewMatch = line.match(REVIEW_RE)
+    const reviewMatch = scanLine.match(REVIEW_RE)
     if (reviewMatch) {
       annotations.push({ type: 'review', value: reviewMatch[1].trim(), line: lineNum })
       continue
     }
-    const focusMatch = line.match(FOCUS_RE)
+    const focusMatch = scanLine.match(FOCUS_RE)
     if (focusMatch) {
       annotations.push({ type: 'focus', value: focusMatch[1].trim(), line: lineNum })
       continue
     }
-    if (line.match(FILE_IGNORE_RE)) {
+    if (scanLine.match(FILE_IGNORE_RE)) {
       annotations.push({ type: 'ignore', line: lineNum, fileLevel: true })
       continue
     }
-    if (line.match(IGNORE_RE)) {
+    if (scanLine.match(IGNORE_RE)) {
       annotations.push({ type: 'ignore', line: lineNum })
     }
   }

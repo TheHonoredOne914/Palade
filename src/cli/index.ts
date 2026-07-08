@@ -162,13 +162,19 @@ async function runClassicCLI(): Promise<void> {
     .description('Branch pre-flight review')
     .option('--base <branch>', 'Base branch to diff against', 'main')
     .option('--ci', 'CI mode: exit 1 if critical findings introduced')
-    .action(async (opts: { base?: string; ci?: boolean }): Promise<void> => {
-      try {
-        await diffCommand(opts)
-      } catch (err) {
-        handleFatalError(err)
+    .option(
+      '--strict-triage',
+      'Strict triage mode: halt if triage drops any files due to token limits'
+    )
+    .action(
+      async (opts: { base?: string; ci?: boolean; strictTriage?: boolean }): Promise<void> => {
+        try {
+          await diffCommand(opts)
+        } catch (err) {
+          handleFatalError(err)
+        }
       }
-    })
+    )
 
   program
     .command('watch')

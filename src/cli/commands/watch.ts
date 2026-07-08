@@ -164,6 +164,7 @@ export async function watchCommand(opts: {
         totalFiles: 1,
         totalChunks: chunks.length,
         mode: 'standard',
+        includeSkills: config.swarm.includeSkills,
       }
 
       // Run the full agent set for the current mode/config, mirroring review

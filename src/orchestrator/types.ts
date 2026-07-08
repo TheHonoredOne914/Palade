@@ -105,4 +105,10 @@ export interface SwarmOptions {
   softTokenLimit?: number
   /** Hard cap (in estimated tokens) on a single chunk before it is recursively split. Defaults to 6_000. */
   hardChunkLimit?: number
+  /** Max findings (by severity) sent to the synthesis LLM. Defaults to 50. */
+  maxSynthesisFindings?: number
+  /** Timeout in ms for the synthesis provider call. Defaults to 180_000. */
+  synthesisTimeoutMs?: number
+  /** Retention cap for .palade/decisions/ ADR files (oldest pruned first). Defaults to 100. */
+  decisionsRetentionLimit?: number
 }

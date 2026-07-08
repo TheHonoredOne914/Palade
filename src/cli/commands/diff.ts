@@ -1,8 +1,11 @@
 import { loadConfig } from '../../config/loader.js'
 import { initRouter } from '../../providers/router.js'
 import { walkProject, detectLanguages } from '../../ingestion/walker.js'
-import { chunkFiles } from '../../ingestion/chunker.js'
+import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../../ingestion/chunker.js'
+import { buildKeywordIndex, getKeywordContext } from '../../ingestion/keywordIndex.js'
+import { buildRetrievedContext } from '../../ingestion/contextPacks.js'
 import { estimateTotalTokens } from '../../orchestrator/scheduler.js'
+import { mergeContexts } from '../../orchestrator/pipeline.js'
 import { runSwarm } from '../../orchestrator/swarm.js'
 import { calculateScore } from '../../scorer/calculator.js'
 import { appendEntry } from '../../scorer/history.js'
@@ -40,6 +43,7 @@ interface DiffOpts {
   ci?: boolean
   signal?: AbortSignal
   tui?: boolean
+  strictTriage?: boolean
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -113,9 +117,40 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     const ignoredFileSet = new Set(
       annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, ''))
     )
-    const activeChunks = chunks.filter(
+    let activeChunks = chunks.filter((c) => !ignoredFileSet.has(c.filePath.replace(/^\.?\/+/, '')))
+
+    // Mirror pipeline.ts's context injection so diff reviews get the same
+    // cross-file "here's what else uses/imports this symbol" context as a
+    // full `review` run, instead of every agent seeing each chunk in
+    // isolation. Context is built from non-ignored chunks only, matching
+    // pipeline.ts (an @palade ignore-file'd file's source must not get
+    // quoted into other prompts).
+    const contextSourceChunks = chunks.filter(
       (c) => !ignoredFileSet.has(c.filePath.replace(/^\.?\/+/, ''))
     )
+    const keywordIndex = buildKeywordIndex(contextSourceChunks)
+    const contextPrefixes = activeChunks.map((chunk) =>
+      mergeContexts(
+        buildRetrievedContext(chunk, contextSourceChunks),
+        getKeywordContext(chunk, keywordIndex)
+      )
+    )
+    activeChunks.forEach((chunk, i) => {
+      const contextPrefix = contextPrefixes[i]
+      if (contextPrefix) {
+        activeChunks[i] = {
+          ...chunk,
+          contextPrefix,
+          tokenCount: estimateTokens(contextPrefix + chunk.content),
+        }
+      }
+    })
+    activeChunks = activeChunks.flatMap((chunk) => {
+      if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > MAX_TOKENS) {
+        return splitLargeChunk(chunk)
+      }
+      return [chunk]
+    })
 
     console.log(
       theme.dim(
@@ -219,7 +254,11 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           customAgents: customAgentDefs,
           agentCount: config.swarm.agentCount,
           economyMode: config.swarm.economyMode,
-          strictTriage: true,
+          // A large diff used to hard-abort the whole run the moment triage
+          // dropped any file for the token budget, unlike `review` (which
+          // defaults to false and only halts with --strict-triage). Default
+          // to the same lenient behavior; opt in with --strict-triage.
+          strictTriage: opts.strictTriage ?? false,
           noVerdict: false,
           maxConcurrentBatches: config.swarm.maxConcurrentBatches,
           softTokenLimit: config.swarm.economyMode
@@ -228,6 +267,9 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           hardChunkLimit: config.swarm.economyMode
             ? Math.min(3000, config.swarm.hardChunkLimit)
             : config.swarm.hardChunkLimit,
+          maxSynthesisFindings: config.swarm.maxSynthesisFindings,
+          synthesisTimeoutMs: config.swarm.synthesisTimeoutMs,
+          decisionsRetentionLimit: config.swarm.decisionsRetentionLimit,
           ignoredLines: annotationSummary.ignoredLines,
           signal: opts.signal,
         },

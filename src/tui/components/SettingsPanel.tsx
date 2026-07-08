@@ -108,7 +108,7 @@ export function SettingsPanel({
         await saveApiKey(projectRoot, selectedProvider.id as ProviderId, trimmed)
         onKeySaved(selectedProvider.id, trimmed)
         setInputValue('')
-        setMessage(`✓ ${selectedProvider.label} API key saved to palade.config.ts`)
+        setMessage(`✓ ${selectedProvider.label} API key saved to .env`)
       } catch (err) {
         setMessage(`✗ Error: ${err instanceof Error ? err.message : String(err)}`)
       } finally {
