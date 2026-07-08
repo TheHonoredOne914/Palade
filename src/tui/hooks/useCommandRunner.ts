@@ -148,7 +148,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               })(),
               format: flag('format'),
               open: hasFlag('no-open') ? false : hasFlag('open') ? true : undefined,
-              quiet: false,
+              quiet: hasFlag('quiet'),
               tui: true,
               dryRun: hasFlag('dry-run'),
               economy: hasFlag('economy') ? true : undefined,
@@ -195,7 +195,16 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
           }
 
           case 'settings': {
-            if (opts.onSettingsOpen) {
+            if (hasFlag('set') || hasFlag('init') || hasFlag('list')) {
+              opts.appendLine({
+                type: 'error',
+                text: '  --set/--init/--list are not supported in the interactive TUI.',
+              })
+              opts.appendLine({
+                type: 'dim',
+                text: '  Run `palade settings` with those flags from a regular terminal instead.',
+              })
+            } else if (opts.onSettingsOpen) {
               opts.onSettingsOpen()
             } else {
               opts.appendLine({

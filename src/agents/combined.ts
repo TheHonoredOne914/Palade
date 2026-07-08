@@ -88,7 +88,7 @@ export const DEFAULT_DOMAINS: DomainSpec[] = [
   },
 ]
 
-function buildCombinedSystemPrompt(domains: DomainSpec[], context?: AgentContext): string {
+function buildCombinedSystemPrompt(domains: DomainSpec[]): string {
   const sections = domains
     .map((d) => {
       let extra = ''
@@ -103,7 +103,7 @@ function buildCombinedSystemPrompt(domains: DomainSpec[], context?: AgentContext
     })
     .join('\n\n')
 
-  let prompt = `You are a combined multi-domain code review swarm. You are reviewing code as part of a larger analysis.
+  const prompt = `You are a combined multi-domain code review swarm. You are reviewing code as part of a larger analysis.
 
 You must review the provided code through ALL of the following lenses in a single pass:
 
@@ -134,10 +134,6 @@ Each finding must match this exact schema, and MUST include its originating agen
   findings.
 `
 
-  if (context?.spec) {
-    prompt += `\n\n=== BUSINESS LOGIC SPECIFICATION ===\n${context.spec}\n====================================\n\nCRITICAL: Cross-reference the code against the business logic specification above to ensure it is implemented correctly.`
-  }
-
   return prompt
 }
 
@@ -163,15 +159,17 @@ export class CombinedAnalyzer implements IAgent {
     try {
       const provider = getProvider('primary')
       const systemPrompt = buildSystemPrompt(
-        buildCombinedSystemPrompt(this.domains, context),
+        buildCombinedSystemPrompt(this.domains),
         context,
         context.modeConfig
       )
       const userPrompt = buildChunkContext(chunks)
-      // A single call has to fit findings for every domain, so the output
-      // budget must scale with how many domains are combined into it — a flat
-      // cap starves runs with more domains and truncates the JSON array.
-      const maxTokens = Math.max(3000, this.domains.length * 600)
+      // A single call has to fit findings for every domain AND every chunk in
+      // the batch, so the output budget must scale with both — a cap that
+      // only accounts for domain count starves batches with many chunks and
+      // truncates the JSON array (see base.ts's computeMaxTokens, which
+      // scales by chunkCount for the per-domain path).
+      const maxTokens = Math.max(4096, chunks.length * 1000 + this.domains.length * 300)
       const response = await provider.complete({
         systemPrompt,
         userPrompt,

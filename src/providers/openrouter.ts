@@ -5,10 +5,9 @@ import {
   isDailyLimitError,
   shouldRetryEmptyContent,
   nextRetryMaxTokens,
+  DEFAULT_DEADLINE_MS,
 } from './base.js'
 import { AuthError } from '../errors/types.js'
-
-const DEFAULT_DEADLINE_MS = 300_000
 
 export class OpenRouterProvider implements IProvider {
   readonly name = 'openrouter'

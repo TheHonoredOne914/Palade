@@ -39,8 +39,8 @@ export class ProviderPool implements IProvider {
       }
     }
     // All members unavailable — let one produce the real error so the caller
-    // can classify it (at this point the pool genuinely is exhausted).
-    if (!candidate) this.index = (startIdx + 1) % n
+    // can classify it (at this point the pool genuinely is exhausted). Index
+    // was already advanced above before the availability loop.
     const provider = candidate ?? this.providers[startIdx % n]
     return provider.complete(req)
   }

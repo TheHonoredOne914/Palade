@@ -1,10 +1,10 @@
-import { BaseSpecialistAgent, type AgentContext } from '../base.js'
+import { BaseSpecialistAgent } from '../base.js'
 
 export class LogicAgent extends BaseSpecialistAgent {
   name = 'logic' as const
 
-  protected getSystemPrompt(context: AgentContext): string {
-    let prompt = `You are a Logic & Correctness expert reviewing source code.
+  protected getSystemPrompt(): string {
+    const prompt = `You are a Logic & Correctness expert reviewing source code.
 Your sole job is to identify logical flaws, state mismanagement, race conditions, edge case mishandling, and invalid assumptions.
 
 CRITICAL INSTRUCTIONS:
@@ -28,10 +28,6 @@ After your <thinking> block, format your findings as a strict JSON array of obje
     "tags": ["logic", "state", "edge-case"]
   }
 ]`
-
-    if (context.spec) {
-      prompt += `\n\n=== BUSINESS LOGIC SPECIFICATION ===\n${context.spec}\n====================================\n\nCRITICAL: Cross-reference the code against the business logic specification above to ensure it is implemented correctly.`
-    }
 
     return prompt
   }

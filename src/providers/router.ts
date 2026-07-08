@@ -11,6 +11,7 @@ import { OpenRouterProvider } from './openrouter.js'
 import { OpenCodeZenProvider } from './opencode-zen.js'
 import OllamaProvider from './ollama.js'
 import { ProviderPool } from './pool.js'
+import { sanitizeErrorMessage } from '../utils/sanitize.js'
 
 export class AllProvidersExhaustedError extends Error {
   constructor(public readonly attempts: { provider: string; finalError: string }[]) {
@@ -236,12 +237,16 @@ export class FallbackProvider implements IProvider {
         // chance before giving up entirely.
         if (i < this.chain.length - 1) {
           console.warn(chalk.yellow(`[router] provider ${provider.name} failed, trying next`))
-          console.warn(chalk.dim(`         → ${lastError.message.split('\n')[0].slice(0, 120)}`))
+          console.warn(
+            chalk.dim(
+              `         → ${sanitizeErrorMessage(lastError.message.split('\n')[0].slice(0, 120))}`
+            )
+          )
         } else {
           // Last in chain — surface the real error so users can diagnose
           console.warn(
             chalk.red(
-              `[router] provider ${provider.name} failed: ${lastError.message.split('\n')[0].slice(0, 200)}`
+              `[router] provider ${provider.name} failed: ${sanitizeErrorMessage(lastError.message.split('\n')[0].slice(0, 200))}`
             )
           )
         }

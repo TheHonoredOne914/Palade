@@ -6,6 +6,7 @@ import {
   existsSync,
   copyFileSync,
   unlinkSync,
+  statSync,
 } from 'node:fs'
 import { dirname } from 'node:path'
 import type { ScoreHistoryEntry, ScoreBreakdown, CategoryScore } from './types.js'
@@ -18,9 +19,13 @@ function isValidCategoryScore(item: unknown): item is CategoryScore {
   return (
     typeof c.category === 'string' &&
     typeof c.score === 'number' &&
+    Number.isFinite(c.score) &&
     typeof c.findingCount === 'number' &&
+    Number.isFinite(c.findingCount) &&
     typeof c.criticalCount === 'number' &&
-    typeof c.highCount === 'number'
+    Number.isFinite(c.criticalCount) &&
+    typeof c.highCount === 'number' &&
+    Number.isFinite(c.highCount)
   )
 }
 
@@ -92,7 +97,21 @@ export function readHistory(historyPath: string): ScoreHistoryEntry[] {
   let raw: string
   try {
     raw = readFileSync(historyPath, 'utf-8')
-  } catch {
+  } catch (err) {
+    // The file exists (checked above) but couldn't be read — back it up
+    // before returning [] for the same reason the JSON-parse-failure path
+    // below does: so the next appendEntry() write doesn't silently overwrite
+    // it with a single entry and destroy all prior score trend data.
+    const backupPath = `${historyPath}.corrupt-${Date.now()}`
+    try {
+      copyFileSync(historyPath, backupPath)
+    } catch {
+      // best-effort backup — still warn below even if this fails
+    }
+    console.error(
+      `[palade] history.json could not be read (${err instanceof Error ? err.message : String(err)}). ` +
+        `Backed up to ${backupPath}. Starting from empty history.`
+    )
     return []
   }
   try {
@@ -119,7 +138,7 @@ export function writeHistory(
   historyPath: string,
   entries: ScoreHistoryEntry[],
   maxEntries: number = MAX_HISTORY_ENTRIES
-): void {
+): boolean {
   try {
     const dir = dirname(historyPath)
     mkdirSync(dir, { recursive: true })
@@ -136,8 +155,11 @@ export function writeHistory(
     } else {
       renameSync(tmpPath, historyPath)
     }
+    return true
   } catch {
-    // history write is best-effort — never throw
+    // history write is best-effort — never throw, but signal failure so
+    // callers (e.g. appendEntry) don't assert the write actually landed.
+    return false
   }
 }
 
@@ -148,6 +170,12 @@ export function writeHistory(
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+// A lockfile older than this was almost certainly left behind by a process
+// that crashed mid-write (normal writeHistory() calls complete in well under
+// a second) — force-removing it prevents a stale lock from permanently
+// defeating acquireLock for every future appendEntry() call.
+const STALE_LOCK_MS = 30_000
 
 async function acquireLock(historyPath: string): Promise<string | null> {
   const dir = dirname(historyPath)
@@ -163,9 +191,20 @@ async function acquireLock(historyPath: string): Promise<string | null> {
       writeFileSync(lockPath, String(process.pid), { flag: 'wx' })
       return lockPath
     } catch {
+      try {
+        const stat = statSync(lockPath)
+        if (Date.now() - stat.mtimeMs > STALE_LOCK_MS) {
+          // Stale lock from a crashed process — force-remove so the next
+          // attempt (or this loop's next iteration) can acquire it cleanly.
+          unlinkSync(lockPath)
+          continue
+        }
+      } catch {
+        // Lock disappeared between the failed write and this stat, or the
+        // stat itself failed — just retry via the normal backoff below.
+      }
       // Async sleep instead of a busy-wait spin — this blocks the whole
       // single-threaded Node process on every lock contention otherwise.
-      // A stale lock (crashed process) still self-clears after maxAttempts.
       await sleep(20)
     }
   }
@@ -192,7 +231,10 @@ export async function appendEntry(
   try {
     const existing = readHistory(historyPath)
     existing.push(entry)
-    writeHistory(historyPath, existing, maxEntries)
+    const wrote = writeHistory(historyPath, existing, maxEntries)
+    if (!wrote) {
+      console.warn(`[palade] failed to write history.json — this entry was not persisted to disk.`)
+    }
     // Return what was actually persisted — the untrimmed array would diverge
     // from the next readHistory() once the retention cap kicks in.
     return existing.slice(-maxEntries)

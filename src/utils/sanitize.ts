@@ -27,3 +27,16 @@ export function maskKey(key: string): string {
   if (key.length <= 8) return '[REDACTED]'
   return key.slice(0, 4) + '...' + key.slice(-4)
 }
+
+// Matches long alnum/-/_/. runs — the shape of most provider API keys. A
+// provider's raw HTTP error body (echoed verbatim into thrown Error messages
+// by every adapter, see providers/base.ts) could theoretically include the
+// submitted key back in the response text; redacting anything key-shaped
+// before a message hits stdout/logs is strictly safer than trusting that
+// never happens.
+const KEY_LIKE_PATTERN = /\b[A-Za-z0-9_.-]{20,}\b/g
+
+/** Redacts key-shaped substrings from free-form log text using maskKey(). */
+export function sanitizeErrorMessage(text: string): string {
+  return text.replace(KEY_LIKE_PATTERN, (match) => maskKey(match))
+}

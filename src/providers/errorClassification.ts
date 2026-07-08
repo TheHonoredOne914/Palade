@@ -8,12 +8,11 @@ import { AuthError } from '../errors/types.js'
 // so router.ts can import it without swarm.ts -> router.ts -> swarm.ts cycle.
 //
 // Every adapter (groq/cerebras/nvidia/openrouter/opencode-zen/ollama) attaches
-// a structured `status` by throwing AuthError on a 401/403 response — prefer
-// that structured field first. The message-text scan below is only a fallback
-// for errors that didn't come through that path (e.g. a fetch-level failure
-// or a provider error type we haven't wrapped yet); word-boundary regexes
-// there avoid false positives on unrelated text that merely contains these
-// digits.
+// a structured `status` by throwing AuthError on a 401/403 response — this
+// checks only that structured field. There is deliberately no message-text
+// substring/regex fallback: this codebase has repeatedly had that kind of
+// fake-validation logic removed in prior audit rounds, so an error that isn't
+// wrapped in AuthError is treated as non-fatal here.
 export function isFatalAuthError(err: Error): boolean {
   return err instanceof AuthError
 }

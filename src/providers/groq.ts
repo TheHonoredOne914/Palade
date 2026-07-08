@@ -5,6 +5,7 @@ import {
   isDailyLimitError,
   shouldRetryEmptyContent,
   nextRetryMaxTokens,
+  DEFAULT_DEADLINE_MS,
 } from './base.js'
 import { AuthError } from '../errors/types.js'
 
@@ -21,8 +22,6 @@ interface OpenAIResponse {
   choices?: OpenAIChoice[]
   usage?: OpenAIUsage
 }
-
-const DEFAULT_DEADLINE_MS = 300_000
 
 export class GroqProvider implements IProvider {
   readonly name = 'groq'
