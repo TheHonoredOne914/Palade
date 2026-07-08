@@ -46,7 +46,15 @@ Additional test intelligence focus:
 - Tests that mock everything and assert nothing meaningful
 - Missing edge case tests on validation functions
 - Test files that import but never call the functions under test
-- Async functions tested synchronously`
+- Async functions tested synchronously
+
+Code is testable if any of these are true:
+1. Can be unit-tested in isolation
+2. Can be tested via public API (integration test)
+3. Is tested end-to-end (even if not in isolation)
+
+Only flag as untestable if none of the above apply.
+Before claiming code is untested, consult the FILES WITH TEST COVERAGE section of REPOSITORY CONTEXT — files listed there have test importers and must not be reported as untested.`
 
 export class TestIntelligenceAgent extends BaseSpecialistAgent {
   name: AgentName = 'testIntelligence'

@@ -353,6 +353,15 @@ export async function walkProject(
           if (target) break
           target = pathMap.get(resolved + ext)
         }
+        // ESM TypeScript convention: an `./x.js` specifier refers to `x.ts` on
+        // disk — without this, importers stays empty for every ESM-style TS
+        // repo (this one included), silently zeroing the centrality signal.
+        if (!target) {
+          const stripped = resolved.replace(/\.[cm]?jsx?$/, '')
+          if (stripped !== resolved) {
+            target = pathMap.get(stripped + '.ts') ?? pathMap.get(stripped + '.tsx')
+          }
+        }
         for (const ext of extensions) {
           if (target) break
           target = pathMap.get(resolved + '/index' + ext)
