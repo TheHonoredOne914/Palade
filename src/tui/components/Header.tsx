@@ -2,6 +2,11 @@ import React from 'react'
 import { Box, Text } from 'ink'
 import { ASCII_ART, GRADIENT } from '../../ui/asciiArt.js'
 
+const GRADIENT = [
+  '#FF3366', '#FF4E5B', '#FF6950', '#FF8446',
+  '#FFA03B', '#FFBB30', '#FFD626', '#F9F871'
+]
+
 interface HeaderProps {
   providerStatus: Record<string, boolean>
   projectRoot: string

@@ -152,6 +152,11 @@ export class FallbackProvider implements IProvider {
     return this._totalCount
   }
 
+  /** Number of calls that fell back to a non-primary provider. */
+  get fallbackCount() { return this._fallbackCount }
+  /** Total calls attempted. */
+  get totalCount() { return this._totalCount }
+
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     // Try primary provider first, fall back on error
     this._totalCount++
@@ -369,6 +374,27 @@ export function getProvider(role: ProviderRole): IProvider {
   if (role === 'primary') return assignment.primary
   if (role === 'synthesis') return assignment.synthesis
   return assignment.triage
+}
+
+export interface FallbackStats {
+  primary: { total: number; fallbacks: number }
+  synthesis: { total: number; fallbacks: number }
+}
+
+export function getFallbackStats(): FallbackStats | null {
+  if (!assignment) return null
+  const p = assignment.primary
+  const s = assignment.synthesis
+  return {
+    primary: {
+      total: p instanceof FallbackProvider ? p.totalCount : 0,
+      fallbacks: p instanceof FallbackProvider ? p.fallbackCount : 0,
+    },
+    synthesis: {
+      total: s instanceof FallbackProvider ? s.totalCount : 0,
+      fallbacks: s instanceof FallbackProvider ? s.fallbackCount : 0,
+    },
+  }
 }
 
 export interface FallbackStats {

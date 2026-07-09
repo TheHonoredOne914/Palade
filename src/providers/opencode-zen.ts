@@ -17,6 +17,7 @@ export class OpenCodeZenProvider implements IProvider {
   private readonly deadlineMs: number
   private readonly limiter: ReturnType<typeof createLimiter>
   private dailyLimitExhausted = false
+  private static readonly MAX_429_RETRIES = 3
 
   constructor(
     apiKey: string,

@@ -95,6 +95,19 @@ export function penaltyFor(
   return Number.isFinite(f.scorePenalty) ? (f.scorePenalty as number) : severityWeights[f.severity]
 }
 
+/**
+ * Per-finding penalty. Honors an explicit `scorePenalty` when the producing
+ * agent set one (custom agents with severityPenalty overrides), and falls back
+ * to the severity-based weight for built-in findings, which never set it.
+ *
+ * Previously this read SEVERITY_WEIGHTS[f.severity] unconditionally, which made
+ * CustomAgent's per-severity override feature dead code — an agent configured
+ * with { critical: 50 } still got penalized at 10.
+ */
+function penaltyFor(f: AgentFinding): number {
+  return typeof f.scorePenalty === 'number' ? f.scorePenalty : SEVERITY_WEIGHTS[f.severity]
+}
+
 export function countBySeverity(
   findings: AgentFinding[],
   agentName: string
