@@ -35,9 +35,4 @@ RELEASE_OVERVIEW.md
 TECHNICAL_REFERENCE.md
 
 # AI Assistant Configs
-.clinerules/
-.cursor/
-.opencode/
-.windsurf/
-AGENTS.md
 CLAUDE.md
