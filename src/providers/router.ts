@@ -152,10 +152,7 @@ export class FallbackProvider implements IProvider {
     return this._totalCount
   }
 
-  /** Number of calls that fell back to a non-primary provider. */
-  get fallbackCount() { return this._fallbackCount }
-  /** Total calls attempted. */
-  get totalCount() { return this._totalCount }
+
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     // Try primary provider first, fall back on error
