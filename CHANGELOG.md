@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-07-09
+
+### Added
+- **Hybrid Provider Routing**: Granular agent-level provider overrides in `palade.config.ts` (e.g., routing Security to OpenRouter and DeadCode to OpenCode-Zen).
+- **Zero-Cost Tournament Profiles**: Native support and documentation for 100% free-tier execution using specialized combinations of models like Nemotron and Mimo.
+
+### Fixed
+- **Parser ReDoS Vulnerability**: Hardened `stripStringLiterals` RegExp in the AST extractor to prevent exponential backtracking loops on malformed string literals.
+- **Documentation overhaul**: Massive aesthetic overhaul of the README including live benchmark stats (Axios and Zod zero-days).
+
 ## [1.0.0-rc.2] - 2026-07-07
 
 ### Fixed
@@ -29,3 +39,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - **Strict Read-Only Guarantees**: Explicitly documented that `review` and `diff` commands *never* write source code to disk.
 - **Target Generation Exception**: Added `SECURITY NOTE` to `targets generate` warning users that it is the sole operation that mutates project state (writing to `palade.targets.ts`).
+
