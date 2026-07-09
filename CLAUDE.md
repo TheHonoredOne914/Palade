@@ -1,6 +1,26 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Codebase Knowledge Graph (graphify) — Read This First
+
+This repo ships a pre-built [graphify](https://github.com/Graphify-Labs/graphify) knowledge graph of its own
+source tree (see the `## graphify` section at the bottom of this file for the query rules — a `PreToolUse`
+hook in `.claude/settings.json` also auto-nudges toward it on broad `Read`/`Grep`/`Glob`/search calls). The
+`.claude/hooks/session-start.sh` SessionStart hook installs the `graphify` CLI automatically on Claude Code
+on the web; locally, install it with `pip install graphifyy` (or `pipx install graphifyy`).
+
+It was built with `graphify extract . --code-only` — local tree-sitter AST extraction only, no LLM calls, no
+API key required — currently 794 nodes / 2276 edges. It captures imports, calls, containment, and inferred
+indirect-call edges; it does **not** cover `docs/` prose or other non-code files (code-only mode skips
+those). `graphify-out/graph.html` is an interactive force-directed visualization you can open in a browser.
+
+**Keeping it fresh:** the graph is a point-in-time snapshot pinned to a commit (see "Graph Freshness" in
+`GRAPH_REPORT.md`). After non-trivial structural changes (new files, moved symbols, changed imports),
+regenerate it before relying on query results for those areas — `graphify update . --force` (no LLM needed)
+followed by `graphify cluster-only . --no-label` to refresh `GRAPH_REPORT.md`/`graph.html` — then commit the
+regenerated `graphify-out/` files alongside your code change. Skip this for doc-only or comment-only edits.
+
 # Palade: Mental Model \& Architecture Guide
 
 
@@ -873,3 +893,12 @@ const oldUtility = (...) => { ... }
 
 \- Provider-specific API wrappers (trust they work; only debug on auth errors)
 
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
