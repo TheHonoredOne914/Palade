@@ -298,6 +298,7 @@ export async function walkProject(
       scope.targetPaths!.some((t) => m.path === t || m.path.startsWith(t + '/'))
     )
   }
+  console.log('DEBUG: walkProject: Gathered', manifests.length, 'manifests')
 
   // annotationsOnly filter
   if (scope.annotationsOnly) {
@@ -332,6 +333,7 @@ export async function walkProject(
   } catch {
     // Ignored
   }
+  console.log('DEBUG: walkProject: git churn done')
 
   // Build importer map
   const pathMap = new Map<string, import('./types.js').FileManifest>()
@@ -376,6 +378,7 @@ export async function walkProject(
     }
     delete m._rawImports
   }
+  console.log('DEBUG: walkProject: import extraction done')
 
   return manifests
 }

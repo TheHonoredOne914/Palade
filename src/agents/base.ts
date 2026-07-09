@@ -551,7 +551,7 @@ export abstract class BaseSpecialistAgent implements IAgent {
     signal?: AbortSignal
   ): Promise<AgentFinding[]> {
     try {
-      const provider = getProvider('primary')
+      const provider = getProvider('primary', this.name)
       const systemPrompt = buildSystemPrompt(
         this.getSystemPrompt(context),
         context,

@@ -157,7 +157,7 @@ export class CombinedAnalyzer implements IAgent {
     signal?: AbortSignal
   ): Promise<AgentFinding[]> {
     try {
-      const provider = getProvider('primary')
+      const provider = getProvider('primary', 'combined')
       const systemPrompt = buildSystemPrompt(
         buildCombinedSystemPrompt(this.domains),
         context,
