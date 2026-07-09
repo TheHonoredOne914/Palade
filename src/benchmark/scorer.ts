@@ -43,9 +43,7 @@ function fileMatches(claimFile: string, defectFile: string): boolean {
 
 function matchDefect(claim: AgentClaim, defects: Defect[], tolerance: number): Defect | undefined {
   const candidates = defects.filter(
-    (d) =>
-      fileMatches(claim.file, d.file) &&
-      Math.abs(claim.lineStart - d.lineStart) <= tolerance
+    (d) => fileMatches(claim.file, d.file) && Math.abs(claim.lineStart - d.lineStart) <= tolerance
   )
   if (candidates.length === 0) return undefined
   const real = candidates.find((d) => d.category === 'real-bug')
@@ -131,7 +129,11 @@ export interface BenchmarkReport {
   }
 }
 
-export function scoreAgents(runs: AgentRun[], defects: Defect[], opts: ScoreOptions = {}): BenchmarkReport {
+export function scoreAgents(
+  runs: AgentRun[],
+  defects: Defect[],
+  opts: ScoreOptions = {}
+): BenchmarkReport {
   const perAgent = runs.map((r) => scoreAgent(r.agentName, r.claims, defects, opts))
   const realBugs = defects.filter((d) => d.category === 'real-bug')
   const found = new Set<string>()

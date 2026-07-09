@@ -25,7 +25,9 @@ if (inline) {
 }
 
 if (runs.length === 0) {
-  console.error('No agent runs found. Drop <agent>.json files into src/benchmark/runs/ or pass JSON as the 2nd arg.')
+  console.error(
+    'No agent runs found. Drop <agent>.json files into src/benchmark/runs/ or pass JSON as the 2nd arg.'
+  )
   process.exit(1)
 }
 

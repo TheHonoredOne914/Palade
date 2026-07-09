@@ -229,19 +229,41 @@ describe.skip('benchmark/scoring: precision/recall over agent claims', () => {
   const badAgent: AgentRun = {
     agentName: 'eager',
     claims: [
-      { file: 'src/orchestrator/scheduler.ts', lineStart: 45, claim: 'char-split corrupts line range' },
+      {
+        file: 'src/orchestrator/scheduler.ts',
+        lineStart: 45,
+        claim: 'char-split corrupts line range',
+      },
       { file: 'src/orchestrator/scheduler.ts', lineStart: 41, claim: 'char-split is dead code' },
-      { file: 'src/orchestrator/scheduler.ts', lineStart: 35, claim: 'overlap duplicates findings' },
-      { file: 'src/orchestrator/findingValidation.ts', lineStart: 8, claim: 'windows path mishandled' },
-      { file: 'src/orchestrator/findingValidation.ts', lineStart: 40, claim: 'fingerprint collision' },
-      { file: 'src/orchestrator/findingValidation.ts', lineStart: 92, claim: 'silent finding drops' },
+      {
+        file: 'src/orchestrator/scheduler.ts',
+        lineStart: 35,
+        claim: 'overlap duplicates findings',
+      },
+      {
+        file: 'src/orchestrator/findingValidation.ts',
+        lineStart: 8,
+        claim: 'windows path mishandled',
+      },
+      {
+        file: 'src/orchestrator/findingValidation.ts',
+        lineStart: 40,
+        claim: 'fingerprint collision',
+      },
+      {
+        file: 'src/orchestrator/findingValidation.ts',
+        lineStart: 92,
+        claim: 'silent finding drops',
+      },
     ],
   }
 
   it('counts real bugs and false-positive traps in the catalog', () => {
     expect(realBugCount(ALL_DEFECTS)).toBe(1)
     expect(SCHEDULER_DEFECTS.filter((d) => d.category === 'false-positive')).toHaveLength(3)
-    expect(FINDING_VALIDATION_DEFECTS.filter((d) => d.category === 'false-positive')).toHaveLength(3)
+    expect(FINDING_VALIDATION_DEFECTS.filter((d) => d.category === 'false-positive')).toHaveLength(
+      3
+    )
   })
 
   it('careful agent scores high precision and finds the real bug', () => {

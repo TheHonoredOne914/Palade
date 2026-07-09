@@ -152,8 +152,6 @@ export class FallbackProvider implements IProvider {
     return this._totalCount
   }
 
-
-
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     // Try primary provider first, fall back on error
     this._totalCount++
@@ -372,16 +370,16 @@ export function getProvider(role: ProviderRole, agentName?: string): IProvider {
   if (!assignment || !activeConfig) {
     throw new Error('Router not initialized. Call initRouter() first.')
   }
-  
+
   if (role === 'primary' && agentName && activeConfig.swarm.agentProviders?.[agentName]) {
     const overrideName = activeConfig.swarm.agentProviders[agentName]
-    
+
     // Check if we already cached a FallbackProvider for this agent
     const cacheKey = `${agentName}:${overrideName}`
     if (agentAssignments.has(cacheKey)) {
       return agentAssignments.get(cacheKey)!
     }
-    
+
     // Create a new FallbackProvider starting with the requested override
     const provider = allProviders.get(overrideName)
     if (provider) {
@@ -390,7 +388,11 @@ export function getProvider(role: ProviderRole, agentName?: string): IProvider {
       return pWithFallback
     }
     // If the provider doesn't exist or isn't configured, fall through to primary
-    console.warn(chalk.yellow(`[router] Warning: agent '${agentName}' requested provider '${overrideName}' but it is not configured. Falling back to primary.`))
+    console.warn(
+      chalk.yellow(
+        `[router] Warning: agent '${agentName}' requested provider '${overrideName}' but it is not configured. Falling back to primary.`
+      )
+    )
   }
 
   if (role === 'primary') return assignment.primary
@@ -418,5 +420,3 @@ export function getFallbackStats(): FallbackStats | null {
     },
   }
 }
-
-

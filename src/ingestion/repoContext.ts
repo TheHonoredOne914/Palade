@@ -39,7 +39,8 @@ const ESLINTRC_RE = /(^|\/)\.eslintrc/
 // Module-scope `new Map()`/`new Set()` heuristic: only matches declarations
 // starting at column 0, since indented ones are almost always local/function
 // scope, not module-level state that can leak across the process lifetime.
-const MODULE_GLOBAL_RE = /^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*(?::[^=]+)?=\s*new\s+(Map|Set)\b/
+const MODULE_GLOBAL_RE =
+  /^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*(?::[^=]+)?=\s*new\s+(Map|Set)\b/
 
 /** Detects cycles in a directed graph (adjacency list) via iterative DFS with color marking. */
 function findCycles(adjacency: Map<string, Set<string>>): string[][] {
@@ -124,7 +125,11 @@ function candidatesFor(raw: string): string[] {
 const REEXPORT_RE = /export\s+(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g
 
 /** Resolves a relative re-export specifier against the file that contains it, to a manifest path. */
-function resolveReexport(specifier: string, fromFile: string, manifestPaths: Set<string>): string | null {
+function resolveReexport(
+  specifier: string,
+  fromFile: string,
+  manifestPaths: Set<string>
+): string | null {
   if (!specifier.startsWith('.')) return null
   const dir = posix.dirname(fromFile)
   const resolved = posix.normalize(posix.join(dir, specifier))
@@ -223,7 +228,11 @@ export async function buildRepoContext(
     if (!chunksByFile.has(c.filePath)) chunksByFile.set(c.filePath, [])
     chunksByFile.get(c.filePath)!.push(c)
   }
-  const { publicApiFiles, isLibrary } = await buildPublicApi(projectRoot, manifestPaths, chunksByFile)
+  const { publicApiFiles, isLibrary } = await buildPublicApi(
+    projectRoot,
+    manifestPaths,
+    chunksByFile
+  )
 
   // buildTimeFiles
   const buildTimeFiles = manifests
@@ -294,9 +303,7 @@ export function renderRepoContext(ctx: RepoContext): string {
     const lines = ctx.dependencyCycles
       .slice(0, 10)
       .map((cycle) => `  - ${[...cycle, cycle[0]].join(' -> ')}`)
-    sections.push(
-      `DEPENDENCY CYCLES (defects — report under architecture):\n${lines.join('\n')}`
-    )
+    sections.push(`DEPENDENCY CYCLES (defects — report under architecture):\n${lines.join('\n')}`)
   }
 
   const testedEntries = Object.entries(ctx.testedBy)
@@ -305,7 +312,9 @@ export function renderRepoContext(ctx: RepoContext): string {
       .slice(0, 40)
       .map(([file, tests]) => `  - ${file} (tested by: ${tests.join(', ')})`)
     if (testedEntries.length > 40) lines.push(`  ... and ${testedEntries.length - 40} more`)
-    sections.push(`FILES WITH TEST COVERAGE (do not report these as untested):\n${lines.join('\n')}`)
+    sections.push(
+      `FILES WITH TEST COVERAGE (do not report these as untested):\n${lines.join('\n')}`
+    )
   }
 
   if (ctx.publicApiFiles.length > 0) {
@@ -314,7 +323,9 @@ export function renderRepoContext(ctx: RepoContext): string {
     )
   }
 
-  sections.push(`PROJECT TYPE: ${ctx.isLibrary ? 'library (unused-looking exports may be public API)' : 'application'}`)
+  sections.push(
+    `PROJECT TYPE: ${ctx.isLibrary ? 'library (unused-looking exports may be public API)' : 'application'}`
+  )
 
   if (ctx.buildTimeFiles.length > 0) {
     sections.push(

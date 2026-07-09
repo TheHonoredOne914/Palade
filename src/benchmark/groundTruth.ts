@@ -65,7 +65,8 @@ export const SCHEDULER_DEFECTS: Defect[] = [
     lineEnd: 33,
     severity: 'low',
     category: 'false-positive',
-    hypothesis: 'Overlap causes duplication of FINDINGS across chunks (right side starts before the split).',
+    hypothesis:
+      'Overlap causes duplication of FINDINGS across chunks (right side starts before the split).',
     reality:
       'FALSE / by design. splitPoint = splitIdx - overlap, so the overlap region [splitIdx-overlap, splitIdx-1] is intentionally included in both halves for context. Line ranges are consistent (left.endLine = startLine+splitIdx-1, right.startLine = startLine+splitPoint). Not a defect.',
     fromReport: true,
@@ -89,7 +90,8 @@ export const SCHEDULER_DEFECTS: Defect[] = [
     lineEnd: 76,
     severity: 'low',
     category: 'false-positive',
-    hypothesis: 'Character-split corrupts the right chunk line range (splitPoint is a char offset used as a line offset).',
+    hypothesis:
+      'Character-split corrupts the right chunk line range (splitPoint is a char offset used as a line offset).',
     reality:
       'FALSE. The character-split branch uses {...chunk} and never sets startLine; both halves correctly keep the single-line range. The line-split branch (72) uses splitPoint which IS a line index. No corruption.',
     fromReport: true,
@@ -104,7 +106,8 @@ export const FINDING_VALIDATION_DEFECTS: Defect[] = [
     lineEnd: 7,
     severity: 'medium',
     category: 'real-bug',
-    hypothesis: 'normalizePath does not lowercase, so Windows case differences between a finding path and a chunk path never match.',
+    hypothesis:
+      'normalizePath does not lowercase, so Windows case differences between a finding path and a chunk path never match.',
     reality:
       'CONFIRMED (runtime). On case-insensitive filesystems "C:/X.ts" and "c:/x.ts" are the same file, but normalizePath preserves case, so the finding is dropped as "not in reviewed chunks" even though it is valid.',
     fromReport: false,
@@ -116,7 +119,8 @@ export const FINDING_VALIDATION_DEFECTS: Defect[] = [
     lineEnd: 10,
     severity: 'medium',
     category: 'real-bug',
-    hypothesis: 'normalizePath does not resolve ".." segments or internal "./", so relative paths diverge from chunk paths.',
+    hypothesis:
+      'normalizePath does not resolve ".." segments or internal "./", so relative paths diverge from chunk paths.',
     reality:
       'CONFIRMED (runtime). "../src/foo.ts" or "src/./foo.ts" are not collapsed; if the chunk path is "src/foo.ts" the finding is silently dropped though it references a reviewed file.',
     fromReport: false,
@@ -128,7 +132,8 @@ export const FINDING_VALIDATION_DEFECTS: Defect[] = [
     lineEnd: 13,
     severity: 'medium',
     category: 'real-bug',
-    hypothesis: 'A finding with lineStart === undefined is returned early WITHOUT a findingFingerprint.',
+    hypothesis:
+      'A finding with lineStart === undefined is returned early WITHOUT a findingFingerprint.',
     reality:
       'CONFIRMED (runtime). getMatchingChunkAndClamp returns the bare finding at line 13; validateAndFingerprintFindings pushes it without setting findingFingerprint. Downstream merger.ts cannot dedupe it, so it leaks as a duplicate.',
     fromReport: false,
@@ -140,7 +145,8 @@ export const FINDING_VALIDATION_DEFECTS: Defect[] = [
     lineEnd: 15,
     severity: 'low',
     category: 'real-bug',
-    hypothesis: 'A non-integer lineStart (e.g. 12.5 from a tool) is dropped entirely as if out of range.',
+    hypothesis:
+      'A non-integer lineStart (e.g. 12.5 from a tool) is dropped entirely as if out of range.',
     reality:
       'CONFIRMED (runtime). Line 14 returns null for any non-integer lineStart, so a valid fractional position is discarded rather than clamped.',
     fromReport: false,
@@ -204,7 +210,8 @@ export const MERGER_DEFECTS: Defect[] = [
     lineEnd: 93,
     severity: 'low',
     category: 'false-positive',
-    hypothesis: 'Same-line matching uses a loose threshold that bypasses the stricter cross-agent bar.',
+    hypothesis:
+      'Same-line matching uses a loose threshold that bypasses the stricter cross-agent bar.',
     reality:
       'FALSE. The same-line branch (78-89) applies agent-specific thresholds (0.5 same / 0.7 cross) identical to isNearMatch (59-65). Thresholds are symmetric.',
     fromReport: true,

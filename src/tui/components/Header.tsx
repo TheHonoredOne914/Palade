@@ -2,8 +2,6 @@ import React from 'react'
 import { Box, Text } from 'ink'
 import { ASCII_ART, GRADIENT } from '../../ui/asciiArt.js'
 
-
-
 interface HeaderProps {
   providerStatus: Record<string, boolean>
   projectRoot: string

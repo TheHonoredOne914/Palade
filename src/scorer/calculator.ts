@@ -95,7 +95,6 @@ export function penaltyFor(
   return Number.isFinite(f.scorePenalty) ? (f.scorePenalty as number) : severityWeights[f.severity]
 }
 
-
 export function countBySeverity(
   findings: AgentFinding[],
   agentName: string
