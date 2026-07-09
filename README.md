@@ -1,6 +1,6 @@
 <div align="center">
   
-# ?? Palade
+# 🤖 Palade
 
 **The AI-Powered Codebase Intelligence Engine**
 
