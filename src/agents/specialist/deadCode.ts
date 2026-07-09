@@ -46,7 +46,12 @@ Additional dead code focus:
 - Routes defined but never reached from frontend
 - Fully implemented classes never instantiated
 - Commented-out code blocks older than the surrounding context
-- Feature flags that are always false, imports that are unused`
+- Feature flags that are always false, imports that are unused
+- Before marking an export as unused:
+  1. Check if it appears in any re-export statement in the file
+  2. Consult the PUBLIC API FILES section of REPOSITORY CONTEXT — if the file appears there, its exports are consumed by library users
+  3. If PROJECT TYPE in REPOSITORY CONTEXT is library, assume unused-looking exports are consumed externally
+  4. If unsure, assume it's used by library consumers`
 
 export class DeadCodeAgent extends BaseSpecialistAgent {
   name: AgentName = 'deadCode'

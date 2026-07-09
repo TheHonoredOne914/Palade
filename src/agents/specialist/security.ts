@@ -42,7 +42,18 @@ Be specific. Reference exact file paths and line numbers from the context provid
 Additional security focus:
 - Input validation gaps, SQL/command injection, auth bypass, missing rate limits
 - Secrets hardcoded in logic, CORS misconfigs, JWT handling issues
-- Unvalidated redirects, broken access control, cryptographic weaknesses`
+- Unvalidated redirects, broken access control, cryptographic weaknesses
+
+Prioritize findings where:
+1. User-supplied input reaches the vulnerable code at runtime
+2. Exploitation doesn't require access to build environment
+3. Fix is not already applied (e.g., sanitization, validation)
+
+Deprioritize:
+1. Build-time code generation with trusted input
+2. Trusted internal code paths (not reachable from user input)
+3. Files listed in the BUILD-TIME FILES section of REPOSITORY CONTEXT (not runtime-reachable — deprioritize injection/XSS findings there)
+Also check VALIDATION LIBRARIES PRESENT in REPOSITORY CONTEXT: if a validation library is in use, verify a gap actually exists before flagging missing validation.`
 
 export class SecurityAgent extends BaseSpecialistAgent {
   name: AgentName = 'security'

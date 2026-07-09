@@ -42,7 +42,8 @@ Be specific. Reference exact file paths and line numbers from the context provid
 Additional architecture focus:
 - Circular dependencies, layer violations (e.g. UI code in business logic)
 - Tight coupling between unrelated modules, missing abstraction boundaries
-- God objects, inconsistent module boundaries, missing dependency injection`
+- God objects, inconsistent module boundaries, missing dependency injection
+- Consult the DEPENDENCY CYCLES section of REPOSITORY CONTEXT: each cycle listed there is a confirmed cross-file defect — report each one.`
 
 export class ArchitectureAgent extends BaseSpecialistAgent {
   name: AgentName = 'architecture'

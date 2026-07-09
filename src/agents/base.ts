@@ -95,6 +95,8 @@ export interface AgentContext {
   spec?: string
   /** The formal constitution with behavioral guidelines for the agents */
   constitution?: string
+  /** Pre-rendered repository-wide context block (see ingestion/repoContext.ts) */
+  repoContext?: string
   /**
    * Whether to append the built-in Ponytail/Karpathy/GStack skills block to
    * this agent's system prompt. Defaults to true (unset === enabled) so
@@ -404,6 +406,10 @@ export function buildSystemPrompt(
       .map((f) => `  - ${f.filePath}:${f.line} → focus: ${f.domain}`)
       .join('\n')
     prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}`
+  }
+
+  if (context.repoContext) {
+    prompt += `\n\n${context.repoContext}`
   }
 
   // Embed Ponytail, Karpathy, and GStack philosophies into every agent's baseline behavior,
