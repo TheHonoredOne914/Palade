@@ -49,4 +49,6 @@ export const CATEGORY_LABELS: Record<string, string> = {
   maintainability: 'Maintainability',
   deadCode: 'Dead Code',
   testIntelligence: 'Test Intelligence',
+  logic: 'Logic',
+  pragmatism: 'Pragmatism',
 }

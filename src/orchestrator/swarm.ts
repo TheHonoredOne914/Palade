@@ -299,7 +299,11 @@ export async function runSwarm(
   }
 
   const crossAgentFindings: CrossAgentFinding[] = memory.crossReference()
-  const mergedFindings: AgentFinding[] = mergeFindings(memory.getAll())
+  const mergedFindings: AgentFinding[] = mergeFindings(memory.getAll(), {
+    windowLines: options.nearMatchWindowLines,
+    sameAgentThreshold: options.nearMatchSameAgentThreshold,
+    crossAgentThreshold: options.nearMatchCrossAgentThreshold,
+  })
 
   let synthesis: SynthesisResult = {
     executiveSummary: 'Synthesis failed or was skipped.',
@@ -324,11 +328,13 @@ export async function runSwarm(
     await Promise.allSettled(
       conflicts.map((conflict) =>
         limit(async () => {
-          // detectConflicts already pre-filters out pairs the keyword tally is
-          // confident actually agree — everything it returns (including
-          // 'low'-confidence entries: near-ties, one-sided, or no keyword signal
-          // at all) is a real candidate. Let the LLM's own `is_conflict` field
-          // below make the final call instead of gating on the tally here.
+          // detectConflicts does NOT pre-filter by keyword agreement — every
+          // overlapping cross-agent finding pair it returns is queued for
+          // arbitration unconditionally, regardless of confidence. The
+          // opposite/nearTie keyword tally only sets the informational
+          // `confidence` field on the Conflict; it never gates whether
+          // arbitration happens. Let the LLM's own `is_conflict` field below
+          // make the final call instead of gating on the tally here.
           options.onVerdictDetected?.(
             conflict.filePath,
             conflict.sideA.agentName,
@@ -384,6 +390,7 @@ export async function runSwarm(
         signal: options.signal,
         maxSynthesisFindings: options.maxSynthesisFindings,
         synthesisTimeoutMs: options.synthesisTimeoutMs,
+        severityWeights: options.severityWeights,
       })
       options.onSynthesisComplete?.(Date.now() - synthStart)
     } catch (err) {

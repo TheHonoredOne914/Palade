@@ -122,9 +122,11 @@ export const SEVERITY_PENALTY: Record<Severity, number> = {
 // A flat output cap starves large batches the same way combined.ts's flat cap
 // starved multi-domain calls: more chunks reviewed means more potential
 // findings, so the JSON array gets cut off mid-stream (see
-// salvageTruncatedArray, which exists to patch over exactly this). Scale the
-// budget with batch size using the same shape as combined.ts's
-// `Math.max(3000, domains.length * 600)`.
+// salvageTruncatedArray, which exists to patch over exactly this). Scales
+// with chunk count, similar in spirit to combined.ts's economy-mode budget
+// (see computeMaxTokens's counterpart in combined.ts for its exact formula,
+// which also factors in domain count — not quoted here so this comment can't
+// drift out of sync with it again).
 export function computeMaxTokens(chunkCount: number): number {
   return Math.max(4096, chunkCount * 1000)
 }
@@ -394,18 +396,24 @@ export function buildSystemPrompt(
     prompt += `\n\n${modeConfig.systemPromptSuffix}`
   }
   if (context.annotations?.reviewRequests.length) {
-    const requests = context.annotations.reviewRequests
+    const allRequests = context.annotations.reviewRequests
+    const requests = allRequests
       .slice(0, 10)
       .map((r) => `  - ${r.filePath}:${r.line} — "${r.reason}"`)
       .join('\n')
-    prompt += `\n\nDEVELOPER REVIEW REQUESTS:\nThe following were explicitly flagged by the developer:\n${requests}\nPrioritise these in your findings.`
+    const truncationNote =
+      allRequests.length > 10 ? `\n  ...and ${allRequests.length - 10} more (truncated)` : ''
+    prompt += `\n\nDEVELOPER REVIEW REQUESTS:\nThe following were explicitly flagged by the developer:\n${requests}${truncationNote}\nPrioritise these in your findings.`
   }
   if (context.annotations?.focusRequests.length) {
-    const focuses = context.annotations.focusRequests
+    const allFocuses = context.annotations.focusRequests
+    const focuses = allFocuses
       .slice(0, 10)
       .map((f) => `  - ${f.filePath}:${f.line} → focus: ${f.domain}`)
       .join('\n')
-    prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}`
+    const truncationNote =
+      allFocuses.length > 10 ? `\n  ...and ${allFocuses.length - 10} more (truncated)` : ''
+    prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}${truncationNote}`
   }
 
   if (context.repoContext) {

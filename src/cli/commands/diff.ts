@@ -272,6 +272,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           decisionsRetentionLimit: config.swarm.decisionsRetentionLimit,
           ignoredLines: annotationSummary.ignoredLines,
           signal: opts.signal,
+          severityWeights: config.score.severityWeights,
         },
         triageManifests
       )

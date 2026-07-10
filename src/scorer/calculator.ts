@@ -234,10 +234,17 @@ export function calculateScore(
     'logic',
     'pragmatism',
   ]
+  // `undefined` means "no restriction" (run everything) and keeps the
+  // historical behavior of averaging all base categories. An explicitly
+  // empty array means zero agents actually ran this review, which must NOT
+  // fall back to the same "average all 8 categories at 100" behavior — that
+  // would produce a perfect score for a run that reviewed nothing. Filtering
+  // allBaseCategories against an empty executedCategories array naturally
+  // yields an empty categories list, which avgCategoryScore below handles.
   const baseCategories =
-    executedCategories && executedCategories.length > 0
-      ? allBaseCategories.filter((c) => executedCategories.includes(c))
-      : allBaseCategories
+    executedCategories === undefined
+      ? allBaseCategories
+      : allBaseCategories.filter((c) => executedCategories.includes(c))
 
   const uniqueAgents = Array.from(new Set(findings.map((f) => f.agentName)))
   const categories = Array.from(new Set([...baseCategories, ...uniqueAgents]))
@@ -257,7 +264,17 @@ export function calculateScore(
   const totalPenalty = findingPenalty + crossAgentPenalty
   // Average category scores for a balanced overall score. Falls back to a
   // clean 100 when there are no categories (e.g. a custom-agent-only run
-  // with zero findings) instead of dividing by zero and producing NaN.
+  // with zero findings, or scorer-001's explicitly-empty executedCategories
+  // case where zero agents ran) instead of dividing by zero and producing
+  // NaN. This 100 represents "no categories to average" — it is NOT a
+  // validated clean bill of health, since a run that reviewed nothing looks
+  // identical here to a run that reviewed everything and found nothing. The
+  // total score is a blend with the penalty-based score below, and total
+  // penalty from zero findings is correctly 0 either way, so this fallback
+  // doesn't silently overstate a genuine coverage failure in the final
+  // number by much — but callers inspecting categoryScores directly should
+  // be aware an empty array can mean either "nothing ran" or "nothing to
+  // score".
   const avgCategoryScore =
     categoryScores.length === 0
       ? 100

@@ -36,6 +36,10 @@ export async function askConfirm(query: string, defaultYes = true): Promise<bool
 }
 
 export async function askList(query: string, choices: string[]): Promise<string> {
+  if (process.env.PALADE_TUI) {
+    console.warn('[prompt] Readline blocked under TUI')
+    return choices[0]
+  }
   console.log(query)
   choices.forEach((choice, index) => {
     console.log(`  ${index + 1}) ${choice}`)
@@ -56,6 +60,10 @@ export async function askList(query: string, choices: string[]): Promise<string>
   }
 }
 export async function askCheckbox(query: string, choices: string[]): Promise<string[]> {
+  if (process.env.PALADE_TUI) {
+    console.warn('[prompt] Readline blocked under TUI')
+    return []
+  }
   console.log(query)
   choices.forEach((choice, index) => {
     console.log(`  ${index + 1}) ${choice}`)

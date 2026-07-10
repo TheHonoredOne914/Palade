@@ -10,8 +10,19 @@ import { NvidiaProvider } from './nvidia.js'
 import { OpenRouterProvider } from './openrouter.js'
 import { OpenCodeZenProvider } from './opencode-zen.js'
 import OllamaProvider from './ollama.js'
-import { ProviderPool } from './pool.js'
+import { ProviderPool, PROVIDER_POOL_SOURCE, type PoolSourceTaggedError } from './pool.js'
 import { sanitizeErrorMessage } from '../utils/sanitize.js'
+
+// Marks the specific provider instance responsible for a fatal error dead,
+// rather than the chain entry itself. When `provider` is a ProviderPool
+// wrapping several keys, calling `provider.markDead?.()` directly would mark
+// EVERY member dead over one bad key's fatal error — pool.ts tags thrown
+// errors with the exact member that threw (PROVIDER_POOL_SOURCE) so we can
+// scope the marking down to just that one instance instead.
+function markResponsibleProviderDead(provider: IProvider, error: Error): void {
+  const source = (error as PoolSourceTaggedError)[PROVIDER_POOL_SOURCE]
+  ;(source ?? provider).markDead?.()
+}
 
 export class AllProvidersExhaustedError extends Error {
   constructor(public readonly attempts: { provider: string; finalError: string }[]) {
@@ -199,7 +210,10 @@ export class FallbackProvider implements IProvider {
         return response
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
-        attempts.push({ provider: provider.name, finalError: lastError.message })
+        attempts.push({
+          provider: provider.name,
+          finalError: sanitizeErrorMessage(lastError.message),
+        })
         attemptedAny = true
 
         const isFatal = isFatalMessage(lastError.message)
@@ -224,7 +238,7 @@ export class FallbackProvider implements IProvider {
               )
             )
           } else {
-            provider.markDead?.()
+            markResponsibleProviderDead(provider, lastError)
             console.warn(
               chalk.red(`[router] provider ${provider.name} marked as DEAD (hard quota limit)`)
             )
@@ -234,8 +248,11 @@ export class FallbackProvider implements IProvider {
           // above, isAvailable() is a quota-only check and can never detect
           // this, so gating on "stillAvailable" would never mark the provider
           // dead and it would be retried as primary on every subsequent call
-          // for the rest of the run. Mark it dead unconditionally instead.
-          provider.markDead?.()
+          // for the rest of the run. Mark it dead unconditionally instead —
+          // scoped to the specific member that threw (see
+          // markResponsibleProviderDead) so a single bad key's auth failure
+          // doesn't take down its healthy pool siblings.
+          markResponsibleProviderDead(provider, lastError)
           console.warn(chalk.red(`[router] provider ${provider.name} marked as DEAD (auth error)`))
         }
 
@@ -342,6 +359,17 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   // Assign triage: an explicit cheap/fast tier if configured and available,
   // otherwise reuse the already-wrapped primary chain rather than building a
   // redundant fallback chain around the same provider.
+  //
+  // NOTE (providers-005): when no dedicated triage provider is configured,
+  // triageWithFallback IS primaryWithFallback (the same FallbackProvider
+  // instance), so getFallbackStats()'s primary total/fallback counts silently
+  // include triage-role calls in that case — there's no separate counter for
+  // "calls made via the triage role" vs "calls made via the primary role"
+  // when they share an instance. Giving triage its own always-separate
+  // FallbackProvider (or adding role-tagged counters inside FallbackProvider
+  // itself) would be a more involved change than this fix round covers, so
+  // this is documented here rather than silently surprising a caller reading
+  // FallbackStats.
   const preferredTriage = config.swarm.triage
   let triageWithFallback: IProvider = primaryWithFallback
   if (

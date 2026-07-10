@@ -1,6 +1,6 @@
 import type { IProvider } from '../providers/base.js'
 import { getProvider } from '../providers/router.js'
-import type { AgentContext, AgentFinding } from './base.js'
+import type { AgentContext, AgentFinding, Severity } from './base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import { penaltyFor } from '../scorer/calculator.js'
 
@@ -254,6 +254,14 @@ export interface SynthesizeOptions {
   synthesisTimeoutMs?: number
   /** External abort signal so user cancellation (Ctrl+C) propagates to the synthesis provider call. */
   signal?: AbortSignal
+  /**
+   * Per-severity penalty weights (config.score.severityWeights) used to rank
+   * findings for the synthesis prompt. Falls back to penaltyFor's own
+   * default (the hardcoded SEVERITY_PENALTY table) when omitted, so the
+   * executive summary's top-N ranking matches the same weights the score
+   * itself uses instead of silently diverging when a user customizes them.
+   */
+  severityWeights?: Record<Severity, number>
 }
 
 export async function synthesize(
@@ -262,7 +270,12 @@ export async function synthesize(
   context: AgentContext,
   options: SynthesizeOptions = {}
 ): Promise<SynthesisResult> {
-  const { maxSynthesisFindings = 50, synthesisTimeoutMs = 180_000, signal } = options
+  const {
+    maxSynthesisFindings = 50,
+    synthesisTimeoutMs = 180_000,
+    signal,
+    severityWeights,
+  } = options
   // Debt mode reports hours of debt, not a finding tally — sum
   // finding.estimatedHours per severity tier instead of counting findings.
   // Ghost mode similarly reports hours wasted on dead code — sum
@@ -278,7 +291,9 @@ export async function synthesize(
   try {
     const provider: IProvider = getProvider('synthesis')
 
-    const sorted = [...allFindings].sort((a, b) => penaltyFor(b) - penaltyFor(a))
+    const sorted = [...allFindings].sort(
+      (a, b) => penaltyFor(b, severityWeights) - penaltyFor(a, severityWeights)
+    )
     const cappedFindings = selectFindingsForSynthesis(sorted, maxSynthesisFindings)
     const cappedSet = new Set(cappedFindings)
     const droppedFindings = sorted.filter((f) => !cappedSet.has(f))

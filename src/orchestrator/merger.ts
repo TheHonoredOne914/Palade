@@ -50,21 +50,34 @@ export const NEAR_MATCH_WINDOW_LINES = 60
 export const NEAR_MATCH_SAME_AGENT_THRESHOLD = 0.5
 export const NEAR_MATCH_CROSS_AGENT_THRESHOLD = 0.7
 
+/** Optional overrides for the near-match tunables, defaulting to the module constants above. */
+export interface NearMatchOptions {
+  windowLines?: number
+  sameAgentThreshold?: number
+  crossAgentThreshold?: number
+}
+
 /**
  * True when two findings are close enough in location and similar enough in
  * title to be considered "the same issue, reported near the same place" —
  * shared by merger.ts's own dedup (below) and memory.ts's cross-agent
  * correlation.
  */
-export function isNearMatch(a: AgentFinding, b: AgentFinding): boolean {
+export function isNearMatch(
+  a: AgentFinding,
+  b: AgentFinding,
+  opts: NearMatchOptions = {}
+): boolean {
+  const windowLines = opts.windowLines ?? NEAR_MATCH_WINDOW_LINES
+  const sameAgentThreshold = opts.sameAgentThreshold ?? NEAR_MATCH_SAME_AGENT_THRESHOLD
+  const crossAgentThreshold = opts.crossAgentThreshold ?? NEAR_MATCH_CROSS_AGENT_THRESHOLD
   if (a.lineStart === undefined || b.lineStart === undefined) return false
-  if (Math.abs(a.lineStart - b.lineStart) > NEAR_MATCH_WINDOW_LINES) return false
-  const threshold =
-    a.agentName === b.agentName ? NEAR_MATCH_SAME_AGENT_THRESHOLD : NEAR_MATCH_CROSS_AGENT_THRESHOLD
+  if (Math.abs(a.lineStart - b.lineStart) > windowLines) return false
+  const threshold = a.agentName === b.agentName ? sameAgentThreshold : crossAgentThreshold
   return jaccardSimilarity(a.title, b.title) > threshold
 }
 
-function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
+function shouldMerge(a: AgentFinding, b: AgentFinding, opts: NearMatchOptions = {}): boolean {
   if (
     a.findingFingerprint &&
     b.findingFingerprint &&
@@ -72,6 +85,9 @@ function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
   ) {
     return true
   }
+
+  const sameAgentThreshold = opts.sameAgentThreshold ?? NEAR_MATCH_SAME_AGENT_THRESHOLD
+  const crossAgentThreshold = opts.crossAgentThreshold ?? NEAR_MATCH_CROSS_AGENT_THRESHOLD
 
   if (a.filePath && b.filePath && a.filePath === b.filePath) {
     if (a.lineStart !== undefined && b.lineStart !== undefined) {
@@ -81,16 +97,21 @@ function shouldMerge(a: AgentFinding, b: AgentFinding): boolean {
         // cross-agent threshold isNearMatch enforces for every other pair —
         // this branch used to apply the loose 0.4 bar regardless of agent,
         // bypassing that threshold for the same-line case.
-        const threshold =
-          a.agentName === b.agentName
-            ? NEAR_MATCH_SAME_AGENT_THRESHOLD
-            : NEAR_MATCH_CROSS_AGENT_THRESHOLD
+        const threshold = a.agentName === b.agentName ? sameAgentThreshold : crossAgentThreshold
         if (jaccardSimilarity(a.title, b.title) > threshold) return true
       }
       // Nearby lines: only merge when the titles actually describe the same
       // issue — proximity alone collapses unrelated findings and loses one of
       // them.
-      if (isNearMatch(a, b)) return true
+      if (isNearMatch(a, b, opts)) return true
+    } else if (a.lineStart === undefined && b.lineStart === undefined) {
+      // Both file-level findings (e.g. "God object", "circular dependency")
+      // with no line info, so there's no proximity signal to lean on — fall
+      // back to title/description similarity alone to decide whether two
+      // agents are flagging the same file-level issue.
+      const threshold = a.agentName === b.agentName ? sameAgentThreshold : crossAgentThreshold
+      if (jaccardSimilarity(a.title, b.title) > threshold) return true
+      if (jaccardSimilarity(a.description, b.description) > threshold) return true
     }
   }
   return false
@@ -123,7 +144,10 @@ function mergeTwo(a: AgentFinding, b: AgentFinding): AgentFinding {
   }
 }
 
-export function mergeFindings(findings: AgentFinding[]): AgentFinding[] {
+export function mergeFindings(
+  findings: AgentFinding[],
+  opts: NearMatchOptions = {}
+): AgentFinding[] {
   const n = findings.length
   const parent = Array.from({ length: n }, (_, i) => i)
   const find = (x: number): number => {
@@ -172,7 +196,7 @@ export function mergeFindings(findings: AgentFinding[]): AgentFinding[] {
       for (let b = a + 1; b < indices.length; b++) {
         const j = indices[b]
         if (find(i) === find(j)) continue
-        if (shouldMerge(findings[i], findings[j])) union(i, j)
+        if (shouldMerge(findings[i], findings[j], opts)) union(i, j)
       }
     }
   }

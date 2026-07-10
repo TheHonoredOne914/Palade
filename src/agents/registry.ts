@@ -75,13 +75,27 @@ export function getAgentsForMode(
 
   if (effectiveOverrides && effectiveOverrides.length > 0) {
     const agents: IAgent[] = []
+    const unmatched: AgentName[] = []
     for (const name of effectiveOverrides) {
       const agent = allAgents.get(name)
       if (agent) agents.push(agent)
+      else unmatched.push(name)
     }
     if (agents.length === 0) {
       throw new PaladeConfigError(
         `agentOverrides contains no recognized agent names: ${effectiveOverrides.join(', ')}`,
+        'agentOverrides',
+        `Available agents: ${[...allAgents.keys()].join(', ')}`
+      )
+    }
+    // A typo'd/unknown name mixed in with otherwise-valid names used to be
+    // silently dropped as long as at least one other name resolved — fail
+    // fast instead, matching the all-invalid case above and the custom agent
+    // loader's fail-fast pattern, so a config with one bad entry doesn't
+    // silently narrow the swarm with no warning.
+    if (unmatched.length > 0) {
+      throw new PaladeConfigError(
+        `agentOverrides contains unrecognized agent names: ${unmatched.join(', ')}`,
         'agentOverrides',
         `Available agents: ${[...allAgents.keys()].join(', ')}`
       )
