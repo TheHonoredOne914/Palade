@@ -7,7 +7,7 @@ import { ALL_DEFECTS } from './groundTruth.js'
 const here = fileURLToPath(new URL('.', import.meta.url))
 const runsDir = process.argv[2] ?? join(here, 'runs')
 
-let runs: AgentRun[] = []
+const runs: AgentRun[] = []
 
 if (existsSync(runsDir)) {
   const files = readdirSync(runsDir).filter((f) => f.endsWith('.json'))
