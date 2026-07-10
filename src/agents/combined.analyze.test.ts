@@ -79,8 +79,17 @@ describe('CombinedAnalyzer.analyze', () => {
 
     const findings = await agent.analyze([], ctx)
 
-    expect(findings).toHaveLength(1)
+    // The invalid-agentName finding is dropped, but a dropped finding must not
+    // look identical to "the agent reviewed this and found nothing" — combined.ts
+    // surfaces a zero-penalty info marker for it (agents-002), so a clean
+    // security finding plus one dropped finding yields 2 results, not 1.
+    expect(findings).toHaveLength(2)
     expect(findings[0].agentName).toBe('security')
     expect(findings[0].title).toBe('SecTest')
+
+    expect(findings[1].agentName).toBe('combined')
+    expect(findings[1].severity).toBe('info')
+    expect(findings[1].tags).toContain('review-incomplete')
+    expect(findings[1].title).toContain('REVIEW INCOMPLETE')
   })
 })
