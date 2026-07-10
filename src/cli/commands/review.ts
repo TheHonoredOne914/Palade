@@ -150,7 +150,17 @@ export async function reviewCommand(
 
     // --depth: pull in the symbol's local dependency files as extra context
     // chunks. Without this the flag is parsed but has no effect at all.
-    const depth = opts.depth ?? 1
+    let depth = opts.depth ?? 1
+    if (!Number.isFinite(depth)) {
+      // commander's numeric parser returns NaN for a non-numeric --depth
+      // value (e.g. `--depth abc`), which would otherwise silently disable
+      // dependency tracing via the `depth > 0` check below with no signal to
+      // the user. Default back to 1 (tracing stays on) and warn instead.
+      console.log(
+        theme.warning(`  Invalid --depth value "${String(opts.depth)}" — defaulting to depth 1.`)
+      )
+      depth = 1
+    }
     if (depth > 0) {
       const { traceDependencies } = await import('../../ingestion/dependencyTracer.js')
       const { readFile } = await import('node:fs/promises')
@@ -411,6 +421,7 @@ export async function reviewCommand(
         maxSynthesisFindings: config.swarm.maxSynthesisFindings,
         synthesisTimeoutMs: config.swarm.synthesisTimeoutMs,
         decisionsRetentionLimit: config.swarm.decisionsRetentionLimit,
+        severityWeights: config.score.severityWeights,
       },
       target: resolvedTarget,
       dryRunConfig: opts.dryRun ? config : undefined,

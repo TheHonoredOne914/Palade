@@ -111,4 +111,17 @@ export interface SwarmOptions {
   synthesisTimeoutMs?: number
   /** Retention cap for .palade/decisions/ ADR files (oldest pruned first). Defaults to 100. */
   decisionsRetentionLimit?: number
+  /**
+   * Per-severity penalty weights (config.score.severityWeights) threaded
+   * through to synthesis so its priority-fix ranking uses the same weights
+   * as the score itself, instead of always falling back to the hardcoded
+   * default SEVERITY_PENALTY table.
+   */
+  severityWeights?: Record<Severity, number>
+  /** Line-proximity window (in lines) for merger.ts's near-match dedup. Defaults to 60. */
+  nearMatchWindowLines?: number
+  /** Title-similarity threshold for near-match dedup between findings from the same agent. Defaults to 0.5. */
+  nearMatchSameAgentThreshold?: number
+  /** Title-similarity threshold for near-match dedup between findings from different agents. Defaults to 0.7. */
+  nearMatchCrossAgentThreshold?: number
 }

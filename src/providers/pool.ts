@@ -1,5 +1,14 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
 
+// Attached to errors thrown by ProviderPool.complete() so callers (router.ts)
+// can scope dead-marking to the exact member instance that threw, instead of
+// calling markDead() on the pool wrapper itself — which would mark every
+// member dead and silently disable healthy sibling keys over one bad key's
+// fatal error.
+export const PROVIDER_POOL_SOURCE = Symbol('providerPoolSource')
+
+export type PoolSourceTaggedError = Error & { [PROVIDER_POOL_SOURCE]?: IProvider }
+
 export class ProviderPool implements IProvider {
   readonly name: string
   readonly model: string
@@ -42,7 +51,20 @@ export class ProviderPool implements IProvider {
     // can classify it (at this point the pool genuinely is exhausted). Index
     // was already advanced above before the availability loop.
     const provider = candidate ?? this.providers[startIdx % n]
-    return provider.complete(req)
+    try {
+      return await provider.complete(req)
+    } catch (err) {
+      // Tag the error with the specific member instance that threw, so the
+      // caller can mark only that member dead instead of calling
+      // markDead()/isDead() on this pool wrapper (which would affect every
+      // member). Stashing it on the error itself — rather than an instance
+      // field like `this.lastHandler` — avoids a race where a concurrent
+      // call overwrites the "last handler" before this one's catch runs.
+      if (err instanceof Error) {
+        ;(err as PoolSourceTaggedError)[PROVIDER_POOL_SOURCE] = provider
+      }
+      throw err
+    }
   }
 
   async isAvailable(): Promise<boolean> {

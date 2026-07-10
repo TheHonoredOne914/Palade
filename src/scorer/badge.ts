@@ -11,7 +11,7 @@ const COLOR_MAP: Record<BadgeColor, string> = {
 
 export function getScoreColor(score: number): BadgeColor {
   const clamped = Math.max(0, Math.min(100, score))
-  if (clamped >= 90) return 'brightgreen'
+  if (clamped >= SCORE_THRESHOLDS.excellent) return 'brightgreen'
   if (clamped >= SCORE_THRESHOLDS.good) return 'green'
   if (clamped >= SCORE_THRESHOLDS.warning) return 'yellow'
   if (clamped >= SCORE_THRESHOLDS.poor) return 'orange'

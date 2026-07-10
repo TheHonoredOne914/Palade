@@ -172,7 +172,18 @@ export async function watchCommand(opts: {
       // both resolved once above into `watchAgents`).
       const agents = watchAgents
       const allFindings: AgentFinding[] = []
-      const batches = scheduleBatches(chunks)
+      // In economy mode, cap batch sizes the same way review.ts/diff.ts do
+      // before passing options into runSwarm — otherwise this call falls
+      // back to scheduler.ts's un-capped defaults (16000/6000), letting a
+      // large watched file's economy-mode CombinedAnalyzer prompt run much
+      // larger than the same mode produces via review/diff.
+      const softTokenLimit = config.swarm.economyMode
+        ? Math.min(6000, config.swarm.softTokenLimit ?? 16000)
+        : config.swarm.softTokenLimit
+      const hardChunkLimit = config.swarm.economyMode
+        ? Math.min(3000, config.swarm.hardChunkLimit ?? 6000)
+        : config.swarm.hardChunkLimit
+      const batches = scheduleBatches(chunks, softTokenLimit, hardChunkLimit)
 
       for (const agent of agents) {
         for (const batch of batches) {

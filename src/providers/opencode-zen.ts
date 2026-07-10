@@ -129,7 +129,11 @@ export class OpenCodeZenProvider implements IProvider {
     const durationMs = Date.now() - start
     const choices = data.choices as
       Array<{ message?: { content?: string; reasoning_content?: string } }> | undefined
-    const content = choices?.[0]?.message?.content ?? ''
+    // Some reasoning models put the actual answer only in reasoning_content,
+    // leaving content empty — fall back to it instead of treating this as
+    // truly empty output and paying for an unnecessary larger-token-budget
+    // retry below.
+    const content = choices?.[0]?.message?.content || choices?.[0]?.message?.reasoning_content || ''
     const usage = data.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
     const outputTokens = usage?.completion_tokens ?? 0
 

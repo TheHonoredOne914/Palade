@@ -97,7 +97,11 @@ export const FATAL_QUOTA_KEYWORDS = [
  * valid JSON and carries one — those fields are set deliberately by the
  * provider, so matching against them is far less prone to false positives
  * than scanning arbitrary text. Falls back to the plain-text substring scan
- * only when the body doesn't parse as JSON or lacks a structured field.
+ * when the body doesn't parse as JSON, lacks a structured field, or the
+ * structured field's value doesn't match a known keyword — a structured
+ * field that's merely generic (e.g. `rate_limit_exceeded`) shouldn't stop the
+ * raw message text from still being scanned for a real quota-exhaustion
+ * signal.
  */
 export function isDailyLimitError(body: string): boolean {
   try {
@@ -107,7 +111,15 @@ export function isDailyLimitError(body: string): boolean {
     const structured = parsed?.error?.type ?? parsed?.error?.code
     if (typeof structured === 'string' && structured.length > 0) {
       const lower = structured.toLowerCase()
-      return FATAL_QUOTA_KEYWORDS.some((keyword) => lower.includes(keyword))
+      if (FATAL_QUOTA_KEYWORDS.some((keyword) => lower.includes(keyword))) {
+        return true
+      }
+      // The structured field is present but doesn't match a known keyword
+      // (e.g. `{"error":{"type":"rate_limit_exceeded","message":"...monthly
+      // limit exceeded..."}}`) — fall through to the raw text scan below
+      // instead of returning false immediately, so the real signal in the
+      // message body isn't missed just because the structured field itself
+      // was generic.
     }
   } catch {
     // Not parseable JSON (or not an object) — fall through to the raw scan.

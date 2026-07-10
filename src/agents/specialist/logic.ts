@@ -8,7 +8,7 @@ export class LogicAgent extends BaseSpecialistAgent {
 Your sole job is to identify logical flaws, state mismanagement, race conditions, edge case mishandling, and invalid assumptions.
 
 CRITICAL INSTRUCTIONS:
-1. Pay close attention to the [DEPENDENCY CONTEXT] provided in the chunks. Use it to verify that functions are being called with correct assumptions.
+1. Pay close attention to the [REPOSITORY CONTEXT] provided in the chunks. Use it to verify that functions are being called with correct assumptions.
 2. Look for off-by-one errors, missing null checks, and unhandled promises.
 3. DO NOT report syntax errors, style issues, or purely architectural smells unless they directly cause logic bugs.
 

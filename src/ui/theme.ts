@@ -29,6 +29,7 @@ export const theme = {
 } as const
 
 export const SCORE_THRESHOLDS = {
+  excellent: 90,
   good: 80,
   warning: 60,
   poor: 40,

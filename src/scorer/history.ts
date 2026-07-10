@@ -13,6 +13,14 @@ import type { ScoreHistoryEntry, ScoreBreakdown, CategoryScore } from './types.j
 
 const MAX_HISTORY_ENTRIES = 50
 
+// `entries.slice(-maxEntries)` degenerates to `entries.slice(-0)` — which is
+// `entries.slice(0)`, i.e. the *entire* untrimmed array — when maxEntries is
+// 0, silently defeating the retention cap instead of producing an empty
+// array. Shared by writeHistory and appendEntry so both trim consistently.
+function trimEntries(entries: ScoreHistoryEntry[], maxEntries: number): ScoreHistoryEntry[] {
+  return maxEntries > 0 ? entries.slice(-maxEntries) : []
+}
+
 function isValidCategoryScore(item: unknown): item is CategoryScore {
   if (typeof item !== 'object' || item === null) return false
   const c = item as Record<string, unknown>
@@ -53,7 +61,9 @@ export function parseHistoryEntries(raw: string): ScoreHistoryEntry[] {
         typeof rawBreakdown === 'object' &&
         Array.isArray(rawBreakdown.categories) &&
         typeof rawBreakdown.findingCount === 'number' &&
-        typeof rawBreakdown.crossAgentCount === 'number'
+        typeof rawBreakdown.crossAgentCount === 'number' &&
+        typeof rawBreakdown.total === 'number' &&
+        Number.isFinite(rawBreakdown.total)
 
       const breakdown: ScoreBreakdown = isValidBreakdown
         ? {
@@ -142,7 +152,7 @@ export function writeHistory(
   try {
     const dir = dirname(historyPath)
     mkdirSync(dir, { recursive: true })
-    const trimmed = entries.slice(-maxEntries)
+    const trimmed = trimEntries(entries, maxEntries)
     // Write to a temp file then rename — rename is atomic on POSIX/NTFS, so a
     // concurrent reader never observes a half-written history.json.
     const tmpPath = `${historyPath}.${process.pid}.${Date.now()}.tmp`
@@ -248,7 +258,7 @@ export async function appendEntry(
     }
     // Return what was actually persisted — the untrimmed array would diverge
     // from the next readHistory() once the retention cap kicks in.
-    return existing.slice(-maxEntries)
+    return trimEntries(existing, maxEntries)
   } finally {
     if (lockPath) releaseLock(lockPath)
   }

@@ -307,7 +307,7 @@ export async function saveDecision(
 ## Conflict
 - **${conflict.sideA.agentName}:** ${conflict.sideA.title} - ${conflict.sideA.description}
 - **${conflict.sideB.agentName}:** ${conflict.sideB.title} - ${conflict.sideB.description}
-- **Keyword-tally confidence:** ${conflict.confidence}
+- **Heuristic pre-arbitration signal (keyword tally, informational only):** ${conflict.confidence}
 
 ## Decision
 ${verdict.decision}

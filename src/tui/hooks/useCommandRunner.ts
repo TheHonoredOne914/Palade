@@ -164,6 +164,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
             await diffCommand({
               base: flag('base') ?? 'main',
               ci: hasFlag('ci'),
+              strictTriage: hasFlag('strict-triage'),
               signal: runSignal,
               tui: true,
             })
@@ -216,7 +217,12 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
           }
 
           case 'init': {
-            await initCommand({ yes: hasFlag('yes') || hasFlag('y'), signal: runSignal, tui: true })
+            // hasFlag('y') can never match — hasFlag only tests for the
+            // literal `--y` double-dash token, never the short `-y` form, so
+            // this half of the check was dead. Dropped rather than adding
+            // short-flag support, which would require touching the shared
+            // tokenizer/flag-parsing helper used by every other command.
+            await initCommand({ yes: hasFlag('yes'), signal: runSignal, tui: true })
             break
           }
 

@@ -61,8 +61,13 @@ export function useOutputStream() {
   )
 
   const clearOutput = useCallback(() => {
+    // Re-append a fresh header line (banner, provider status, project name,
+    // etc. — see the initial `lines` state above) after clearing, so /clear
+    // doesn't permanently remove it from the screen for the rest of the
+    // session — the header is otherwise never re-appended anywhere.
+    const header: OutputLine = { type: 'header', text: '' }
     const cleared: OutputLine = { type: 'dim', text: '  Output cleared.' }
-    setLines([assignId(cleared)])
+    setLines([assignId(header), assignId(cleared)])
     setClearNonce((n) => n + 1)
   }, [assignId])
 
@@ -71,7 +76,17 @@ export function useOutputStream() {
   // length it will never see again.
   useEffect(() => {
     if (lines.length > MAX_LINES) {
-      setLines((prev) => prev.slice(-WINDOW_LINES))
+      setLines((prev) => {
+        const windowed = prev.slice(-WINDOW_LINES)
+        // Preserve the header line across windowing — without this it
+        // eventually scrolls out of the kept window like any other line and
+        // never comes back.
+        const header = prev.find((l) => l.type === 'header')
+        if (header && !windowed.includes(header)) {
+          return [header, ...windowed]
+        }
+        return windowed
+      })
       setClearNonce((n) => n + 1)
     }
   }, [lines.length])
