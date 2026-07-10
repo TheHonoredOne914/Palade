@@ -5,7 +5,11 @@ import { DEFAULT_CONFIG } from '../../config/defaults.js'
 import { initRouter } from '../../providers/router.js'
 import { walkProject, buildIgnoreFilter } from '../../ingestion/walker.js'
 import { chunkFiles } from '../../ingestion/chunker.js'
-import { scheduleBatches } from '../../orchestrator/scheduler.js'
+import {
+  scheduleBatches,
+  ECONOMY_SOFT_TOKEN_CAP,
+  ECONOMY_HARD_CHUNK_CAP,
+} from '../../orchestrator/scheduler.js'
 import type { AgentFinding, AgentContext, AgentName, IAgent } from '../../agents/base.js'
 import { getAgentsForMode } from '../../agents/registry.js'
 import { loadCustomAgents } from '../../agents/custom/loader.js'
@@ -178,10 +182,10 @@ export async function watchCommand(opts: {
       // large watched file's economy-mode CombinedAnalyzer prompt run much
       // larger than the same mode produces via review/diff.
       const softTokenLimit = config.swarm.economyMode
-        ? Math.min(6000, config.swarm.softTokenLimit ?? 16000)
+        ? Math.min(ECONOMY_SOFT_TOKEN_CAP, config.swarm.softTokenLimit ?? 16000)
         : config.swarm.softTokenLimit
       const hardChunkLimit = config.swarm.economyMode
-        ? Math.min(3000, config.swarm.hardChunkLimit ?? 6000)
+        ? Math.min(ECONOMY_HARD_CHUNK_CAP, config.swarm.hardChunkLimit ?? 6000)
         : config.swarm.hardChunkLimit
       const batches = scheduleBatches(chunks, softTokenLimit, hardChunkLimit)
 

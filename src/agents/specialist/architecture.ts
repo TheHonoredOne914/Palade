@@ -1,5 +1,14 @@
 import { type AgentName, BaseSpecialistAgent } from '../base.js'
 
+// Exported so economy mode's combined prompt (combined.ts) can reuse the
+// exact same domain-focus text instead of a second hand-written copy
+// (agents-001).
+export const ARCHITECTURE_FOCUS = `Additional architecture focus:
+- Circular dependencies, layer violations (e.g. UI code in business logic)
+- Tight coupling between unrelated modules, missing abstraction boundaries
+- God objects, inconsistent module boundaries, missing dependency injection
+- Consult the DEPENDENCY CYCLES section of REPOSITORY CONTEXT: each cycle listed there is a confirmed cross-file defect — report each one.`
+
 const SYSTEM_PROMPT = `You are a specialist architecture code reviewer. You are part of a parallel AI swarm analyzing a codebase.
 
 Your job: identify architecture issues in the code provided.
@@ -39,11 +48,7 @@ If you find no issues: return an empty array [].
 Do not invent file paths. Only reference files shown in the context.
 Be specific. Reference exact file paths and line numbers from the context provided.
 
-Additional architecture focus:
-- Circular dependencies, layer violations (e.g. UI code in business logic)
-- Tight coupling between unrelated modules, missing abstraction boundaries
-- God objects, inconsistent module boundaries, missing dependency injection
-- Consult the DEPENDENCY CYCLES section of REPOSITORY CONTEXT: each cycle listed there is a confirmed cross-file defect — report each one.`
+${ARCHITECTURE_FOCUS}`
 
 export class ArchitectureAgent extends BaseSpecialistAgent {
   name: AgentName = 'architecture'

@@ -8,11 +8,24 @@ import {
   annotateComplexity,
   buildChunkContext,
   buildSystemPrompt,
+  computeMaxTokens,
   parseFindingsResponse,
+  unparsableResponseFinding,
   verifyCriticalHighFindings,
 } from './base.js'
 import type { IAgent } from './base.js'
 import { validateAndFingerprintFindings } from '../orchestrator/findingValidation.js'
+import { SECURITY_FOCUS } from './specialist/security.js'
+import { ARCHITECTURE_FOCUS } from './specialist/architecture.js'
+import { PERFORMANCE_FOCUS } from './specialist/performance.js'
+import { MAINTAINABILITY_FOCUS } from './specialist/maintainability.js'
+import { DEAD_CODE_WARNING, DEAD_CODE_FOCUS } from './specialist/deadCode.js'
+import {
+  TEST_INTELLIGENCE_WARNING,
+  TEST_INTELLIGENCE_FOCUS,
+} from './specialist/testIntelligence.js'
+import { PRAGMATISM_FOCUS } from './specialist/pragmatism.js'
+import { LOGIC_FOCUS } from './specialist/logic.js'
 
 /**
  * Economy-mode analyzer: runs ALL specialist domains in a single provider call
@@ -88,18 +101,33 @@ export const DEFAULT_DOMAINS: DomainSpec[] = [
   },
 ]
 
+// Anti-false-positive guardrail block for each built-in domain, sourced
+// VERBATIM from the matching specialist/*.ts prompt (imported above) rather
+// than a second hand-written copy. Every parallel per-domain agent carries
+// domain-specific false-positive guidance (e.g. security.ts's "deprioritize
+// BUILD-TIME FILES... verify a gap actually exists" block, deadCode.ts's
+// partial-chunk warning) that economy mode's combined prompt used to either
+// omit or paraphrase into a shorter, drift-prone summary. Keyed by domain
+// name (not stored per-DomainSpec-instance) so even a caller-supplied custom
+// domain subset still gets the real guardrail text for any built-in name it
+// includes (agents-001).
+const DOMAIN_GUARDRAILS: Partial<Record<AgentName, string>> = {
+  security: SECURITY_FOCUS,
+  architecture: ARCHITECTURE_FOCUS,
+  performance: PERFORMANCE_FOCUS,
+  maintainability: MAINTAINABILITY_FOCUS,
+  deadCode: `${DEAD_CODE_WARNING}\n\n${DEAD_CODE_FOCUS}`,
+  testIntelligence: `${TEST_INTELLIGENCE_WARNING}\n\n${TEST_INTELLIGENCE_FOCUS}`,
+  logic: LOGIC_FOCUS,
+  pragmatism: PRAGMATISM_FOCUS,
+}
+
 function buildCombinedSystemPrompt(domains: DomainSpec[]): string {
   const sections = domains
     .map((d) => {
-      let extra = ''
-      if (d.name === 'deadCode') {
-        extra =
-          ' (NOTE: You are reviewing partial chunks. Do NOT report exports as unused unless you are certain they are dead. Assume public exports are used elsewhere.)'
-      } else if (d.name === 'testIntelligence') {
-        extra =
-          " (NOTE: You are reviewing partial chunks. Only flag missing tests if the chunk clearly contains complex logic lacking coverage, not just because a test file isn't visible.)"
-      }
-      return `### ${d.label} (agentName: "${d.name}")\nLook for: ${d.focus}.${extra}`
+      const guardrails = DOMAIN_GUARDRAILS[d.name]
+      const guardrailBlock = guardrails ? `\n\n${guardrails}` : ''
+      return `### ${d.label} (agentName: "${d.name}")\nLook for: ${d.focus}.${guardrailBlock}`
     })
     .join('\n\n')
 
@@ -144,7 +172,6 @@ Each finding must match this exact schema, and MUST include its originating agen
  */
 export class CombinedAnalyzer implements IAgent {
   readonly name: AgentName = 'combined' as AgentName
-  readonly domain = 'combined'
   private readonly domains: DomainSpec[]
 
   constructor(domains?: DomainSpec[]) {
@@ -164,24 +191,41 @@ export class CombinedAnalyzer implements IAgent {
         context.modeConfig
       )
       const userPrompt = buildChunkContext(chunks)
-      // A single call has to fit findings for every domain AND every chunk in
-      // the batch, so the output budget must scale with both — a cap that
-      // only accounts for domain count starves batches with many chunks and
-      // truncates the JSON array (see base.ts's computeMaxTokens, which
-      // scales by chunkCount for the per-domain path).
-      const maxTokens = Math.max(4096, chunks.length * 1000 + this.domains.length * 300)
+      // Shared, parameterized formula (base.ts's computeMaxTokens) instead of
+      // a second hand-copied variant — a single call has to fit findings for
+      // every domain AND every chunk in the batch, so the output budget must
+      // scale with both (agents-003).
+      const maxTokens = computeMaxTokens(chunks.length, this.domains.length)
       const response = await provider.complete({
         systemPrompt,
         userPrompt,
         maxTokens,
         signal,
       })
+      const rawFindings = parseFindingsResponse(response.content ?? '', this.name, true)
       const findings = attributeFindings(
-        parseFindingsResponse(response.content ?? '', this.name, true),
+        rawFindings,
         this.domains,
         response.provider,
         response.model
       )
+      // attributeFindings silently drops any finding whose agentName didn't
+      // match an active domain (even after alias normalization) — that must
+      // not look identical to "the model reviewed this and found nothing".
+      // Surface it as a real (info, zero-penalty) finding that flows through
+      // the normal merge/score/report pipeline, mirroring base.ts's
+      // unparsableResponseFinding pattern for a totally unparsable response
+      // (agents-002). Computed here (not inside attributeFindings) so that
+      // function stays a pure, directly-unit-testable attribution filter.
+      const droppedCount = rawFindings.length - findings.length
+      if (droppedCount > 0) {
+        findings.push(
+          ...unparsableResponseFinding(
+            this.name,
+            `dropped ${droppedCount} finding(s) with an agentName that didn't match any active domain`
+          )
+        )
+      }
       const validated = validateAndFingerprintFindings(findings, chunks)
       annotateComplexity(validated, chunks)
       return verifyCriticalHighFindings(validated, chunks, provider, this.name, signal)
@@ -201,9 +245,22 @@ export class CombinedAnalyzer implements IAgent {
  * a misattributed finding would distort the per-category score breakdown.
  */
 // Economy-mode LLMs sometimes emit abbreviated or title-cased domain names.
-// Case normalization covers 'Security' → 'security'; this table covers
-// roots that differ from the canonical key ('Architect' ≠ 'architecture').
+// Case/whitespace/kebab normalization (below, via normalizeAgentName) covers
+// 'Security' → 'security', 'Test Intelligence' / 'test-intelligence' /
+// 'test_intelligence' → 'testIntelligence', 'Dead Code' / 'dead-code' →
+// 'deadCode', etc. automatically for every multi-word domain. This table is
+// only for roots that differ entirely from the canonical key, where no
+// amount of whitespace/case normalization would help ('Architect' ≠
+// 'architecture').
 const AGENT_NAME_ALIASES: Record<string, string> = { architect: 'architecture' }
+
+/** Strip whitespace/hyphens/underscores and lowercase, for fuzzy domain-name matching. */
+function normalizeAgentName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '')
+}
 
 export function attributeFindings(
   findings: AgentFinding[],
@@ -215,13 +272,14 @@ export function attributeFindings(
 
   const attributed: AgentFinding[] = []
   for (const f of findings) {
-    // Normalize case/whitespace variants ('Security' → 'security') then apply
-    // alias table for abbreviated names ('Architect' → 'architecture').
+    // Normalize case/whitespace/kebab variants ('Test Intelligence' →
+    // 'testIntelligence') then apply the alias table for roots that differ
+    // entirely ('Architect' → 'architecture').
     if (!validNames.has(f.agentName)) {
-      const norm = f.agentName.trim().toLowerCase()
+      const norm = normalizeAgentName(f.agentName)
       const aliased = AGENT_NAME_ALIASES[norm]
       const canonical =
-        Array.from(validNames).find((n) => n.toLowerCase() === norm) ??
+        Array.from(validNames).find((n) => normalizeAgentName(n) === norm) ??
         (aliased && validNames.has(aliased) ? aliased : undefined)
       if (canonical) f.agentName = canonical
     }

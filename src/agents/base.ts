@@ -123,12 +123,14 @@ export const SEVERITY_PENALTY: Record<Severity, number> = {
 // starved multi-domain calls: more chunks reviewed means more potential
 // findings, so the JSON array gets cut off mid-stream (see
 // salvageTruncatedArray, which exists to patch over exactly this). Scales
-// with chunk count, similar in spirit to combined.ts's economy-mode budget
-// (see computeMaxTokens's counterpart in combined.ts for its exact formula,
-// which also factors in domain count — not quoted here so this comment can't
-// drift out of sync with it again).
-export function computeMaxTokens(chunkCount: number): number {
-  return Math.max(4096, chunkCount * 1000)
+// with chunk count and, for economy mode's combined multi-domain call, also
+// with domain count — a single call has to fit findings for every domain AND
+// every chunk in the batch, so a cap that only accounts for one of the two
+// starves the other. Single parameterized formula (agents-003) so
+// combined.ts no longer maintains its own hand-copied variant of this same
+// math that could drift out of sync.
+export function computeMaxTokens(chunkCount: number, domainCount = 0): number {
+  return Math.max(4096, chunkCount * 1000 + domainCount * 300)
 }
 
 export function buildChunkContext(chunks: CodeChunk[]): string {
@@ -213,7 +215,7 @@ function salvageTruncatedArray(text: string): unknown[] {
 // silently reported to the user as clean code. Surface it as a real (info,
 // zero-penalty) finding that flows through the normal merge/score/report
 // pipeline instead of vanishing after a console.warn nobody reads.
-function unparsableResponseFinding(agentName: AgentName, reason: string): AgentFinding[] {
+export function unparsableResponseFinding(agentName: AgentName, reason: string): AgentFinding[] {
   return [
     {
       id: crypto.randomUUID(),

@@ -1,5 +1,16 @@
 import { type AgentName, BaseSpecialistAgent } from '../base.js'
 
+// Exported so economy mode's combined prompt (combined.ts) can reuse the
+// exact same domain-focus text instead of a second hand-written copy
+// (agents-001).
+export const PERFORMANCE_FOCUS = `Additional performance focus:
+- N+1 query patterns, synchronous operations inside async loops
+- Missing caching on expensive operations, unbounded result sets (no pagination/limit)
+- Memory leaks (event listeners not removed, unclosed streams)
+- Synchronous file I/O in request handlers
+- Trace variable lifetimes across callback boundaries to catch obscure asymptotic issues.
+- Consult the MODULE-LEVEL COLLECTIONS section of REPOSITORY CONTEXT: investigate each entry without delete/clear as an unbounded-growth candidate.`
+
 const SYSTEM_PROMPT = `You are a specialist performance code reviewer. You are part of a parallel AI swarm analyzing a codebase.
 
 Your job: identify performance issues in the code provided.
@@ -39,13 +50,7 @@ If you find no issues: return an empty array [].
 Do not invent file paths. Only reference files shown in the context.
 Be specific. Reference exact file paths and line numbers from the context provided.
 
-Additional performance focus:
-- N+1 query patterns, synchronous operations inside async loops
-- Missing caching on expensive operations, unbounded result sets (no pagination/limit)
-- Memory leaks (event listeners not removed, unclosed streams)
-- Synchronous file I/O in request handlers
-- Trace variable lifetimes across callback boundaries to catch obscure asymptotic issues.
-- Consult the MODULE-LEVEL COLLECTIONS section of REPOSITORY CONTEXT: investigate each entry without delete/clear as an unbounded-growth candidate.`
+${PERFORMANCE_FOCUS}`
 
 export class PerformanceAgent extends BaseSpecialistAgent {
   name: AgentName = 'performance'

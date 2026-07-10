@@ -3,6 +3,7 @@ import { render } from 'ink'
 import { App } from './app.js'
 import { loadConfig } from '../config/loader.js'
 import { initRouter } from '../providers/router.js'
+import { PROVIDERS, isProviderConfigured } from '../config/apiKey.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -62,11 +63,13 @@ export async function launchTUI(): Promise<void> {
   if (config && !noProvider) {
     try {
       await initRouter(config)
-      providerStatus.groq = !!config.providers?.groq?.apiKey
-      providerStatus.cerebras = !!config.providers?.cerebras?.apiKey
-      providerStatus.nvidia = !!config.providers?.nvidia?.apiKey
-      providerStatus.openrouter = !!config.providers?.openrouter?.apiKey
-      providerStatus['opencode-zen'] = !!config.providers?.['opencode-zen']?.apiKey
+      // Driven from the shared PROVIDERS list (config/apiKey.ts) instead of a
+      // hand-typed 5-key object, so every provider — including ollama, which
+      // is keyless and was previously missing here — gets a status dot
+      // (uicli-002).
+      for (const p of PROVIDERS) {
+        providerStatus[p.id] = isProviderConfigured(config.providers, p.id)
+      }
     } catch (err: unknown) {
       configError = `Provider init failed: ${err instanceof Error ? err.message : String(err)}`
       config = undefined

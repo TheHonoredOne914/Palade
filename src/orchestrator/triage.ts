@@ -2,6 +2,7 @@ import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import { getProvider } from '../providers/router.js'
 import { CliExitError } from '../errors/types.js'
 import { estimateTotalTokens } from './scheduler.js'
+import { extractBalancedJson } from '../utils/jsonExtract.js'
 import chalk from 'chalk'
 
 const DEFAULT_MAX_REVIEW_TOKENS = 200_000
@@ -89,12 +90,13 @@ export async function triageFiles(
         cleaned = (jsonBlock ?? allBlocks[allBlocks.length - 1])[1].trim()
       }
 
-      // Find the outermost JSON array boundaries
-      const arrayStart = cleaned.indexOf('[')
-      const arrayEnd = cleaned.lastIndexOf(']')
-      if (arrayStart !== -1 && arrayEnd > arrayStart) {
-        cleaned = cleaned.substring(arrayStart, arrayEnd + 1)
-      }
+      // Extract the first balanced JSON array, honoring string literals —
+      // the previous first-'['/last-']' substring slice broke whenever the
+      // model's response contained a stray bracket outside the actual array
+      // (e.g. in explanatory prose), producing invalid JSON that silently
+      // fell back to heuristicSelect (orchestrator-010).
+      const extracted = extractBalancedJson(cleaned, '[', ']')
+      if (extracted) cleaned = extracted
 
       rankedPaths = JSON.parse(cleaned)
     } catch (err) {

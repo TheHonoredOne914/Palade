@@ -3,15 +3,19 @@ import { SEVERITY_PENALTY } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from './types.js'
 
-// Floors/caps are intentionally asymmetric: a single category is allowed to
-// sink further (floor 10, cap 90) than the blended overall score (floor 5,
-// cap 95), so one bad category can hurt the total without a single agent
-// being able to zero it out entirely.
+// Floors are intentionally asymmetric: a single category is allowed to sink
+// further (floor 10) than the blended overall score (floor 5), so one bad
+// category can hurt the total without a single agent being able to zero it
+// out entirely.
 //
-// These constants (and the 60/40 average-vs-penalty blend ratio below) are
-// intentional fixed safety rails, not tunable knobs like severityWeights or
-// crossAgentPenalty — they bound how the score can move regardless of config,
-// so they're deliberately not exposed via config.score.
+// The score FLOORS above (and the 60/40 average-vs-penalty blend ratio
+// below) are intentional fixed safety rails, not tunable knobs like
+// severityWeights or crossAgentPenalty — they bound how the score can move
+// regardless of config, so they're deliberately not exposed via
+// config.score. The DEFAULT_*_PENALTY_CAP values right below them are NOT in
+// that category: PenaltyCaps IS config-backed (see
+// config.score.penaltyCaps/ScoreWeightsConfig.penaltyCaps below) — only
+// their default values live here as module constants.
 const CATEGORY_SCORE_FLOOR = 10
 const DEFAULT_CATEGORY_PENALTY_CAP = 90
 const TOTAL_SCORE_FLOOR = 5
@@ -246,8 +250,23 @@ export function calculateScore(
       ? allBaseCategories
       : allBaseCategories.filter((c) => executedCategories.includes(c))
 
+  // executedCategories can also include agent names OUTSIDE allBaseCategories
+  // (custom agents) — those were previously dropped entirely by the filter
+  // above (which only ever narrows allBaseCategories) and only re-entered
+  // `categories` if they happened to have produced a finding. A clean
+  // (zero-finding) custom-agent run therefore never got seeded into
+  // `categories` and silently lost its free 100, while a clean BUILT-IN
+  // category always gets one — two identically-clean runs scored
+  // differently depending on whether the clean category was built-in or
+  // custom (scorer-101). Seed these non-base executed names in directly so
+  // they get the same treatment as a clean base category.
+  const nonBaseExecutedCategories = (executedCategories ?? []).filter(
+    (c) => !allBaseCategories.includes(c)
+  )
   const uniqueAgents = Array.from(new Set(findings.map((f) => f.agentName)))
-  const categories = Array.from(new Set([...baseCategories, ...uniqueAgents]))
+  const categories = Array.from(
+    new Set([...baseCategories, ...nonBaseExecutedCategories, ...uniqueAgents])
+  )
 
   const categoryScores = categories.map((cat) =>
     calculateCategoryScore(

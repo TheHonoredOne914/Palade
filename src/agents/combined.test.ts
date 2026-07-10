@@ -36,7 +36,6 @@ describe('agents/combined — buildCombinedSystemPrompt (via class)', () => {
       'testIntelligence',
     ])
     expect(analyzer.name).toBe('combined')
-    expect(analyzer.domain).toBe('combined')
   })
 
   it('accepts a custom domain subset', () => {

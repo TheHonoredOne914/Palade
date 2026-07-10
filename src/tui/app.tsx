@@ -239,24 +239,22 @@ export function App({
     (message?: string) => {
       setShowSettings(false)
       if (message) appendLine({ type: 'output', text: '  ' + message })
-      // Re-read env to update provider circles and dismiss no-provider banner
-      const hasKey = [
-        'GROQ_API_KEY',
-        'OPENROUTER_API_KEY',
-        'CEREBRAS_API_KEY',
-        'NVIDIA_API_KEY',
-        'OPENCODE_ZEN_API_KEY',
-        'OLLAMA_MODEL',
-        'OLLAMA_BASE_URL',
-      ].some((k) => !!process.env[k])
+      // Re-read env to update provider circles and dismiss no-provider banner.
+      // Driven from the shared PROVIDERS list (config/apiKey.ts) instead of a
+      // hand-typed 5-key object, so every provider — including ollama, which
+      // is keyless and was previously missing from this object even though
+      // the "did anything change" check below already looked for its env
+      // vars — gets a status dot (uicli-003).
+      const nextStatus: Record<string, boolean> = {}
+      for (const p of PROVIDERS) {
+        nextStatus[p.id] =
+          p.id === 'ollama'
+            ? !!(process.env['OLLAMA_MODEL'] || process.env['OLLAMA_BASE_URL'])
+            : !!process.env[p.env]
+      }
+      const hasKey = Object.values(nextStatus).some(Boolean)
       if (hasKey) {
-        setLiveProviderStatus({
-          groq: !!process.env['GROQ_API_KEY'],
-          cerebras: !!process.env['CEREBRAS_API_KEY'],
-          nvidia: !!process.env['NVIDIA_API_KEY'],
-          openrouter: !!process.env['OPENROUTER_API_KEY'],
-          'opencode-zen': !!process.env['OPENCODE_ZEN_API_KEY'],
-        })
+        setLiveProviderStatus(nextStatus)
         setNoProviderDismissed(true)
       }
     },

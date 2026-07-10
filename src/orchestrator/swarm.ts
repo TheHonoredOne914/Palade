@@ -16,7 +16,7 @@ import { getFallbackStats } from '../providers/router.js'
 import { isFatalAuthError } from '../providers/errorClassification.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 import { applyLineIgnores } from '../ingestion/annotationParser.js'
-import { ReviewCancelledError, SwarmTimeoutError } from '../errors/types.js'
+import { ReviewCancelledError } from '../errors/types.js'
 
 export async function runSwarm(
   allChunks: CodeChunk[],
@@ -283,19 +283,6 @@ export async function runSwarm(
       if (isFatalAuthError(err)) throw err
       console.warn(chalk.yellow(`⚠ Agent failed: ${err.message}`))
     }
-  }
-
-  // Safety-net check: in the current control flow this is practically
-  // unreachable, since any settled promise (fulfilled or rejected) already
-  // sets agentTimings before we get here, and fatal/cancelled errors above
-  // already rethrow before reaching this line. Left in place (rather than
-  // removed) as a defensive guard against a future code path that awaits
-  // agentResults without recording timings for every settled agent.
-  const elapsed = Date.now() - startTime
-  const timeoutMs = options.timeoutMs ?? 600_000
-  const completedCount = Object.keys(agentTimings).length
-  if (completedCount < agents.length && elapsed >= timeoutMs * 0.9) {
-    throw new SwarmTimeoutError(completedCount, agents.length, timeoutMs)
   }
 
   const crossAgentFindings: CrossAgentFinding[] = memory.crossReference()

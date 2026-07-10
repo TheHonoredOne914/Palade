@@ -61,11 +61,14 @@ describe('benchmark/ground-truth: scheduler splitting behavior', () => {
     }
   })
 
-  it('huge single-line chunk exceeds HARD limit after depth cap (S1 real bug)', () => {
+  it('huge single-line chunk is hard-truncated to the limit after depth cap (S1 fixed by orchestrator-002)', () => {
     const batches = scheduleBatches([makeHugeSingleLineChunk()])
     const chunks = allChunks(batches)
     const overLimit = chunks.filter((c) => c.tokenCount > MAX_TOKENS)
-    expect(overLimit.length).toBeGreaterThan(0)
+    // scheduler.ts's depth cap now hard-truncates instead of emitting an
+    // oversized chunk (orchestrator-002), so nothing should ever exceed
+    // MAX_TOKENS, no matter how unsplittable the input is.
+    expect(overLimit.length).toBe(0)
   })
 })
 
@@ -119,7 +122,7 @@ describe('benchmark/ground-truth: findingValidation behavior', () => {
 })
 
 describe('benchmark/ground-truth: verified real bugs', () => {
-  it('S2: contextPrefix makes a chunk unsplittable -> oversized chunk returned', () => {
+  it('S2: contextPrefix that alone exceeds the limit is dropped, not re-inherited (fixed by orchestrator-001)', () => {
     const content = 'const x = 1'
     const chunk = {
       id: 'p',
@@ -131,10 +134,14 @@ describe('benchmark/ground-truth: verified real bugs', () => {
       tokenCount: estimateTokens(('a'.repeat(25000) + content) as string),
       language: 'typescript' as const,
     }
+    // splitChunk drops an oversized contextPrefix entirely instead of
+    // re-prepending it whole to both halves (orchestrator-001), so a chunk
+    // with a huge prefix but tiny content is no longer mathematically
+    // incapable of fitting under the limit.
     const over = allChunks(scheduleBatches([chunk as never])).filter(
       (c) => c.tokenCount > MAX_TOKENS
     )
-    expect(over.length).toBeGreaterThan(0)
+    expect(over.length).toBe(0)
   })
 
   it('S3: overlap double-counts tokens -> children sum exceeds parent', () => {
@@ -144,7 +151,7 @@ describe('benchmark/ground-truth: verified real bugs', () => {
     expect(childrenTokens).toBeGreaterThan(parentTokens)
   })
 
-  it('F1: Windows case difference drops a valid finding', () => {
+  it('F1: Windows case difference no longer drops a valid finding (fixed by orchestrator-004)', () => {
     const chunk = { ...makeWindowsPathChunk(), filePath: 'c:/path/to/file.ts' }
     const f = {
       id: 'i',
@@ -156,10 +163,13 @@ describe('benchmark/ground-truth: verified real bugs', () => {
       lineStart: 10,
       tags: [],
     } as AgentFinding
-    expect(validateAndFingerprintFindings([f], [chunk])).toHaveLength(0)
+    // findingValidation.ts now case-folds the lookup key (normalizePathKey),
+    // so a finding and its chunk that differ only in drive-letter/path case
+    // still match instead of the finding silently vanishing.
+    expect(validateAndFingerprintFindings([f], [chunk])).toHaveLength(1)
   })
 
-  it('F2: unresolved relative ".." / "./" drops a valid finding', () => {
+  it('F2: unresolved relative ".." / "./" no longer drops a valid finding (fixed by normalizePath)', () => {
     const base = makeRelativePathChunk()
     const up = {
       id: 'i',
@@ -172,8 +182,11 @@ describe('benchmark/ground-truth: verified real bugs', () => {
       tags: [],
     } as AgentFinding
     const internal = { ...up, id: 'j', filePath: 'src/./foo.ts' }
-    expect(validateAndFingerprintFindings([up], [base])).toHaveLength(0)
-    expect(validateAndFingerprintFindings([internal], [base])).toHaveLength(0)
+    // normalizePath now resolves internal "./" segments and strips dangling
+    // leading "../"/"./" (there's no real filesystem base to resolve
+    // against), so both variants match the chunk instead of being dropped.
+    expect(validateAndFingerprintFindings([up], [base])).toHaveLength(1)
+    expect(validateAndFingerprintFindings([internal], [base])).toHaveLength(1)
   })
 
   it('F3: finding with undefined lineStart is emitted without a fingerprint', () => {
@@ -192,7 +205,7 @@ describe('benchmark/ground-truth: verified real bugs', () => {
     expect(valid.findingFingerprint).toBeDefined()
   })
 
-  it('F4: non-integer lineStart is dropped as out of range', () => {
+  it('F4: non-integer lineStart is rounded instead of dropped (fixed by orchestrator-005)', () => {
     const chunk = makeRelativePathChunk()
     const f = {
       id: 'i',
@@ -204,11 +217,20 @@ describe('benchmark/ground-truth: verified real bugs', () => {
       lineStart: 12.5,
       tags: [],
     } as AgentFinding
-    expect(validateAndFingerprintFindings([f], [chunk])).toHaveLength(0)
+    // getMatchingChunkAndClamp now rounds a fractional lineStart instead of
+    // rejecting it outright, since it still references a real, in-range
+    // location.
+    const [valid] = validateAndFingerprintFindings([f], [chunk])
+    expect(valid).toBeDefined()
+    expect(valid.lineStart).toBe(13)
   })
 
-  it('M1: jaccardSimilarity returns 1 for punctuation-only titles', () => {
-    expect(jaccardSimilarity('!!!', '@@@')).toBe(1)
+  it('M1: jaccardSimilarity returns 0 for punctuation-only titles (fixed by scorer-101)', () => {
+    // Two titles that are BOTH entirely punctuation (empty word sets) carry
+    // no real signal about being "the same finding" — merger.ts now treats
+    // them as unrelated rather than returning 1 and silently merging
+    // unrelated findings that happen to have punctuation-only titles.
+    expect(jaccardSimilarity('!!!', '@@@')).toBe(0)
   })
 })
 

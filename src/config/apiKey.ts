@@ -18,9 +18,31 @@ export const PROVIDERS = [
     env: 'OPENCODE_ZEN_API_KEY',
     model: 'deepseek-v4-flash-free',
   },
+  // Keyless — router.ts's instantiateProviders() treats a present `ollama`
+  // config section as usable without an apiKey. `env` here is a best-effort
+  // "is it configured" signal (matches launch.tsx/app.tsx's existing
+  // OLLAMA_BASE_URL/OLLAMA_MODEL env checks), not a secret to save the way
+  // every other provider's env var is (uicli-002/003).
+  { id: 'ollama', label: 'Ollama', env: 'OLLAMA_BASE_URL', model: 'minimax-m2.5' },
 ] as const
 
 export type ProviderId = (typeof PROVIDERS)[number]['id']
+
+/**
+ * Whether a provider has enough configuration to be considered "available"
+ * in status displays (TUI provider dots, settings panel tabs). Every
+ * provider except ollama needs a non-empty apiKey; ollama is keyless, so its
+ * own config section merely being present counts — matches router.ts's
+ * instantiateProviders() usable check (uicli-002/003).
+ */
+export function isProviderConfigured(
+  providers: Record<string, { apiKey?: string } | undefined> | undefined,
+  id: ProviderId
+): boolean {
+  const cfg = providers?.[id]
+  if (id === 'ollama') return Boolean(cfg)
+  return !!cfg?.apiKey
+}
 
 /**
  * Same precedence as config/loader.ts loadConfig(): `.palade/palade.config.ts`

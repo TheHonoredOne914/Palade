@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { theme } from './theme.js'
+import { theme, SCORE_THRESHOLDS } from './theme.js'
 import type { AgentFinding } from '../agents/base.js'
 
 // Match full SGR escape sequences, including multi-parameter truecolor codes
@@ -88,13 +88,21 @@ function severityChip(sev: string): string {
   return chips[sev] ?? chalk.bgWhite.black(` ${sev.toUpperCase().slice(0, 4).padEnd(4)} `)
 }
 
+// Anchored to theme.ts's SCORE_THRESHOLDS (90/80/60/40) instead of a second,
+// independently-hardcoded set of breakpoints — those used to diverge (this
+// function's 90/80/75/70/60/40 vs SCORE_THRESHOLDS' 90/80/60/40), so a score
+// could get a grade from one bucket and a color from a different one
+// (uicli-006). The two intermediate grades (B+/B) that have no direct
+// SCORE_THRESHOLDS equivalent are derived relative to `good`/`warning`
+// instead of re-hardcoded — 75 = good-5, 70 = warning+10 — so they still
+// move if the underlying thresholds do.
 export function scoreGrade(score: number): string {
-  if (score >= 90) return 'A+'
-  if (score >= 80) return 'A'
-  if (score >= 75) return 'B+'
-  if (score >= 70) return 'B'
-  if (score >= 60) return 'C'
-  if (score >= 40) return 'D'
+  if (score >= SCORE_THRESHOLDS.excellent) return 'A+'
+  if (score >= SCORE_THRESHOLDS.good) return 'A'
+  if (score >= SCORE_THRESHOLDS.good - 5) return 'B+'
+  if (score >= SCORE_THRESHOLDS.warning + 10) return 'B'
+  if (score >= SCORE_THRESHOLDS.warning) return 'C'
+  if (score >= SCORE_THRESHOLDS.poor) return 'D'
   return 'F'
 }
 

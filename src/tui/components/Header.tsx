@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Text } from 'ink'
 import { ASCII_ART, GRADIENT } from '../../ui/asciiArt.js'
+import { PROVIDERS } from '../../config/apiKey.js'
 
 interface HeaderProps {
   providerStatus: Record<string, boolean>
@@ -50,11 +51,12 @@ export function Header({ providerStatus, projectRoot, version }: HeaderProps): R
         </Box>
 
         <Box gap={2}>
-          <ProviderDot name="groq" active={providerStatus['groq'] ?? false} />
-          <ProviderDot name="cerebras" active={providerStatus['cerebras'] ?? false} />
-          <ProviderDot name="nvidia" active={providerStatus['nvidia'] ?? false} />
-          <ProviderDot name="openrouter" active={providerStatus['openrouter'] ?? false} />
-          <ProviderDot name="opencode-zen" active={providerStatus['opencode-zen'] ?? false} />
+          {/* Driven from the shared PROVIDERS list (config/apiKey.ts) instead
+              of a hand-typed 5-dot list, so a provider added there (e.g.
+              ollama) automatically gets a status dot here too (uicli-002/003). */}
+          {PROVIDERS.map((p) => (
+            <ProviderDot key={p.id} name={p.id} active={providerStatus[p.id] ?? false} />
+          ))}
         </Box>
       </Box>
 

@@ -6,6 +6,8 @@ import {
   shouldRetryEmptyContent,
   nextRetryMaxTokens,
   DEFAULT_DEADLINE_MS,
+  tagQuotaError,
+  rateLimitedMessage,
 } from './base.js'
 import { AuthError } from '../errors/types.js'
 
@@ -17,6 +19,12 @@ export class NvidiaProvider implements IProvider {
   private readonly deadlineMs: number
   private readonly limiter: ReturnType<typeof createLimiter>
   private dailyLimitExhausted = false
+  // Set by markDead() for a fatal reason OTHER than a confirmed daily-limit
+  // response (e.g. an auth failure on this key) — kept distinct from
+  // dailyLimitExhausted so complete()'s guard doesn't keep reporting "daily
+  // limit exceeded" forever for a provider that was actually killed for an
+  // unrelated reason (providers-001).
+  private deadGeneric = false
 
   constructor(
     apiKey: string,
@@ -35,6 +43,9 @@ export class NvidiaProvider implements IProvider {
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     if (this.dailyLimitExhausted) {
       throw new Error('NVIDIA daily limit exhausted for this session')
+    }
+    if (this.deadGeneric) {
+      throw new Error('NVIDIA provider marked dead for this session (see earlier fatal error)')
     }
     // Reasoning models burn tokens on internal thinking, so when the caller
     // doesn't specify a budget we default generously. But we never override an
@@ -97,12 +108,20 @@ export class NvidiaProvider implements IProvider {
       throw err
     }
 
+    if (res.status === 429) {
+      // fetchWithRetry already retried this request internally using the
+      // server's Retry-After header — by the time we get here the retry
+      // budget is spent, so classify and surface the error.
+      const body = await res.text()
+      if (isDailyLimitError(body)) {
+        this.dailyLimitExhausted = true
+        throw tagQuotaError(new Error(`NVIDIA daily limit exceeded. ${body.slice(0, 200)}`))
+      }
+      throw new Error(rateLimitedMessage('NVIDIA', body))
+    }
+
     if (!res.ok) {
       const body = await res.text()
-      if (res.status === 429 && isDailyLimitError(body)) {
-        this.dailyLimitExhausted = true
-        throw new Error(`NVIDIA daily limit exceeded. ${body.slice(0, 200)}`)
-      }
       if (res.status === 401 || res.status === 403) {
         throw new AuthError(
           `NVIDIA error ${res.status}: ${body.slice(0, 200)}`,
@@ -139,19 +158,25 @@ export class NvidiaProvider implements IProvider {
   // Shared dead/exhausted state: lets multiple FallbackProvider chains
   // wrapping this same instance (e.g. router.ts's primary and synthesis
   // chains) agree on whether this provider is dead, instead of each chain
-  // keeping its own separate dead-tracking Set.
+  // keeping its own separate dead-tracking Set. Called by router.ts for BOTH
+  // a confirmed quota exhaustion AND an unrelated fatal error (e.g. an auth
+  // failure) — only set dailyLimitExhausted for the former (which this
+  // instance itself already does directly, above, when it observes a real
+  // daily-limit response); a generic dead flag covers the rest so complete()
+  // reports the right reason instead of always claiming "daily limit"
+  // (providers-001).
   markDead(): void {
-    this.dailyLimitExhausted = true
+    this.deadGeneric = true
   }
 
   isDead(): boolean {
-    return this.dailyLimitExhausted
+    return this.dailyLimitExhausted || this.deadGeneric
   }
 
-  // Quota-only check: reflects whether we have locally observed a daily-limit
-  // response, not a live connectivity/auth probe. An invalid API key or an
-  // unreachable endpoint will still report available=true here.
+  // Reflects locally observed exhaustion/dead-marking, not a live
+  // connectivity/auth probe — an invalid API key that hasn't yet been tried
+  // (so markDead() was never called) still reports available=true here.
   async isAvailable(): Promise<boolean> {
-    return !this.dailyLimitExhausted
+    return !this.dailyLimitExhausted && !this.deadGeneric
   }
 }

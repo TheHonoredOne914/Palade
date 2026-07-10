@@ -1,5 +1,13 @@
 import { type AgentName, BaseSpecialistAgent } from '../base.js'
 
+// Exported so economy mode's combined prompt (combined.ts) can reuse the
+// exact same domain-focus text instead of a second hand-written copy
+// (agents-001).
+export const MAINTAINABILITY_FOCUS = `Additional maintainability focus:
+- Logic duplicated across 2+ files, inconsistent naming conventions within the same module
+- Functions over 50 lines with no decomposition, missing error handling on async operations
+- Magic numbers without constants, overly complex conditionals that could be extracted`
+
 const SYSTEM_PROMPT = `You are a specialist maintainability code reviewer. You are part of a parallel AI swarm analyzing a codebase.
 
 Your job: identify maintainability issues in the code provided.
@@ -39,10 +47,7 @@ If you find no issues: return an empty array [].
 Do not invent file paths. Only reference files shown in the context.
 Be specific. Reference exact file paths and line numbers from the context provided.
 
-Additional maintainability focus:
-- Logic duplicated across 2+ files, inconsistent naming conventions within the same module
-- Functions over 50 lines with no decomposition, missing error handling on async operations
-- Magic numbers without constants, overly complex conditionals that could be extracted`
+${MAINTAINABILITY_FOCUS}`
 
 export class MaintainabilityAgent extends BaseSpecialistAgent {
   name: AgentName = 'maintainability'

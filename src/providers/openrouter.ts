@@ -6,8 +6,13 @@ import {
   shouldRetryEmptyContent,
   nextRetryMaxTokens,
   DEFAULT_DEADLINE_MS,
+  tagQuotaError,
+  rateLimitedMessage,
 } from './base.js'
 import { AuthError } from '../errors/types.js'
+
+const DEFAULT_REFERER = 'https://github.com/TheHonoredOne914/Palade'
+const DEFAULT_TITLE = 'Palade'
 
 export class OpenRouterProvider implements IProvider {
   readonly name = 'openrouter'
@@ -16,25 +21,40 @@ export class OpenRouterProvider implements IProvider {
   private readonly baseUrl: string
   private readonly deadlineMs: number
   private readonly limiter: ReturnType<typeof createLimiter>
+  private readonly referer: string
+  private readonly title: string
   private dailyLimitExhausted = false
+  // Set by markDead() for a fatal reason OTHER than a confirmed daily-limit
+  // response (e.g. an auth failure on this key) — kept distinct from
+  // dailyLimitExhausted so complete()'s guard doesn't keep reporting "daily
+  // limit exceeded" forever for a provider that was actually killed for an
+  // unrelated reason (providers-001).
+  private deadGeneric = false
 
   constructor(
     apiKey: string,
     model = 'openrouter/free',
     maxConcurrency = 8,
     baseUrl = 'https://openrouter.ai/api/v1',
-    deadlineMs: number = DEFAULT_DEADLINE_MS
+    deadlineMs: number = DEFAULT_DEADLINE_MS,
+    referer: string = DEFAULT_REFERER,
+    title: string = DEFAULT_TITLE
   ) {
     this.apiKey = apiKey
     this.model = model
     this.limiter = createLimiter(maxConcurrency)
     this.baseUrl = baseUrl
     this.deadlineMs = deadlineMs
+    this.referer = referer
+    this.title = title
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     if (this.dailyLimitExhausted) {
       throw new Error('OpenRouter daily limit exhausted for this session')
+    }
+    if (this.deadGeneric) {
+      throw new Error('OpenRouter provider marked dead for this session (see earlier fatal error)')
     }
     return this.limiter(() =>
       this.doComplete(req, req.maxTokens ?? 4096, 0, Date.now() + this.deadlineMs)
@@ -61,8 +81,8 @@ export class OpenRouterProvider implements IProvider {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://github.com/TheHonoredOne914/Palade',
-          'X-Title': 'Palade',
+          'HTTP-Referer': this.referer,
+          'X-Title': this.title,
         },
         body: JSON.stringify({
           model: this.model,
@@ -99,9 +119,9 @@ export class OpenRouterProvider implements IProvider {
       const body = await res.text()
       if (isDailyLimitError(body)) {
         this.dailyLimitExhausted = true
-        throw new Error(`OpenRouter daily limit exceeded. ${body.slice(0, 200)}`)
+        throw tagQuotaError(new Error(`OpenRouter daily limit exceeded. ${body.slice(0, 200)}`))
       }
-      throw new Error(`OpenRouter rate limited — retries exhausted. ${body.slice(0, 200)}`)
+      throw new Error(rateLimitedMessage('OpenRouter', body))
     }
 
     if (!res.ok) {
@@ -144,20 +164,25 @@ export class OpenRouterProvider implements IProvider {
   // Shared dead/exhausted state: lets multiple FallbackProvider chains
   // wrapping this same instance (e.g. router.ts's primary and synthesis
   // chains) agree on whether this provider is dead, instead of each chain
-  // keeping its own separate dead-tracking Set.
+  // keeping its own separate dead-tracking Set. Called by router.ts for BOTH
+  // a confirmed quota exhaustion AND an unrelated fatal error (e.g. an auth
+  // failure) — only set dailyLimitExhausted for the former (which this
+  // instance itself already does directly, above, when it observes a real
+  // daily-limit response); a generic dead flag covers the rest so complete()
+  // reports the right reason instead of always claiming "daily limit"
+  // (providers-001).
   markDead(): void {
-    this.dailyLimitExhausted = true
+    this.deadGeneric = true
   }
 
   isDead(): boolean {
-    return this.dailyLimitExhausted
+    return this.dailyLimitExhausted || this.deadGeneric
   }
 
-  // Quota-only check: reflects whether we have locally observed a daily-limit
-  // response, not a live connectivity/auth probe. An invalid API key or an
-  // unreachable endpoint will still report available=true here.
+  // Reflects locally observed exhaustion/dead-marking, not a live
+  // connectivity/auth probe — an invalid API key that hasn't yet been tried
+  // (so markDead() was never called) still reports available=true here.
   async isAvailable(): Promise<boolean> {
-    if (this.dailyLimitExhausted) return false
-    return true
+    return !this.dailyLimitExhausted && !this.deadGeneric
   }
 }

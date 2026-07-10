@@ -6,6 +6,8 @@ import {
   shouldRetryEmptyContent,
   nextRetryMaxTokens,
   DEFAULT_DEADLINE_MS,
+  tagQuotaError,
+  rateLimitedMessage,
 } from './base.js'
 import { AuthError } from '../errors/types.js'
 
@@ -17,7 +19,12 @@ export class OpenCodeZenProvider implements IProvider {
   private readonly deadlineMs: number
   private readonly limiter: ReturnType<typeof createLimiter>
   private dailyLimitExhausted = false
-  private static readonly MAX_429_RETRIES = 3
+  // Set by markDead() for a fatal reason OTHER than a confirmed daily-limit
+  // response (e.g. an auth failure on this key) — kept distinct from
+  // dailyLimitExhausted so complete()'s guard doesn't keep reporting "daily
+  // limit exceeded" forever for a provider that was actually killed for an
+  // unrelated reason (providers-001).
+  private deadGeneric = false
 
   constructor(
     apiKey: string,
@@ -36,6 +43,11 @@ export class OpenCodeZenProvider implements IProvider {
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     if (this.dailyLimitExhausted) {
       throw new Error('OpenCode Zen daily limit exhausted for this session')
+    }
+    if (this.deadGeneric) {
+      throw new Error(
+        'OpenCode Zen provider marked dead for this session (see earlier fatal error)'
+      )
     }
 
     // Reasoning models consume tokens for thinking, so when the caller doesn't
@@ -104,14 +116,14 @@ export class OpenCodeZenProvider implements IProvider {
       const body = await res.text()
       if (isDailyLimitError(body)) {
         this.dailyLimitExhausted = true
-        throw new Error(`OpenCode Zen daily limit exceeded. ${body.slice(0, 200)}`)
+        throw tagQuotaError(new Error(`OpenCode Zen daily limit exceeded. ${body.slice(0, 200)}`))
       }
 
       // fetchWithRetry already retried this request internally using the
       // server's Retry-After header — layering another manual wait-and-retry
       // loop on top just doubles the delay. Surface a retryable error and let
       // the router's fallback chain / backoff handle anything further.
-      throw new Error(`OpenCode Zen rate limited — retries exhausted. ${body.slice(0, 200)}`)
+      throw new Error(rateLimitedMessage('OpenCode Zen', body))
     }
 
     if (!res.ok) {
@@ -159,20 +171,25 @@ export class OpenCodeZenProvider implements IProvider {
   // Shared dead/exhausted state: lets multiple FallbackProvider chains
   // wrapping this same instance (e.g. router.ts's primary and synthesis
   // chains) agree on whether this provider is dead, instead of each chain
-  // keeping its own separate dead-tracking Set.
+  // keeping its own separate dead-tracking Set. Called by router.ts for BOTH
+  // a confirmed quota exhaustion AND an unrelated fatal error (e.g. an auth
+  // failure) — only set dailyLimitExhausted for the former (which this
+  // instance itself already does directly, above, when it observes a real
+  // daily-limit response); a generic dead flag covers the rest so complete()
+  // reports the right reason instead of always claiming "daily limit"
+  // (providers-001).
   markDead(): void {
-    this.dailyLimitExhausted = true
+    this.deadGeneric = true
   }
 
   isDead(): boolean {
-    return this.dailyLimitExhausted
+    return this.dailyLimitExhausted || this.deadGeneric
   }
 
-  // Quota-only check: reflects whether we have locally observed a daily-limit
-  // response, not a live connectivity/auth probe. An invalid API key or an
-  // unreachable endpoint will still report available=true here.
+  // Reflects locally observed exhaustion/dead-marking, not a live
+  // connectivity/auth probe — an invalid API key that hasn't yet been tried
+  // (so markDead() was never called) still reports available=true here.
   async isAvailable(): Promise<boolean> {
-    if (this.dailyLimitExhausted) return false
-    return true
+    return !this.dailyLimitExhausted && !this.deadGeneric
   }
 }

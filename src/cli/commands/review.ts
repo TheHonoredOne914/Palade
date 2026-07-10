@@ -23,6 +23,7 @@ import type { ResolvedTarget, SwarmResult } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import { detectLanguages } from '../../ingestion/walker.js'
+import { ECONOMY_SOFT_TOKEN_CAP, ECONOMY_HARD_CHUNK_CAP } from '../../orchestrator/scheduler.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync, statSync } from 'node:fs'
 import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'node:path'
@@ -194,17 +195,13 @@ export async function reviewCommand(
   }
 
   // 1. Load config + init providers
-  console.log('DEBUG: Loading config...')
   const config = await loadConfig()
-  console.log('DEBUG: Init router...')
   await initRouter(config)
 
   // 2. Load targets
-  console.log('DEBUG: Loading targets...')
   const allTargets = await loadTargets(projectRoot)
 
   // 2b. Load custom agents
-  console.log('DEBUG: Loading custom agents...')
   const customAgentDefs = await loadCustomAgents(projectRoot)
 
   // 3. Validate mode
@@ -302,9 +299,7 @@ export async function reviewCommand(
   }
 
   // 6b. Language Detection
-  console.log('DEBUG: Detecting languages...')
   const langProfile = await detectLanguages(projectRoot, scope)
-  console.log('DEBUG: Languages detected:', langProfile.primary)
 
   // 7. Print run header
   if (!opts.quiet) {
@@ -418,11 +413,11 @@ export async function reviewCommand(
         maxConcurrentBatches: config.swarm.maxConcurrentBatches,
         softTokenLimit:
           (opts.economy ?? config.swarm.economyMode)
-            ? Math.min(6000, config.swarm.softTokenLimit)
+            ? Math.min(ECONOMY_SOFT_TOKEN_CAP, config.swarm.softTokenLimit)
             : config.swarm.softTokenLimit,
         hardChunkLimit:
           (opts.economy ?? config.swarm.economyMode)
-            ? Math.min(3000, config.swarm.hardChunkLimit)
+            ? Math.min(ECONOMY_HARD_CHUNK_CAP, config.swarm.hardChunkLimit)
             : config.swarm.hardChunkLimit,
         maxSynthesisFindings: config.swarm.maxSynthesisFindings,
         synthesisTimeoutMs: config.swarm.synthesisTimeoutMs,

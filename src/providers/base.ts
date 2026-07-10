@@ -128,6 +128,41 @@ export function isDailyLimitError(body: string): boolean {
   return FATAL_QUOTA_KEYWORDS.some((keyword) => lower.includes(keyword))
 }
 
+// Attached to an Error thrown for a CONFIRMED 429/quota-exhaustion response
+// (isDailyLimitError(body) already returned true for it) so router.ts's
+// fatal-quota keyword scan only fires for errors an adapter has already
+// classified as quota-related — mirroring isDailyLimitError's own
+// "structured signal first" preference — instead of substring-scanning the
+// message of ANY thrown error (including a genuinely unrelated non-429
+// error whose raw body happens to contain a phrase like "monthly limit")
+// (providers-002). Same tagging pattern as pool.ts's PROVIDER_POOL_SOURCE.
+const QUOTA_ERROR_TAG = Symbol('quotaError')
+
+export function tagQuotaError(err: Error): Error {
+  ;(err as Error & { [QUOTA_ERROR_TAG]?: true })[QUOTA_ERROR_TAG] = true
+  return err
+}
+
+export function isQuotaTaggedError(err: unknown): boolean {
+  return (
+    err instanceof Error && Boolean((err as Error & { [QUOTA_ERROR_TAG]?: true })[QUOTA_ERROR_TAG])
+  )
+}
+
+/**
+ * Standard message for a 429 response that isn't a daily/quota exhaustion
+ * (isDailyLimitError said no) — by the time an adapter reaches this, the
+ * shared fetchWithRetry() above has already exhausted its retry budget for
+ * retryable statuses (including 429), so there's nothing left to do but
+ * classify and surface. Shared so every adapter reports a retries-exhausted
+ * 429 identically instead of some (openrouter/opencode-zen) using this
+ * distinct wording while others (groq/cerebras/nvidia) fell through to a
+ * generic "<Name> error 429: ..." message (providers-004).
+ */
+export function rateLimitedMessage(providerLabel: string, body: string): string {
+  return `${providerLabel} rate limited — retries exhausted. ${body.slice(0, 200)}`
+}
+
 export async function fetchWithRetry(
   url: string,
   init: RequestInit,

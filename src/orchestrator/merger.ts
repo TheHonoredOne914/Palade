@@ -20,7 +20,10 @@ export function jaccardSimilarity(a: string, b: string): number {
   const aSet = getWords(a)
   const bSet = getWords(b)
 
-  if (aSet.size === 0 && bSet.size === 0) return 1
+  // Two titles that are BOTH entirely punctuation/whitespace (empty word
+  // sets) are not "identical" — they're two titles we have no signal about.
+  // Returning 1 here used to merge unrelated findings whose titles happened
+  // to be punctuation-only (e.g. "!!!" and "@@@").
   if (aSet.size === 0 || bSet.size === 0) return 0
 
   let overlap = 0
@@ -63,16 +66,32 @@ export interface NearMatchOptions {
  * shared by merger.ts's own dedup (below) and memory.ts's cross-agent
  * correlation.
  */
+/**
+ * True when two findings' starting lines are within `windowLines` of each
+ * other. Pulled out of isNearMatch so other line-proximity checks (e.g.
+ * verdict.ts's conflict detector) can share the exact same window logic
+ * instead of a second hand-rolled formula — verdict.ts used to have its own
+ * gap/overlap check hardcoded to a 5-line window, independent of this
+ * module's 60-line NEAR_MATCH_WINDOW_LINES (orchestrator-007).
+ */
+export function linesAreNear(
+  a: AgentFinding,
+  b: AgentFinding,
+  windowLines: number = NEAR_MATCH_WINDOW_LINES
+): boolean {
+  if (a.lineStart === undefined || b.lineStart === undefined) return false
+  return Math.abs(a.lineStart - b.lineStart) <= windowLines
+}
+
 export function isNearMatch(
   a: AgentFinding,
   b: AgentFinding,
   opts: NearMatchOptions = {}
 ): boolean {
   const windowLines = opts.windowLines ?? NEAR_MATCH_WINDOW_LINES
+  if (!linesAreNear(a, b, windowLines)) return false
   const sameAgentThreshold = opts.sameAgentThreshold ?? NEAR_MATCH_SAME_AGENT_THRESHOLD
   const crossAgentThreshold = opts.crossAgentThreshold ?? NEAR_MATCH_CROSS_AGENT_THRESHOLD
-  if (a.lineStart === undefined || b.lineStart === undefined) return false
-  if (Math.abs(a.lineStart - b.lineStart) > windowLines) return false
   const threshold = a.agentName === b.agentName ? sameAgentThreshold : crossAgentThreshold
   return jaccardSimilarity(a.title, b.title) > threshold
 }
