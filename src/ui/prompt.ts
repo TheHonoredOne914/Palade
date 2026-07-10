@@ -19,6 +19,13 @@ async function askQuestionOrClose(query: string): Promise<string | null> {
 }
 
 export async function askQuestion(query: string): Promise<string> {
+  // Intentional defense-in-depth (uicli-007): ink's TUI owns raw-mode stdin
+  // for the whole process lifetime, so a readline prompt created while it's
+  // running would never resolve. Callers dispatched from the TUI (e.g.
+  // cli/commands/*.ts functions invoked via a slash command, which set
+  // PALADE_TUI in launch.tsx) are expected to guard interactive-only paths
+  // with an isTTY/PALADE_TUI check of their own before reaching here — this
+  // is a second guard against a future caller that forgets to, not dead code.
   if (process.env.PALADE_TUI) {
     console.warn('[prompt] Readline blocked under TUI')
     return ''
@@ -36,6 +43,7 @@ export async function askConfirm(query: string, defaultYes = true): Promise<bool
 }
 
 export async function askList(query: string, choices: string[]): Promise<string> {
+  // Intentional defense-in-depth (uicli-007) — see askQuestion's guard above.
   if (process.env.PALADE_TUI) {
     console.warn('[prompt] Readline blocked under TUI')
     return choices[0]
@@ -60,6 +68,7 @@ export async function askList(query: string, choices: string[]): Promise<string>
   }
 }
 export async function askCheckbox(query: string, choices: string[]): Promise<string[]> {
+  // Intentional defense-in-depth (uicli-007) — see askQuestion's guard above.
   if (process.env.PALADE_TUI) {
     console.warn('[prompt] Readline blocked under TUI')
     return []

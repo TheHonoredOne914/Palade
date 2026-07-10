@@ -9,6 +9,8 @@ import { getProvider } from '../providers/router.js'
 import type { AgentFinding, AgentContext } from '../agents/base.js'
 import type { ChangedFile } from '../diff/types.js'
 import { addedLineRanges } from '../diff/comparator.js'
+import { linesAreNear } from './merger.js'
+import { extractBalancedJson } from '../utils/jsonExtract.js'
 
 export interface Conflict {
   filePath: string
@@ -142,15 +144,15 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
         // Must be from different agents
         if (a.agentName === b.agentName) continue
 
-        // Check line overlap with a small adjacency window (5 lines). Two
-        // findings are "overlapping" if their line ranges are within 5 lines of
-        // each other — this catches near-misses from slightly different chunk
-        // boundaries. The adjacency check must be symmetric to avoid false
-        // positives where only one side is near the other but not vice versa.
-        const gap = Math.max(a.lineStart! - b.lineEnd!, b.lineStart! - a.lineEnd!, 0)
-        const overlap = gap <= 5
-
-        if (!overlap) continue
+        // Line-proximity check shared with merger.ts's own near-match dedup
+        // (linesAreNear) instead of a second hand-rolled gap/overlap formula
+        // hardcoded to a 5-line window — that window had drifted from this
+        // module's 60-line NEAR_MATCH_WINDOW_LINES (orchestrator-007). Only
+        // the proximity primitive is reused, not the full isNearMatch
+        // predicate: isNearMatch also gates on title similarity, which would
+        // wrongly suppress conflicts here — opposing recommendations (the
+        // whole point of a conflict) routinely have dissimilar titles.
+        if (!linesAreNear(a, b)) continue
 
         const valA = getValence(a.title + ' ' + a.description)
         const valB = getValence(b.title + ' ' + b.description)
@@ -252,20 +254,8 @@ Please provide your verdict.`
       JSON.parse(trimmed)
     } catch {
       // Brace-depth parser as fallback for preamble
-      let depth = 0
-      let start = -1
-      for (let i = 0; i < trimmed.length; i++) {
-        if (trimmed[i] === '{') {
-          if (depth === 0) start = i
-          depth++
-        } else if (trimmed[i] === '}') {
-          depth--
-          if (depth === 0 && start !== -1) {
-            jsonStr = trimmed.slice(start, i + 1)
-            break
-          }
-        }
-      }
+      const extracted = extractBalancedJson(trimmed, '{', '}')
+      if (extracted) jsonStr = extracted
     }
     const parsed = JSON.parse(jsonStr)
     return VerdictSchema.parse(parsed)

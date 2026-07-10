@@ -28,6 +28,7 @@ export interface SwarmResult {
   fallbackStats?: {
     primary: { total: number; fallbacks: number }
     synthesis: { total: number; fallbacks: number }
+    triage: { total: number; fallbacks: number }
   }
 }
 

@@ -1,27 +1,58 @@
 import crypto from 'node:crypto'
+import path from 'node:path'
 import type { AgentFinding } from '../agents/base.js'
 import type { CodeChunk } from '../ingestion/types.js'
 
-function normalizePath(path: string): string {
-  return path
-    .trim()
-    .replace(/^\.?\/+/, '')
-    .replace(/\\/g, '/')
+/**
+ * Canonicalize a finding/chunk file path for matching: normalize backslashes
+ * to forward slashes, then resolve internal "./"/"../" segments the way
+ * path.posix.normalize does, and strip any leading "../"/"./" that a
+ * relative reference from the LLM leaves dangling (these paths have no real
+ * filesystem base to resolve against, so a leading "../src/foo.ts" is
+ * treated the same as "src/foo.ts"). Case is preserved here — case-folding
+ * happens separately in normalizePathKey, used only for the lookup/matching
+ * key, so a finding's displayed filePath keeps its original casing.
+ */
+function normalizePath(p: string): string {
+  const posixified = p.trim().replace(/\\/g, '/')
+  return path.posix
+    .normalize(posixified)
+    .replace(/^(\.\.\/)+/, '')
+    .replace(/^\.\/+/, '')
+    .replace(/^\/+/, '')
+}
+
+/**
+ * Case-folded lookup key built on top of normalizePath, so a Windows-style
+ * case mismatch between a finding's filePath and a chunk's filePath (e.g.
+ * "C:/X.ts" vs "c:/x.ts") doesn't silently drop a finding that does
+ * reference a reviewed file (orchestrator-004).
+ */
+function normalizePathKey(p: string): string {
+  return normalizePath(p).toLowerCase()
 }
 
 function getMatchingChunkAndClamp(finding: AgentFinding, chunk: CodeChunk): AgentFinding | null {
   if (finding.lineStart === undefined) return finding
-  if (!Number.isInteger(finding.lineStart)) return null
-  if (finding.lineStart < chunk.startLine || finding.lineStart > chunk.endLine) return null
+  // A non-integer lineStart (e.g. 12.5 from a tool that reports fractional
+  // positions) used to be rejected outright — round instead of dropping a
+  // finding that does reference a real, in-range location (orchestrator-005).
+  const lineStart = Number.isInteger(finding.lineStart)
+    ? finding.lineStart
+    : Math.round(finding.lineStart)
+  if (lineStart < chunk.startLine || lineStart > chunk.endLine) return null
 
-  const clamped = { ...finding }
+  const clamped = { ...finding, lineStart }
   if (clamped.lineEnd !== undefined) {
-    if (!Number.isInteger(clamped.lineEnd)) {
-      clamped.lineEnd = undefined
-    } else if (clamped.lineEnd < clamped.lineStart!) {
-      clamped.lineEnd = clamped.lineStart
-    } else if (clamped.lineEnd > chunk.endLine) {
+    const lineEnd = Number.isInteger(clamped.lineEnd)
+      ? clamped.lineEnd
+      : Math.round(clamped.lineEnd)
+    if (lineEnd < lineStart) {
+      clamped.lineEnd = lineStart
+    } else if (lineEnd > chunk.endLine) {
       clamped.lineEnd = chunk.endLine
+    } else {
+      clamped.lineEnd = lineEnd
     }
   }
   return clamped
@@ -48,7 +79,7 @@ export function validateAndFingerprintFindings(
 ): AgentFinding[] {
   const chunksByPath = new Map<string, CodeChunk[]>()
   for (const chunk of chunks) {
-    const key = normalizePath(chunk.filePath)
+    const key = normalizePathKey(chunk.filePath)
     const list = chunksByPath.get(key) ?? []
     list.push(chunk)
     chunksByPath.set(key, list)
@@ -70,7 +101,7 @@ export function validateAndFingerprintFindings(
     }
 
     const normalizedPath = normalizePath(finding.filePath)
-    const candidateChunks = chunksByPath.get(normalizedPath)
+    const candidateChunks = chunksByPath.get(normalizePathKey(finding.filePath))
     if (!candidateChunks) {
       console.warn(`[validation] Finding references file not in reviewed chunks: ${normalizedPath}`)
       continue

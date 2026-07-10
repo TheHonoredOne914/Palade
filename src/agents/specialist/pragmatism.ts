@@ -1,5 +1,14 @@
 import { type AgentName, BaseSpecialistAgent } from '../base.js'
 
+// Exported so economy mode's combined prompt (combined.ts) can reuse the
+// exact same domain-focus text instead of a second hand-written copy
+// (agents-001).
+export const PRAGMATISM_FOCUS = `Focus on these principles:
+1. Simplicity First: Identify overengineered code, bloated abstractions for single-use code, or "configurability" that isn't needed. (If 200 lines could be 50, flag it).
+2. Think Before Coding: Identify code that makes silent, unsafe assumptions or hides confusion behind complex logic.
+3. Surgical Changes: Identify unnecessary formatting changes or unrelated refactors if visible.
+4. Goal-Driven Execution: Identify critical logic missing verifiable success criteria.`
+
 const SYSTEM_PROMPT = `You are a specialist pragmatism code reviewer, inspired by Andrej Karpathy's guidelines for LLM code generation. You are part of a parallel AI swarm analyzing a codebase.
 
 Your job: identify over-engineering, premature abstractions, and YAGNI violations.
@@ -24,11 +33,7 @@ Each finding must match this exact schema:
 If you find no issues: return an empty array [].
 Do not invent file paths. Only reference files shown in the context.
 
-Focus on these principles:
-1. Simplicity First: Identify overengineered code, bloated abstractions for single-use code, or "configurability" that isn't needed. (If 200 lines could be 50, flag it).
-2. Think Before Coding: Identify code that makes silent, unsafe assumptions or hides confusion behind complex logic.
-3. Surgical Changes: Identify unnecessary formatting changes or unrelated refactors if visible.
-4. Goal-Driven Execution: Identify critical logic missing verifiable success criteria.`
+${PRAGMATISM_FOCUS}`
 
 export class PragmatismAgent extends BaseSpecialistAgent {
   name: AgentName = 'pragmatism'

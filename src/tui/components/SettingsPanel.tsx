@@ -5,6 +5,20 @@ import { saveApiKey, saveConfigValue, PROVIDERS } from '../../config/apiKey.js'
 import type { ProviderId } from '../../config/apiKey.js'
 import { fetchModels } from '../../config/models.js'
 
+// (uicli-008) Both this panel and cli/commands/settings.ts's interactive
+// flow already share the single PROVIDERS source (config/apiKey.ts) for the
+// provider list/labels/env-var names — that used to be the two flows'
+// biggest divergence risk. One residual, INTENTIONAL divergence remains:
+// "is this provider configured" is checked differently in each. This panel
+// uses `existingKeys` (readCurrentKeys(): env vars, then .env, then the
+// config file, in that precedence) so it can prefill/mask an already-set key
+// for editing. settings.ts's `showCurrentConfig` instead reads only
+// `config.providers[id].apiKey` directly, since it's reporting the
+// PERSISTED config file's state, not "is a key active this session from any
+// source". Unifying those would change one flow's semantics to match the
+// other's, which is out of scope for this fix round — documented here
+// instead of forcing a bigger behavioral merge.
+
 interface SettingsPanelProps {
   projectRoot: string
   /** Controlled: parent drives provider selection via Tab */

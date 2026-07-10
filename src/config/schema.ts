@@ -20,6 +20,12 @@ const ProviderConfigSchema = z.object({
   // URL when absent). timeoutMs threads into each adapter's request deadline.
   baseUrl: z.string().url().optional(),
   timeoutMs: z.number().int().min(1000).optional(),
+  // openrouter-only: HTTP-Referer/X-Title headers OpenRouter uses for app
+  // attribution. Previously hardcoded to a personal fork URL with no way to
+  // override it (providers-006); default unchanged for callers who don't set
+  // these. Silently ignored by every other adapter.
+  referer: z.string().optional(),
+  title: z.string().optional(),
 })
 
 export const PaladeConfigSchema = z

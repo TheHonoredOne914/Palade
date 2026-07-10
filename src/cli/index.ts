@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { VALUE_FLAG_STRINGS } from './flags.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf-8'))
@@ -114,7 +115,7 @@ async function runClassicCLI(): Promise<void> {
 
   // Consumed by loadConfig() via process.argv — registered here so Commander
   // doesn't reject it as an unknown option.
-  program.option('--config <path>', 'Path to an alternate palade config .ts file')
+  program.option(VALUE_FLAG_STRINGS.config, 'Path to an alternate palade config .ts file')
 
   function collect(val: string, prev: string[]): string[] {
     return prev.concat([val])
@@ -123,16 +124,20 @@ async function runClassicCLI(): Promise<void> {
   program
     .command('review [path]')
     .description('Review codebase with AI swarm')
-    .option('--target <name>', 'Review a named target from palade.targets.ts')
+    .option(VALUE_FLAG_STRINGS.target, 'Review a named target from palade.targets.ts')
     .option('--all-targets', 'Review all defined targets')
-    .option('--dir <path>', 'Scope review to a directory')
-    .option('--file <path>', 'Scope to specific file(s)', collect, [])
-    .option('--glob <pattern>', 'Scope to glob pattern')
-    .option('--mode <mode>', 'Review mode: standard|security|onboard|debt|ghost', 'standard')
+    .option(VALUE_FLAG_STRINGS.dir, 'Scope review to a directory')
+    .option(VALUE_FLAG_STRINGS.file, 'Scope to specific file(s)', collect, [])
+    .option(VALUE_FLAG_STRINGS.glob, 'Scope to glob pattern')
+    .option(
+      VALUE_FLAG_STRINGS.mode,
+      'Review mode: standard|security|onboard|debt|ghost',
+      'standard'
+    )
     .option('--annotations', 'Only review @palade-annotated items')
     .option('--pick', 'Interactive file picker')
-    .option('--depth <n>', 'Symbol dependency trace depth', (v) => parseInt(v, 10), 1)
-    .option('--format <formats>', 'Output formats: html,json,md (default: from config)')
+    .option(VALUE_FLAG_STRINGS.depth, 'Symbol dependency trace depth', (v) => parseInt(v, 10), 1)
+    .option(VALUE_FLAG_STRINGS.format, 'Output formats: html,json,md (default: from config)')
     .option('--no-open', 'Do not open browser after review')
     .option('--quiet', 'Minimal terminal output (no spinners)')
     .option('--dry-run', 'Estimate token usage and cost without running the swarm')
@@ -160,7 +165,7 @@ async function runClassicCLI(): Promise<void> {
   program
     .command('diff')
     .description('Branch pre-flight review')
-    .option('--base <branch>', 'Base branch to diff against', 'main')
+    .option(VALUE_FLAG_STRINGS.base, 'Base branch to diff against', 'main')
     .option('--ci', 'CI mode: exit 1 if critical findings introduced')
     .option(
       '--strict-triage',
@@ -179,7 +184,7 @@ async function runClassicCLI(): Promise<void> {
   program
     .command('watch')
     .description('Start drift detection watcher')
-    .option('--sensitivity <level>', 'Drift sensitivity: low|medium|high', 'medium')
+    .option(VALUE_FLAG_STRINGS.sensitivity, 'Drift sensitivity: low|medium|high', 'medium')
     .option('-c, --continuous', 'Continuously sweep the codebase in the background when idle')
     .action(async (opts: { sensitivity?: string; continuous?: boolean }): Promise<void> => {
       try {
@@ -192,7 +197,7 @@ async function runClassicCLI(): Promise<void> {
   program
     .command('decisions [action] [slug]')
     .description('Manage architecture decisions (Verdict Mode ADRs)')
-    .option('--days <number>', 'Number of days for stale check', (v) => parseInt(v, 10), 30)
+    .option(VALUE_FLAG_STRINGS.days, 'Number of days for stale check', (v) => parseInt(v, 10), 30)
     .action(
       async (
         action: string | undefined,
@@ -225,7 +230,7 @@ async function runClassicCLI(): Promise<void> {
     .command('settings')
     .description('View and update Palade config')
     .option(
-      '--set <key=value>',
+      VALUE_FLAG_STRINGS.set,
       'Set a config value (repeatable)',
       (val: string, prev: string[]) => prev.concat([val]),
       []

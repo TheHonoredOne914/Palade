@@ -1,7 +1,7 @@
 import chalk from 'chalk'
 import type { PaladeConfig } from '../config/schema.js'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { FATAL_QUOTA_KEYWORDS } from './base.js'
+import { FATAL_QUOTA_KEYWORDS, isQuotaTaggedError } from './base.js'
 import { GroqProvider } from './groq.js'
 import { CerebrasProvider } from './cerebras.js'
 import { NoProvidersError, AuthError } from '../errors/types.js'
@@ -43,8 +43,17 @@ export class AllProvidersExhaustedError extends Error {
 // isDailyLimitError's regex didn't).
 const FATAL_KEYWORDS = FATAL_QUOTA_KEYWORDS
 
-function isFatalMessage(message: string): boolean {
-  const lower = message.toLowerCase()
+// Only scan for fatal-quota phrasing on an error the adapter has ALREADY
+// classified as quota/429-related (via base.ts's tagQuotaError, set only
+// when isDailyLimitError(body) matched on an actual 429 response) — mirrors
+// isDailyLimitError's own "trust a structured signal first" approach.
+// Previously this scanned the message text of ANY thrown error regardless of
+// HTTP status, so a genuinely unrelated non-429 error whose raw body
+// happened to contain a phrase like "monthly limit" was misclassified as a
+// fatal quota exhaustion (providers-002).
+function isFatalMessage(error: Error): boolean {
+  if (!isQuotaTaggedError(error)) return false
+  const lower = error.message.toLowerCase()
   return FATAL_KEYWORDS.some((keyword) => lower.includes(keyword))
 }
 
@@ -63,61 +72,65 @@ interface ProviderConfig {
   maxConcurrency?: number
   baseUrl?: string
   timeoutMs?: number
+  /** openrouter-only; ignored by every other adapter's factory below. */
+  referer?: string
+  title?: string
 }
 
-function createProviderInstances(name: string, cfg: ProviderConfig): IProvider[] {
+// Single source of truth for the set of provider names Palade supports —
+// previously duplicated as the createProviderInstances switch's case labels
+// AND instantiateProviders' loop array, which could (and did) drift apart if
+// one was updated without the other (providers-007). PROVIDER_FACTORIES is a
+// Record keyed by this exact tuple, so TypeScript enforces that every name
+// here has a matching factory (and vice versa) at compile time.
+export const PROVIDER_NAMES = [
+  'opencode-zen',
+  'nvidia',
+  'groq',
+  'cerebras',
+  'openrouter',
+  'ollama',
+] as const
+
+export type SupportedProviderName = (typeof PROVIDER_NAMES)[number]
+
+const PROVIDER_FACTORIES: Record<
+  SupportedProviderName,
+  (key: string, cfg: ProviderConfig) => IProvider
+> = {
+  groq: (key, cfg) =>
+    new GroqProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs),
+  cerebras: (key, cfg) =>
+    new CerebrasProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs),
+  nvidia: (key, cfg) =>
+    new NvidiaProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs),
+  openrouter: (key, cfg) =>
+    new OpenRouterProvider(
+      key,
+      cfg.model,
+      cfg.maxConcurrency,
+      cfg.baseUrl,
+      cfg.timeoutMs,
+      cfg.referer,
+      cfg.title
+    ),
+  'opencode-zen': (key, cfg) =>
+    new OpenCodeZenProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs),
+  // Ollama is keyless — `key` (an empty-string apiKey placeholder, see
+  // instantiateProviders' usable check) is intentionally unused here.
+  ollama: (_key, cfg) =>
+    new OllamaProvider(cfg.model, cfg.baseUrl, cfg.maxConcurrency, cfg.timeoutMs),
+}
+
+function createProviderInstances(name: SupportedProviderName, cfg: ProviderConfig): IProvider[] {
   const allKeys = cfg.apiKeys ?? [cfg.apiKey]
-  const instances: IProvider[] = []
-
-  for (const key of allKeys) {
-    switch (name) {
-      case 'groq':
-        instances.push(
-          new GroqProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
-        )
-        break
-      case 'cerebras':
-        instances.push(
-          new CerebrasProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
-        )
-        break
-      case 'nvidia':
-        instances.push(
-          new NvidiaProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
-        )
-        break
-      case 'openrouter':
-        instances.push(
-          new OpenRouterProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
-        )
-        break
-      case 'opencode-zen':
-        instances.push(
-          new OpenCodeZenProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs)
-        )
-        break
-      case 'ollama':
-        instances.push(
-          new OllamaProvider(cfg.model, cfg.baseUrl, cfg.maxConcurrency, cfg.timeoutMs)
-        )
-        break
-    }
-  }
-
-  return instances
+  return allKeys.map((key) => PROVIDER_FACTORIES[name](key, cfg))
 }
 
 function instantiateProviders(providers: PaladeConfig['providers']): Map<string, IProvider> {
   const map = new Map<string, IProvider>()
 
-  for (const name of [
-    'opencode-zen',
-    'nvidia',
-    'groq',
-    'cerebras',
-    'openrouter',
-    'ollama',
-  ] as const) {
+  for (const name of PROVIDER_NAMES) {
     const cfg = providers[name as keyof PaladeConfig['providers']]
     // Ollama is keyless — a configured entry is enough. All other providers
     // need a non-empty apiKey.
@@ -142,6 +155,13 @@ export class FallbackProvider implements IProvider {
   private chain: IProvider[]
   private _fallbackCount = 0
   private _totalCount = 0
+  // Per-role call counters, so a single FallbackProvider instance shared
+  // across multiple roles (e.g. when no dedicated triage provider is
+  // configured and triageWithFallback IS primaryWithFallback — see
+  // initRouter's providers-005 note below) can still report separate stats
+  // for calls made in the 'triage' role vs the 'primary' role, instead of
+  // folding triage calls into the primary totals above.
+  private readonly roleStats = new Map<ProviderRole, { total: number; fallbacks: number }>()
 
   constructor(primary: IProvider, fallbacks: IProvider[]) {
     this.chain = [primary, ...fallbacks]
@@ -161,6 +181,18 @@ export class FallbackProvider implements IProvider {
   /** Total calls attempted. */
   get totalCount() {
     return this._totalCount
+  }
+
+  /** Record one call's outcome under `role`, for role-separated stats (providers-005). */
+  recordRoleCall(role: ProviderRole, usedFallback: boolean): void {
+    const stats = this.roleStats.get(role) ?? { total: 0, fallbacks: 0 }
+    stats.total++
+    if (usedFallback) stats.fallbacks++
+    this.roleStats.set(role, stats)
+  }
+
+  getRoleStats(role: ProviderRole): { total: number; fallbacks: number } {
+    return this.roleStats.get(role) ?? { total: 0, fallbacks: 0 }
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
@@ -216,7 +248,7 @@ export class FallbackProvider implements IProvider {
         })
         attemptedAny = true
 
-        const isFatal = isFatalMessage(lastError.message)
+        const isFatal = isFatalMessage(lastError)
         if (isFatalAuthError(lastError)) {
           lastAuthLikeError = lastError
         } else {
@@ -360,16 +392,14 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   // otherwise reuse the already-wrapped primary chain rather than building a
   // redundant fallback chain around the same provider.
   //
-  // NOTE (providers-005): when no dedicated triage provider is configured,
+  // (providers-005): when no dedicated triage provider is configured,
   // triageWithFallback IS primaryWithFallback (the same FallbackProvider
-  // instance), so getFallbackStats()'s primary total/fallback counts silently
-  // include triage-role calls in that case — there's no separate counter for
-  // "calls made via the triage role" vs "calls made via the primary role"
-  // when they share an instance. Giving triage its own always-separate
-  // FallbackProvider (or adding role-tagged counters inside FallbackProvider
-  // itself) would be a more involved change than this fix round covers, so
-  // this is documented here rather than silently surprising a caller reading
-  // FallbackStats.
+  // instance). getProvider() below wraps every returned provider with
+  // withRoleStats(), which records each call under the role it was actually
+  // requested as (via FallbackProvider.recordRoleCall) — so getFallbackStats()
+  // can still report separate primary/triage totals even when they share the
+  // same underlying instance, instead of triage calls silently folding into
+  // the primary counters.
   const preferredTriage = config.swarm.triage
   let triageWithFallback: IProvider = primaryWithFallback
   if (
@@ -394,6 +424,35 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
 let activeConfig: PaladeConfig | null = null
 const agentAssignments = new Map<string, IProvider>()
 
+/**
+ * Wrap a provider so every complete() call made through this reference is
+ * attributed to `role` in the underlying FallbackProvider's role-tagged
+ * counters (see FallbackProvider.recordRoleCall) — this is what lets
+ * getFallbackStats() separate triage calls from primary calls even when
+ * initRouter() assigned the very same FallbackProvider instance to both
+ * roles (providers-005). A no-op for non-FallbackProvider instances (e.g. a
+ * bare adapter never wrapped with fallbacks).
+ */
+function withRoleStats(provider: IProvider, role: ProviderRole): IProvider {
+  if (!(provider instanceof FallbackProvider)) return provider
+  // FallbackProvider itself never implements markDead/isDead (nothing calls
+  // them ON a FallbackProvider — router.ts's fatal-error handling always
+  // marks the specific underlying chain member dead, via
+  // markResponsibleProviderDead), so this wrapper only needs to forward the
+  // members FallbackProvider actually has.
+  return {
+    name: provider.name,
+    model: provider.model,
+    isAvailable: () => provider.isAvailable(),
+    async complete(req: CompletionRequest): Promise<CompletionResponse> {
+      const primaryName = provider.name
+      const response = await provider.complete(req)
+      provider.recordRoleCall(role, response.provider !== primaryName)
+      return response
+    },
+  }
+}
+
 export function getProvider(role: ProviderRole, agentName?: string): IProvider {
   if (!assignment || !activeConfig) {
     throw new Error('Router not initialized. Call initRouter() first.')
@@ -405,7 +464,7 @@ export function getProvider(role: ProviderRole, agentName?: string): IProvider {
     // Check if we already cached a FallbackProvider for this agent
     const cacheKey = `${agentName}:${overrideName}`
     if (agentAssignments.has(cacheKey)) {
-      return agentAssignments.get(cacheKey)!
+      return withRoleStats(agentAssignments.get(cacheKey)!, role)
     }
 
     // Create a new FallbackProvider starting with the requested override
@@ -413,7 +472,7 @@ export function getProvider(role: ProviderRole, agentName?: string): IProvider {
     if (provider) {
       const pWithFallback = new FallbackProvider(provider, getFallbackChain(provider.name))
       agentAssignments.set(cacheKey, pWithFallback)
-      return pWithFallback
+      return withRoleStats(pWithFallback, role)
     }
     // If the provider doesn't exist or isn't configured, fall through to primary
     console.warn(
@@ -423,28 +482,26 @@ export function getProvider(role: ProviderRole, agentName?: string): IProvider {
     )
   }
 
-  if (role === 'primary') return assignment.primary
-  if (role === 'synthesis') return assignment.synthesis
-  return assignment.triage
+  if (role === 'primary') return withRoleStats(assignment.primary, role)
+  if (role === 'synthesis') return withRoleStats(assignment.synthesis, role)
+  return withRoleStats(assignment.triage, role)
 }
 
 export interface FallbackStats {
   primary: { total: number; fallbacks: number }
   synthesis: { total: number; fallbacks: number }
+  triage: { total: number; fallbacks: number }
 }
 
 export function getFallbackStats(): FallbackStats | null {
   if (!assignment) return null
   const p = assignment.primary
   const s = assignment.synthesis
+  const t = assignment.triage
   return {
-    primary: {
-      total: p instanceof FallbackProvider ? p.totalCount : 0,
-      fallbacks: p instanceof FallbackProvider ? p.fallbackCount : 0,
-    },
-    synthesis: {
-      total: s instanceof FallbackProvider ? s.totalCount : 0,
-      fallbacks: s instanceof FallbackProvider ? s.fallbackCount : 0,
-    },
+    primary: p instanceof FallbackProvider ? p.getRoleStats('primary') : { total: 0, fallbacks: 0 },
+    synthesis:
+      s instanceof FallbackProvider ? s.getRoleStats('synthesis') : { total: 0, fallbacks: 0 },
+    triage: t instanceof FallbackProvider ? t.getRoleStats('triage') : { total: 0, fallbacks: 0 },
   }
 }

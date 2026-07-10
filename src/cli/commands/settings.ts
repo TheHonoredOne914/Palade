@@ -7,6 +7,12 @@ import { loadConfig } from '../../config/loader.js'
 import { PaladeConfigSchema } from '../../config/schema.js'
 import { DEFAULT_CONFIG } from '../../config/defaults.js'
 import { PROVIDERS, saveApiKey, setNestedValue, type ProviderId } from '../../config/apiKey.js'
+// (uicli-008) This CLI flow and the TUI's SettingsPanel.tsx both source their
+// provider list/labels/env-var names from the same PROVIDERS array above —
+// see SettingsPanel.tsx's top-of-file comment for the one intentional
+// residual divergence ("is this provider configured" checked differently in
+// each: this file's showCurrentConfig reads only the persisted config file's
+// apiKey, while the panel's existingKeys also checks env vars and .env).
 import { CliExitError } from '../../errors/types.js'
 import { askConfirm, askList, askQuestion } from '../../ui/prompt.js'
 import { CONFIG_TEMPLATE, IGNORE_TEMPLATE } from './init.js'
