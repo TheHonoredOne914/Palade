@@ -319,6 +319,7 @@ function getFallbackChain(excludeName: string): IProvider[] {
 }
 
 export async function initRouter(config: PaladeConfig): Promise<ProviderAssignment> {
+  activeConfig = config
   allProviders = instantiateProviders(config.providers)
 
   const names = Array.from(allProviders.keys())
@@ -390,10 +391,38 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   return result
 }
 
-export function getProvider(role: ProviderRole): IProvider {
-  if (!assignment) {
+let activeConfig: PaladeConfig | null = null
+const agentAssignments = new Map<string, IProvider>()
+
+export function getProvider(role: ProviderRole, agentName?: string): IProvider {
+  if (!assignment || !activeConfig) {
     throw new Error('Router not initialized. Call initRouter() first.')
   }
+
+  if (role === 'primary' && agentName && activeConfig.swarm.agentProviders?.[agentName]) {
+    const overrideName = activeConfig.swarm.agentProviders[agentName]
+
+    // Check if we already cached a FallbackProvider for this agent
+    const cacheKey = `${agentName}:${overrideName}`
+    if (agentAssignments.has(cacheKey)) {
+      return agentAssignments.get(cacheKey)!
+    }
+
+    // Create a new FallbackProvider starting with the requested override
+    const provider = allProviders.get(overrideName)
+    if (provider) {
+      const pWithFallback = new FallbackProvider(provider, getFallbackChain(provider.name))
+      agentAssignments.set(cacheKey, pWithFallback)
+      return pWithFallback
+    }
+    // If the provider doesn't exist or isn't configured, fall through to primary
+    console.warn(
+      chalk.yellow(
+        `[router] Warning: agent '${agentName}' requested provider '${overrideName}' but it is not configured. Falling back to primary.`
+      )
+    )
+  }
+
   if (role === 'primary') return assignment.primary
   if (role === 'synthesis') return assignment.synthesis
   return assignment.triage

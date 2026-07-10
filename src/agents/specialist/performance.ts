@@ -43,7 +43,9 @@ Additional performance focus:
 - N+1 query patterns, synchronous operations inside async loops
 - Missing caching on expensive operations, unbounded result sets (no pagination/limit)
 - Memory leaks (event listeners not removed, unclosed streams)
-- Synchronous file I/O in request handlers`
+- Synchronous file I/O in request handlers
+- Trace variable lifetimes across callback boundaries to catch obscure asymptotic issues.
+- Consult the MODULE-LEVEL COLLECTIONS section of REPOSITORY CONTEXT: investigate each entry without delete/clear as an unbounded-growth candidate.`
 
 export class PerformanceAgent extends BaseSpecialistAgent {
   name: AgentName = 'performance'

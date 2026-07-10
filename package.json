@@ -1,6 +1,6 @@
 {
   "name": "palade",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0",
   "description": "AI-powered codebase intelligence — reviewed by a swarm, not a single bot.",
   "repository": {
     "type": "git",
@@ -44,6 +44,7 @@
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "graph:update": "graphify update . --force && graphify cluster-only . --no-label",
     "prepublishOnly": "npm run clean && npm run build && npm run format:check && npm test"
   },
   "dependencies": {

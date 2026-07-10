@@ -8,6 +8,7 @@ import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../inge
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../ingestion/contextPacks.js'
 import { buildAnnotationSummary, parseFile } from '../ingestion/annotationParser.js'
+import { buildRepoContext, renderRepoContext } from '../ingestion/repoContext.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
 import { estimateTotalTokens } from './scheduler.js'
 import { runSwarm } from './swarm.js'
@@ -228,6 +229,10 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
 
   const context = { ...opts.context }
   context.annotations = annotationSummary
+  const repoContextBlock = renderRepoContext(
+    await buildRepoContext(manifests, contextSourceChunks, opts.projectRoot)
+  )
+  if (repoContextBlock) context.repoContext = repoContextBlock
   if (opts.target) {
     context.targetDescription = opts.target.definition.description
     context.targetFocus = opts.target.definition.focus

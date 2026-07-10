@@ -298,6 +298,7 @@ export async function walkProject(
       scope.targetPaths!.some((t) => m.path === t || m.path.startsWith(t + '/'))
     )
   }
+  console.log('DEBUG: walkProject: Gathered', manifests.length, 'manifests')
 
   // annotationsOnly filter
   if (scope.annotationsOnly) {
@@ -332,6 +333,7 @@ export async function walkProject(
   } catch {
     // Ignored
   }
+  console.log('DEBUG: walkProject: git churn done')
 
   // Build importer map
   const pathMap = new Map<string, import('./types.js').FileManifest>()
@@ -353,6 +355,15 @@ export async function walkProject(
           if (target) break
           target = pathMap.get(resolved + ext)
         }
+        // ESM TypeScript convention: an `./x.js` specifier refers to `x.ts` on
+        // disk — without this, importers stays empty for every ESM-style TS
+        // repo (this one included), silently zeroing the centrality signal.
+        if (!target) {
+          const stripped = resolved.replace(/\.[cm]?jsx?$/, '')
+          if (stripped !== resolved) {
+            target = pathMap.get(stripped + '.ts') ?? pathMap.get(stripped + '.tsx')
+          }
+        }
         for (const ext of extensions) {
           if (target) break
           target = pathMap.get(resolved + '/index' + ext)
@@ -367,6 +378,7 @@ export async function walkProject(
     }
     delete m._rawImports
   }
+  console.log('DEBUG: walkProject: import extraction done')
 
   return manifests
 }

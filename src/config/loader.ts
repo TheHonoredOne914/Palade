@@ -201,6 +201,7 @@ export async function loadConfig(): Promise<PaladeConfig> {
       ...(DEFAULT_CONFIG.swarm as Record<string, unknown>),
       ...(((envConfig as Record<string, unknown>).swarm as Record<string, unknown>) ?? {}),
       ...rawSwarm,
+      agentProviders: (rawSwarm.agentProviders as Record<string, unknown>) ?? undefined,
       primary: rawSwarm.primary ?? defaultPrimary,
       synthesis: rawSwarm.synthesis ?? defaultSynthesis,
     },

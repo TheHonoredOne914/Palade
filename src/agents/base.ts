@@ -95,6 +95,8 @@ export interface AgentContext {
   spec?: string
   /** The formal constitution with behavioral guidelines for the agents */
   constitution?: string
+  /** Pre-rendered repository-wide context block (see ingestion/repoContext.ts) */
+  repoContext?: string
   /**
    * Whether to append the built-in Ponytail/Karpathy/GStack skills block to
    * this agent's system prompt. Defaults to true (unset === enabled) so
@@ -414,6 +416,10 @@ export function buildSystemPrompt(
     prompt += `\n\nDEVELOPER FOCUS REQUESTS:\n${focuses}${truncationNote}`
   }
 
+  if (context.repoContext) {
+    prompt += `\n\n${context.repoContext}`
+  }
+
   // Embed Ponytail, Karpathy, and GStack philosophies into every agent's baseline behavior,
   // unless explicitly disabled (default: enabled) to save the ~3.5KB per call.
   if (context.includeSkills !== false) {
@@ -553,7 +559,7 @@ export abstract class BaseSpecialistAgent implements IAgent {
     signal?: AbortSignal
   ): Promise<AgentFinding[]> {
     try {
-      const provider = getProvider('primary')
+      const provider = getProvider('primary', this.name)
       const systemPrompt = buildSystemPrompt(
         this.getSystemPrompt(context),
         context,

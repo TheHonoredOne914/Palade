@@ -194,13 +194,17 @@ export async function reviewCommand(
   }
 
   // 1. Load config + init providers
+  console.log('DEBUG: Loading config...')
   const config = await loadConfig()
+  console.log('DEBUG: Init router...')
   await initRouter(config)
 
   // 2. Load targets
+  console.log('DEBUG: Loading targets...')
   const allTargets = await loadTargets(projectRoot)
 
   // 2b. Load custom agents
+  console.log('DEBUG: Loading custom agents...')
   const customAgentDefs = await loadCustomAgents(projectRoot)
 
   // 3. Validate mode
@@ -298,7 +302,9 @@ export async function reviewCommand(
   }
 
   // 6b. Language Detection
+  console.log('DEBUG: Detecting languages...')
   const langProfile = await detectLanguages(projectRoot, scope)
+  console.log('DEBUG: Languages detected:', langProfile.primary)
 
   // 7. Print run header
   if (!opts.quiet) {

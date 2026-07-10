@@ -19,7 +19,7 @@ const HASH_IGNORE_RE = /#\s*@palade\s+ignore\b/i
 // full tokenizer. Doesn't handle multi-line strings/templates, but those are
 // rare for a line that also happens to contain literal "@palade" text.
 function stripStringLiterals(line: string): string {
-  return line.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '')
+  return line.replace(/(['"`])(?:(?!\1)[^\\]|\\.)*\1/g, '')
 }
 
 export function parseFile(

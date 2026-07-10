@@ -1,0 +1,65 @@
+[
+  {
+    "file": "src/orchestrator/scheduler.ts",
+    "lineStart": 92,
+    "lineEnd": 93,
+    "severity": "medium",
+    "claim": "splitToLimit returns the oversized chunk verbatim once depth > 10, so a single line that cannot be halved below MAX_TOKENS within 10 recursions is emitted over HARD_CHUNK_LIMIT."
+  },
+  {
+    "file": "src/orchestrator/scheduler.ts",
+    "lineStart": 52,
+    "lineEnd": 56,
+    "severity": "medium",
+    "claim": "chunk.tokenCount includes chunk.contextPrefix but splitChunk only divides chunk.content; the prefix is re-prepended to both halves and never split, so a chunk whose contextPrefix alone exceeds MAX_TOKENS is unsplittable and returned oversized."
+  },
+  {
+    "file": "src/orchestrator/scheduler.ts",
+    "lineStart": 80,
+    "lineEnd": 81,
+    "severity": "low",
+    "claim": "Overlap lines are double-counted in both halves, so estimateTotalTokens grows after splitting; this can push a batch over softTokenLimit and skews budget math."
+  },
+  {
+    "file": "src/orchestrator/findingValidation.ts",
+    "lineStart": 6,
+    "lineEnd": 7,
+    "severity": "medium",
+    "claim": "normalizePath does not lowercase, so on case-insensitive filesystems a finding path whose case differs from the chunk path never matches and a valid finding is silently dropped."
+  },
+  {
+    "file": "src/orchestrator/findingValidation.ts",
+    "lineStart": 10,
+    "lineEnd": 10,
+    "severity": "medium",
+    "claim": "normalizePath does not resolve '..' segments or internal './', so relative paths like '../src/foo.ts' or 'src/./foo.ts' diverge from the chunk path and valid findings are dropped."
+  },
+  {
+    "file": "src/orchestrator/findingValidation.ts",
+    "lineStart": 13,
+    "lineEnd": 13,
+    "severity": "medium",
+    "claim": "A finding with lineStart === undefined is returned early without a findingFingerprint, so downstream merger.ts cannot dedupe it and it leaks as a duplicate."
+  },
+  {
+    "file": "src/orchestrator/findingValidation.ts",
+    "lineStart": 14,
+    "lineEnd": 15,
+    "severity": "low",
+    "claim": "A non-integer lineStart (e.g. 12.5) is dropped entirely as if out of range instead of being clamped, discarding a valid position."
+  },
+  {
+    "file": "src/orchestrator/merger.ts",
+    "lineStart": 23,
+    "lineEnd": 24,
+    "severity": "medium",
+    "claim": "jaccardSimilarity returns 1 when both titles consist only of non-alphanumeric characters (both word sets empty), so two unrelated punctuation-only findings are merged as duplicates."
+  },
+  {
+    "file": "src/orchestrator/triage.ts",
+    "lineStart": 95,
+    "lineEnd": 97,
+    "severity": "low",
+    "claim": "Array extraction takes the first '[' and last ']' of the LLM response, so stray or wrapping brackets produce invalid JSON and triage silently falls back to heuristicSelect."
+  }
+]

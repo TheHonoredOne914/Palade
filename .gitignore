@@ -1,42 +1,38 @@
-node_modules
-dist
-.palade
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+exports/
+
+# Logs & Environment
 *.log
 .env
 
-# Runtime-generated artifacts
-palade-badge.svg
-
-# OS / editor cruft
+# OS / Editor Artifacts
 .DS_Store
 Thumbs.db
 *.swp
-
-# Palade
-.palade/
-
-# Temp
 .tmp*
 
-# Project Management / Dev Docs
+# Palade Engine
+.palade/
+.paladeignore
+palade-badge.svg
+graphify-out/
+
+# Development & Testing Configs
+palade.config.ts
+palade.targets.ts
+palade.agents.ts
+sample-report.html
+test-project/
+scratch/
+
+# Project Management
 PHASE-DELIVERABLES.md
 RELEASE_OVERVIEW.md
 TECHNICAL_REFERENCE.md
 
-# User configurations & samples
-palade.config.ts
-palade.targets.ts
-palade.agents.ts
-.paladeignore
-sample-report.html
-test-project/
-exports/
-
-# AI Assistant configs
-.claude/
-.clinerules/
-.cursor/
-.opencode/
-.windsurf/
-AGENTS.md
+# AI Assistant Configs
 CLAUDE.md

@@ -46,7 +46,7 @@ export class CustomAgent implements IAgent {
     signal?: AbortSignal
   ): Promise<AgentFinding[]> {
     try {
-      const provider = getProvider('primary')
+      const provider = getProvider('primary', this.name)
       // Inject the domain label so the LLM knows its specialization area
       const domainPrefix = `You are reviewing code in the '${this.domain}' domain.\n\n`
       const systemPrompt = buildSystemPrompt(
