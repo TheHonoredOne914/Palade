@@ -5,11 +5,11 @@ import { createServer, type Server } from 'node:http'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 import type { ReporterContext, ReporterOutput, HtmlTemplateData } from './types.js'
-import type { ScoreCategory } from '../scorer/types.js'
+import type { ScoreCategory, BadgeColor } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
 
 import { CATEGORY_LABELS } from '../scorer/types.js'
-import { SCORE_THRESHOLDS } from '../ui/theme.js'
+import { getScoreColor as getScoreColorTier } from '../scorer/badge.js'
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
   critical: 'severity-critical',
@@ -31,13 +31,21 @@ function getScoreGradeClass(score: number): string {
   return 'grade-f'
 }
 
+// Reuses badge.ts's canonical 5-tier getScoreColor (SCORE_THRESHOLDS.excellent
+// included) instead of maintaining a second, independently-drifting 4-tier
+// threshold ladder — previously the same score could render a different
+// color in the HTML report vs. the README badge (scorer-001).
+const BADGE_COLOR_HEX: Record<BadgeColor, string> = {
+  brightgreen: '#3fb950',
+  green: '#57ab5a',
+  yellow: '#d29922',
+  orange: '#db61a2',
+  red: '#f85149',
+}
+
 function getScoreColor(score: number): string {
   const clamped = Math.max(0, Math.min(100, score))
-  let color: string
-  if (clamped >= SCORE_THRESHOLDS.good) color = '#3fb950'
-  else if (clamped >= SCORE_THRESHOLDS.warning) color = '#d29922'
-  else if (clamped >= SCORE_THRESHOLDS.poor) color = '#db61a2'
-  else color = '#f85149'
+  const color = BADGE_COLOR_HEX[getScoreColorTier(clamped)]
   // Ensure the returned value is a valid hex color to prevent CSS injection
   return /^#[0-9a-f]{6}$/i.test(color) ? color : '#888888'
 }
@@ -286,8 +294,11 @@ function buildTemplateData(ctx: ReporterContext): HtmlTemplateData {
     .map((f) => renderCrossAgentFindingHtml(f))
     .join('\n')
 
-  const maxDuration = Math.max(...Object.values(ctx.swarm.agentTimings), 1)
-  const agentTimingsHtml = Object.entries(ctx.swarm.agentTimings)
+  const agentTimingEntries = Object.entries(ctx.swarm.agentTimings).filter(
+    (entry): entry is [string, number] => entry[1] !== undefined
+  )
+  const maxDuration = Math.max(...agentTimingEntries.map(([, duration]) => duration), 1)
+  const agentTimingsHtml = agentTimingEntries
     .map(([agent, duration]) => renderAgentTimingHtml({ agent, durationMs: duration }, maxDuration))
     .join('\n')
 

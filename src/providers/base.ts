@@ -57,6 +57,19 @@ export interface IProvider {
    * marking, not incidental unavailability.
    */
   isDead?(): boolean
+  /**
+   * Synchronous "was markDead() called because of an auth error
+   * specifically" check, distinct from isDead() (which also covers quota
+   * exhaustion). Router-side dead-marking is only ever triggered by an auth
+   * error (a fatal quota error is self-marked by the adapter directly via
+   * dailyLimitExhausted, never via markDead() — see router.ts's
+   * providers-001 fix), so every adapter's own flag set by markDead() is
+   * specifically auth-caused. Lets FallbackProvider.complete() surface
+   * AuthError (instead of AllProvidersExhaustedError) when every chain
+   * member is skipped this call because all were already marked dead from
+   * auth errors in an earlier call (providers-005).
+   */
+  isDeadFromAuth?(): boolean
 }
 
 // Intentionally fixed: these govern the low-level HTTP retry loop shared by

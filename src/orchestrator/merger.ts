@@ -108,7 +108,15 @@ function shouldMerge(a: AgentFinding, b: AgentFinding, opts: NearMatchOptions = 
   const sameAgentThreshold = opts.sameAgentThreshold ?? NEAR_MATCH_SAME_AGENT_THRESHOLD
   const crossAgentThreshold = opts.crossAgentThreshold ?? NEAR_MATCH_CROSS_AGENT_THRESHOLD
 
-  if (a.filePath && b.filePath && a.filePath === b.filePath) {
+  // Two genuinely fileless findings (e.g. project-level "circular
+  // dependency" observations) are comparable too, even though there's no
+  // filePath to match on — bucketing (below) now groups them together so
+  // this actually gets reached instead of relying on a truthy filePath
+  // equality check that's never true when both sides lack one (orchestrator-004).
+  const sameFile = Boolean(a.filePath) && Boolean(b.filePath) && a.filePath === b.filePath
+  const bothFileless = !a.filePath && !b.filePath
+
+  if (sameFile || bothFileless) {
     if (a.lineStart !== undefined && b.lineStart !== undefined) {
       if (a.lineStart === b.lineStart) {
         // Same-agent findings on the exact same line only need the looser
@@ -203,7 +211,10 @@ export function mergeFindings(
   // files.
   const byFile = new Map<string, number[]>()
   for (let i = 0; i < n; i++) {
-    const key = findings[i].filePath ?? `__nofile_${i}`
+    // All fileless findings share one bucket (rather than a unique
+    // per-index key) so shouldMerge's fileless fallback branch actually gets
+    // a chance to compare them against each other (orchestrator-004).
+    const key = findings[i].filePath ?? '__nofile__'
     const bucket = byFile.get(key)
     if (bucket) bucket.push(i)
     else byFile.set(key, [i])

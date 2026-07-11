@@ -186,6 +186,10 @@ export class OpenCodeZenProvider implements IProvider {
     return this.dailyLimitExhausted || this.deadGeneric
   }
 
+  isDeadFromAuth(): boolean {
+    return this.deadGeneric
+  }
+
   // Reflects locally observed exhaustion/dead-marking, not a live
   // connectivity/auth probe — an invalid API key that hasn't yet been tried
   // (so markDead() was never called) still reports available=true here.

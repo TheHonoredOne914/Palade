@@ -104,6 +104,21 @@ export interface AgentContext {
    * `swarm.includeSkills: false` in config.
    */
   includeSkills?: boolean
+  /**
+   * Full set of known project-relative file paths (from FileManifest),
+   * populated by runSwarm when manifests are available. Lets
+   * verifyCriticalHighFindings distinguish a finding that cites a real
+   * project file outside the CURRENT BATCH (e.g. surfaced via injected
+   * cross-file/repoContext) from a genuinely hallucinated file path.
+   */
+  knownFilePaths?: Set<string>
+  /**
+   * Concurrency cap for provider calls made within a single analyze() call
+   * (e.g. verifyCriticalHighFindings' self-consistency checks). Mirrors
+   * SwarmOptions.maxConcurrentBatches so per-batch verification concurrency
+   * respects the same configured value swarm.ts uses for batch scheduling.
+   */
+  maxConcurrentBatches?: number
 }
 
 export interface IAgent {
@@ -454,8 +469,10 @@ export async function verifyCriticalHighFindings(
   chunks: CodeChunk[],
   provider: IProvider,
   agentName: AgentName,
+  context?: AgentContext,
   signal?: AbortSignal
 ): Promise<AgentFinding[]> {
+  const knownFilePaths = context?.knownFilePaths
   const verifyOne = async (f: AgentFinding): Promise<AgentFinding | null> => {
     const codeChunk = f.filePath
       ? chunks.find(
@@ -466,10 +483,18 @@ export async function verifyCriticalHighFindings(
         )
       : undefined
     if (!codeChunk) {
-      // filePath is set but no chunk matches → most likely a hallucinated file reference;
-      // drop rather than auto-pass a critical/high we can't verify.
-      if (f.filePath) return null
-      return f // no filePath: valid non-location finding, keep it
+      if (!f.filePath) return f // no filePath: valid non-location finding, keep it
+      // filePath doesn't match a chunk in THIS batch. If it matches a real
+      // project file (e.g. cited via injected cross-file/repoContext that
+      // lives in a different batch or a triaged-out file), we simply can't
+      // verify it here — keep it rather than auto-dropping. Only drop when
+      // the filePath doesn't match any file known to the project at all,
+      // which is the actual signal of a hallucinated reference.
+      if (knownFilePaths) {
+        return knownFilePaths.has(f.filePath) ? f : null
+      }
+      // No project-wide file list available — fall back to prior behavior.
+      return null
     }
     try {
       const verifyResponse = await provider.complete({
@@ -515,10 +540,11 @@ Reply strictly YES or NO.`,
   // critical/high findings doesn't fire one provider call per finding at
   // once. Note this limiter is created fresh per call, not shared across the
   // run — it bounds per-batch verification concurrency, not the swarm's
-  // separate global "max 5 concurrent batches" cap (scheduler.ts), so total
-  // verification concurrency across all batches/agents is not itself capped
-  // at 5.
-  const limit = createLimiter(5)
+  // separate global "max N concurrent batches" cap (scheduler.ts), so total
+  // verification concurrency across all batches/agents is not itself capped.
+  // Mirrors the same configured value (config.swarm.maxConcurrentBatches) via
+  // context.maxConcurrentBatches, defaulting to 5 when not threaded through.
+  const limit = createLimiter(context?.maxConcurrentBatches ?? 5)
   const validated = await Promise.all(
     findings.map((f) => {
       if (f.severity === 'critical' || f.severity === 'high') {
@@ -585,7 +611,7 @@ export abstract class BaseSpecialistAgent implements IAgent {
       }
       annotateComplexity(findings, chunks)
 
-      return verifyCriticalHighFindings(findings, chunks, provider, this.name, signal)
+      return verifyCriticalHighFindings(findings, chunks, provider, this.name, context, signal)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err

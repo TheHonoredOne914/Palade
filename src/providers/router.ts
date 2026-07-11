@@ -123,7 +123,7 @@ const PROVIDER_FACTORIES: Record<
 }
 
 function createProviderInstances(name: SupportedProviderName, cfg: ProviderConfig): IProvider[] {
-  const allKeys = cfg.apiKeys ?? [cfg.apiKey]
+  const allKeys = cfg.apiKeys?.length ? cfg.apiKeys : [cfg.apiKey]
   return allKeys.map((key) => PROVIDER_FACTORIES[name](key, cfg))
 }
 
@@ -255,27 +255,16 @@ export class FallbackProvider implements IProvider {
           allAttemptsAuthLike = false
         }
 
-        if (isFatal) {
-          // A chain entry may be a ProviderPool backing several keys/instances
-          // that share this same provider name. A fatal error on ONE member
-          // (e.g. that key's daily quota) must not take down its healthy
-          // siblings, so defer to the entry's own isAvailable() — which for a
-          // pool aggregates per-member state — rather than blanket-marking the
-          // shared name dead on any fatal-looking error.
-          const stillAvailable = await provider.isAvailable()
-          if (stillAvailable) {
-            console.warn(
-              chalk.yellow(
-                `[router] provider ${provider.name} hit a fatal-looking error on one instance, but other instances remain available — not marking the whole provider dead`
-              )
-            )
-          } else {
-            markResponsibleProviderDead(provider, lastError)
-            console.warn(
-              chalk.red(`[router] provider ${provider.name} marked as DEAD (hard quota limit)`)
-            )
-          }
-        } else if (isFatalAuthError(lastError)) {
+        // No router-side dead-marking needed for the isFatal (quota) case:
+        // isFatalMessage() only returns true for errors the adapter itself
+        // already tagged via tagQuotaError() — and every adapter sets its own
+        // dailyLimitExhausted flag (which isDead()/isAvailable() already
+        // read) BEFORE throwing, as a precondition for reaching that
+        // classification at all. So the responsible instance is already dead
+        // by the time we get here; calling markResponsibleProviderDead()
+        // there would be a no-op (providers-001) — adapters' self-marking is
+        // the actual source of truth.
+        if (!isFatal && isFatalAuthError(lastError)) {
           // A 401/403 means the key itself is invalid — unlike the quota case
           // above, isAvailable() is a quota-only check and can never detect
           // this, so gating on "stillAvailable" would never mark the provider
@@ -322,6 +311,22 @@ export class FallbackProvider implements IProvider {
           attempts.map((a) => `${a.provider}: ${a.finalError}`).join(' | '),
         status,
         providerName
+      )
+    }
+
+    // Every chain member was already marked dead before this call even
+    // started (e.g. from a concurrent call moments earlier), so the loop
+    // above skipped them all via isDead() and attemptedAny stayed false.
+    // If that dead state is uniformly auth-caused, the run is just as doomed
+    // as if we'd attempted and failed this call — surface AuthError so
+    // swarm.ts's isFatalAuthError check triggers a fast run-wide abort
+    // instead of grinding through further futile calls to a dead key
+    // (providers-005).
+    if (!attemptedAny && this.chain.every((p) => p.isDeadFromAuth?.() ?? false)) {
+      throw new AuthError(
+        `All ${this.chain.length} providers are already marked dead from auth errors earlier this session.`,
+        401,
+        this.chain[this.chain.length - 1].name
       )
     }
 

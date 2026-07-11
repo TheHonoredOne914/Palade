@@ -228,7 +228,7 @@ export class CombinedAnalyzer implements IAgent {
       }
       const validated = validateAndFingerprintFindings(findings, chunks)
       annotateComplexity(validated, chunks)
-      return verifyCriticalHighFindings(validated, chunks, provider, this.name, signal)
+      return verifyCriticalHighFindings(validated, chunks, provider, this.name, context, signal)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err

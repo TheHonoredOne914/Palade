@@ -217,6 +217,12 @@ export async function watchCommand(opts: {
       }
 
       if (allFindings.length > 0) {
+        // Delete before set so a re-scan of a long-tracked file moves it to
+        // the end of Map iteration order — Map.set() on an EXISTING key does
+        // NOT move it to the end, so without this a re-scanned file stays at
+        // its original insertion position and isn't protected from the
+        // oldest-first eviction below (cli-004).
+        accumulatedFindings.delete(filePath)
         accumulatedFindings.set(filePath, allFindings)
         // Evict oldest entries when the map grows unbounded
         if (accumulatedFindings.size > MAX_ACCUMULATED_FILES) {
@@ -335,6 +341,14 @@ export async function watchCommand(opts: {
         if (!urgentSet.has(normalizedPath)) {
           urgentSet.add(normalizedPath)
           urgentQueue.push(normalizedPath)
+        }
+
+        // A file created/changed after the watcher started must also join
+        // the periodic background sweep in continuous mode — otherwise it's
+        // scanned once via the urgent queue and then permanently excluded
+        // from every future sweep for the rest of the session (cli-003).
+        if (isContinuous && !sweepQueue.includes(normalizedPath)) {
+          sweepQueue.push(normalizedPath)
         }
 
         if (currentSweepController) {

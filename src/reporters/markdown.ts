@@ -181,9 +181,10 @@ function renderCrossAgentFindings(findings: ReporterContext['crossAgentFindings'
   return createMarkdownTable(headers, rows)
 }
 
-function renderAgentTimings(timings: Record<string, number>): string {
+function renderAgentTimings(timings: Partial<Record<string, number>>): string {
   const headers = ['Agent', 'Duration (ms)']
   const rows = Object.entries(timings)
+    .filter((entry): entry is [string, number] => entry[1] !== undefined)
     .sort(([, a], [, b]) => b - a)
     .map(([agent, duration]) => [agent, String(duration)])
 

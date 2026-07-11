@@ -219,10 +219,16 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     }
   })
 
-  // Re-chunk any active chunk that grew beyond MAX_TOKENS after context injection.
+  // Re-chunk any active chunk that grew beyond the run's configured hard
+  // chunk limit after context injection — not the hardcoded chunker.ts
+  // MAX_TOKENS, which ignores a tighter run-time hardChunkLimit (e.g. as low
+  // as 3000 in economy mode), letting an oversized chunk slip through this
+  // pass only to be re-split by scheduler.ts's own independent splitting
+  // logic later (orchestrator-003).
+  const hardChunkLimit = opts.swarmOptions?.hardChunkLimit ?? MAX_TOKENS
   activeChunks = activeChunks.flatMap((chunk) => {
-    if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > MAX_TOKENS) {
-      return splitLargeChunk(chunk)
+    if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > hardChunkLimit) {
+      return splitLargeChunk(chunk, hardChunkLimit)
     }
     return [chunk]
   })

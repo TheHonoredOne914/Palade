@@ -9,7 +9,13 @@ const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf-
 
 process.on('uncaughtException', (err) => {
   const msg = err instanceof Error ? err.message : String(err)
-  if (msg.includes('Raw mode') || msg.includes('isRawModeSupported')) {
+  // Ink (the TUI library) throws a plain `new Error(...)` for this condition
+  // — no dedicated error class/code to match on instead (checked ink's
+  // App.js source: both raw-mode-unsupported messages are free text). As a
+  // partial mitigation, require BOTH substrings together instead of either
+  // alone, so an unrelated crash whose message happens to contain just one
+  // of the two terms isn't silently swallowed (cli-005).
+  if (msg.includes('Raw mode') && msg.includes('isRawModeSupported')) {
     process.exit(0)
   }
   console.error(err)
@@ -93,12 +99,18 @@ async function runClassicCLI(): Promise<void> {
   // 'tui' as an option VALUE, not the subcommand.
   const subcommandToken = commandScanArgs.find((a) => !a.startsWith('-'))
   const isTuiCommand = subcommandToken === 'tui'
+  // 'watch' registers its own SIGINT handler (clears debounce timers, closes
+  // the file watcher) later, after this classic-CLI handler would already
+  // have synchronously exited — same reasoning as the 'tui' exclusion below
+  // (cli-002).
+  const isWatchCommand = subcommandToken === 'watch'
 
   // Don't install the classic-CLI SIGINT handler when dispatching to the
-  // 'tui' subcommand: it calls process.exit(0) immediately, which would hard-kill
-  // the process on Ctrl+C before the TUI's own SIGINT handler (installed once
-  // <App/> mounts) gets a chance to gracefully abort the running command.
-  if (!isTuiCommand) {
+  // 'tui' or 'watch' subcommands: it calls process.exit(0) immediately, which
+  // would hard-kill the process on Ctrl+C before the TUI's own SIGINT
+  // handler (installed once <App/> mounts) or watch.ts's own cleanup handler
+  // gets a chance to run.
+  if (!isTuiCommand && !isWatchCommand) {
     process.on('SIGINT', () => {
       console.log(chalk.dim('\n  Interrupted. Exiting cleanly.'))
       process.exit(0)

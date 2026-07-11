@@ -24,10 +24,6 @@ export class ProviderPool implements IProvider {
     this.providers = providers
   }
 
-  get size(): number {
-    return this.providers.length
-  }
-
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
     // Round-robin, but skip members that report unavailable (e.g. a key whose
     // daily quota is exhausted). Otherwise one dead key throws a fatal-looking
@@ -85,5 +81,12 @@ export class ProviderPool implements IProvider {
   // must still be tried.
   isDead(): boolean {
     return this.providers.every((p) => p.isDead?.() ?? false)
+  }
+
+  // True only when EVERY member is dead specifically from an auth error —
+  // mirrors isDead()'s "every" semantics but for the auth-specific signal
+  // (providers-005).
+  isDeadFromAuth(): boolean {
+    return this.providers.every((p) => p.isDeadFromAuth?.() ?? false)
   }
 }

@@ -1,4 +1,13 @@
-export type ScoreCategory = string
+import type { AgentName } from '../agents/base.js'
+
+// Narrowed to AgentName (built-in agent literals, widened to allow arbitrary
+// custom agent name strings via AgentName's own `(string & {})` member)
+// instead of a bare `string` — a bare string gave calculator.ts's hardcoded
+// `allBaseCategories` literal array no compile-time link to the actual
+// AgentName values, so a future rename/typo of a built-in agent name would
+// compile cleanly and silently leave that category permanently scored at
+// 100 (scorer-003).
+export type ScoreCategory = AgentName
 
 export interface CategoryScore {
   category: ScoreCategory

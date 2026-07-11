@@ -11,7 +11,12 @@ import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
 import { triageFiles } from './triage.js'
 import { AgentMemory } from './memory.js'
 import { mergeFindings } from './merger.js'
-import { scheduleBatches, estimateTotalTokens } from './scheduler.js'
+import {
+  scheduleBatches,
+  estimateTotalTokens,
+  ECONOMY_SOFT_TOKEN_CAP,
+  ECONOMY_HARD_CHUNK_CAP,
+} from './scheduler.js'
 import { getFallbackStats } from '../providers/router.js'
 import { isFatalAuthError } from '../providers/errorClassification.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
@@ -47,6 +52,20 @@ export async function runSwarm(
           strictTriage: options.strictTriage,
         })
       : allChunks
+
+  // Economy-mode batch-size narrowing used to be only a convention followed
+  // by CLI command callers (review/diff/watch), not enforced here — a caller
+  // that set economyMode: true without also narrowing softTokenLimit/
+  // hardChunkLimit would send oversized batches to CombinedAnalyzer's
+  // context window. Clamp here so it's a runSwarm-level guarantee; only
+  // tightens the caller's values, never loosens ones already tighter than
+  // the economy caps (orchestrator-002).
+  const softTokenLimit = options.economyMode
+    ? Math.min(options.softTokenLimit ?? Infinity, ECONOMY_SOFT_TOKEN_CAP)
+    : options.softTokenLimit
+  const hardChunkLimit = options.economyMode
+    ? Math.min(options.hardChunkLimit ?? Infinity, ECONOMY_HARD_CHUNK_CAP)
+    : options.hardChunkLimit
 
   // Economy mode replaces the N parallel per-domain BUILT-IN agents with a
   // single combined multi-domain analyzer that reviews all lenses in one
@@ -91,6 +110,18 @@ export async function runSwarm(
 
   const agentTimings: Partial<Record<AgentName, number>> = {}
 
+  // Augment the caller-supplied context with data only runSwarm has: the
+  // project-wide known file list (so verifyCriticalHighFindings can tell a
+  // real-but-out-of-batch file reference from a hallucinated one) and the
+  // configured batch concurrency (so per-batch verification concurrency
+  // matches the same cap used for batch scheduling below) (agents-001,
+  // agents-002).
+  const agentContext: AgentContext = {
+    ...context,
+    knownFilePaths: manifests ? new Set(manifests.map((m) => m.path)) : context.knownFilePaths,
+    maxConcurrentBatches: options.maxConcurrentBatches ?? context.maxConcurrentBatches,
+  }
+
   // Aborted when any agent hits a fatal auth error, so the other agents'
   // in-flight provider calls are cancelled instead of running to completion
   // and burning quota on a review that is about to throw anyway.
@@ -115,7 +146,7 @@ export async function runSwarm(
     const allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
     try {
-      const batches = scheduleBatches(reviewChunks, options.softTokenLimit, options.hardChunkLimit)
+      const batches = scheduleBatches(reviewChunks, softTokenLimit, hardChunkLimit)
       const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>
@@ -141,7 +172,7 @@ export async function runSwarm(
           })
           let batchFindings: AgentFinding[] = []
           try {
-            const analyzePromise = agent.analyze(batch, context, controller.signal)
+            const analyzePromise = agent.analyze(batch, agentContext, controller.signal)
             // Attach the rejection guard BEFORE racing: if the timeout wins the
             // race, the await throws and a later .catch() would never run,
             // leaving the aborted analyze promise unhandled.
@@ -305,7 +336,7 @@ export async function runSwarm(
   const finalFindings = [...mergedFindings]
 
   if (!options.noVerdict) {
-    const conflicts = detectConflicts(memory.getAll())
+    const conflicts = detectConflicts(mergedFindings)
     // Conflicts used to be arbitrated one at a time (await inside a for-of
     // loop), so N conflicts meant N sequential LLM round-trips stacking up
     // pure latency at the end of the run. Arbitration calls are independent
@@ -395,7 +426,7 @@ export async function runSwarm(
     findings: finalFindings,
     crossAgentFindings,
     synthesis,
-    agentTimings: agentTimings as Record<AgentName, number>,
+    agentTimings,
     agentsRun: modeAgents.map((a) => a.name),
     totalChunks: reviewChunks.length,
     totalTokensEstimated: estimateTotalTokens(reviewChunks),

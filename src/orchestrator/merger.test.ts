@@ -109,10 +109,27 @@ describe('orchestrator/merger', () => {
     })
 
     it('sorts output by severity (critical first)', () => {
+      // Distinct, unrelated titles — the default 'SQL injection' title would
+      // make these three fileless findings jaccard-match each other and
+      // merge into one now that genuinely fileless findings are correctly
+      // compared against each other (orchestrator-004), which isn't what
+      // this test is checking.
       const out = mergeFindings([
-        finding({ severity: 'low' }),
-        finding({ severity: 'critical' }),
-        finding({ severity: 'medium' }),
+        finding({
+          severity: 'low',
+          title: 'Unused variable in config loader',
+          description: 'a dead local variable is declared but never read',
+        }),
+        finding({
+          severity: 'critical',
+          title: 'SQL injection in getUserById',
+          description: 'user input is concatenated directly into a SQL query string',
+        }),
+        finding({
+          severity: 'medium',
+          title: 'Inefficient nested loop over large array',
+          description: 'a quadratic loop iterates the same collection twice per element',
+        }),
       ])
       expect(out.map((f) => f.severity)).toEqual(['critical', 'medium', 'low'])
     })

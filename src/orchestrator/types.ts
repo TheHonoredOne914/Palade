@@ -13,7 +13,7 @@ export interface SwarmResult {
   findings: AgentFinding[]
   crossAgentFindings: CrossAgentFinding[]
   synthesis: SynthesisResult
-  agentTimings: Record<AgentName, number>
+  agentTimings: Partial<Record<AgentName, number>>
   /**
    * Names of the agents actually dispatched this run (post mode/agentOverrides/
    * agentCount selection, pre economy-mode combining — economy mode still
