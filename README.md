@@ -54,19 +54,16 @@ Traditional AI coding assistants send your entire file to a single language mode
 
 ## 🏆 Benchmarks
 
-Benchmarked as a hybrid swarm (OpenRouter + OpenCode Zen) against **5 production codebases** — including unmodified source from two of the most-downloaded JavaScript libraries in the world:
+Reproducible run of a 2-provider hybrid swarm (**OpenRouter** `tencent/hy3:free` + **OpenCode Zen** `deepseek-v4-flash-free`) against real public repositories. Every finding was produced by the tool; the highlighted ones were verified by hand against source.
 
-| Metric | Result |
-| :--- | :--- |
-| **Recall** on 7 seeded critical bugs (3 repos) | **100% (7/7)** |
-| **Precision** on High/Critical findings (human-verified) | **100%** |
-| Previously unreported defects found in **Axios** | 1 Critical + 2 High *(critical one patched — upstream PR opened)* |
-| Previously unreported defects found in **Zod** | 2 High (swallowed exceptions, per-call `RegExp` recompilation) |
-| Agent conflicts arbitrated in Zod's `types.ts` alone | 40+, all resolved into coherent verdicts |
+| Repository | Agents parsed | Findings | Verified defect |
+| :--- | :--- | ---: | :--- |
+| [expressjs/cors](https://github.com/expressjs/cors) | 6 / 6 | 6 | `origin: true` + missing `Origin` header → invalid `Access-Control-Allow-Origin: undefined` |
+| [auth0/node-jsonwebtoken](https://github.com/auth0/node-jsonwebtoken) | 4 / 6 | 7 | Key material re-parsed on every `sign`/`verify` call when passed a PEM string |
 
-Highlights: an **unbounded memory growth** bug, a **thread deadlock**, and a critical Axios interceptor flaw that **swallows exceptions and dispatches unvalidated requests** — all found with zero prior context.
+Output quality is bounded by the model behind each agent — restricting the swarm to JSON-reliable models took cors to **6/6 agents parsing**, and `providerShares` measurably cut rate-limit failures by spreading load across providers.
 
-📊 Full methodology, dataset, and per-repo findings: **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**
+📊 Full methodology, exact config, per-finding table, and reliability notes: **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**
 
 ---
 
