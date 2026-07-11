@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { loadConfig } from './loader.js'
+import { loadConfig, expandProviderShares } from './loader.js'
 import * as fs from 'node:fs'
 
 vi.mock('node:fs', async () => {
@@ -35,5 +35,35 @@ describe('loader cost-awareness', () => {
 
     expect(config.swarm.primary).toBe('opencode-zen')
     expect(config.swarm.synthesis).toBe('opencode-zen')
+  })
+})
+
+describe('expandProviderShares', () => {
+  it('assigns shares over agents in registry priority order', () => {
+    const out = expandProviderShares({ 'opencode-zen': 5, openrouter: 3 }, 8)
+    expect(out).toEqual({
+      security: 'opencode-zen',
+      architecture: 'opencode-zen',
+      performance: 'opencode-zen',
+      maintainability: 'opencode-zen',
+      deadCode: 'opencode-zen',
+      testIntelligence: 'openrouter',
+      pragmatism: 'openrouter',
+      logic: 'openrouter',
+    })
+  })
+
+  it('ignores shares beyond agentCount and leaves unshared agents unassigned', () => {
+    const out = expandProviderShares({ groq: 2, nvidia: 99 }, 4)
+    // only 4 active agents total; groq takes the first 2, nvidia fills the rest
+    expect(out).toEqual({
+      security: 'groq',
+      architecture: 'groq',
+      performance: 'nvidia',
+      maintainability: 'nvidia',
+    })
+    const partial = expandProviderShares({ groq: 1 }, 4)
+    // agents without a share get no entry → they use swarm.primary
+    expect(partial).toEqual({ security: 'groq' })
   })
 })

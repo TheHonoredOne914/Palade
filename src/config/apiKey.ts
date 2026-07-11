@@ -61,6 +61,12 @@ export function resolveConfigPath(projectRoot: string): string {
  * palade.config.ts. Shared by `palade settings --set` and the TUI settings
  * panel's provider/model/swarm selectors so both write the same way.
  */
+// Keys like 'opencode-zen' aren't valid bare TS identifiers — quote them when
+// writing new lines, or the emitted config file won't parse.
+function quoteKeyIfNeeded(key: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(key) ? key : `'${key}'`
+}
+
 export function setNestedValue(content: string, dotPath: string, value: unknown): string {
   const parts = dotPath.split('.')
   const valueStr =
@@ -142,34 +148,21 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
         // this, "agentCount: 6," becomes "agentCount: 8" and breaks the object.
         const hadComma = /,\s*(\/\/.*)?$/.test(keyMatch[2])
         const trailingComma = hadComma ? ',' : ''
-        lines[i] = `${keyMatch[1]}${keyName}: ${valueStr}${trailingComma}`
+        lines[i] = `${keyMatch[1]}${quoteKeyIfNeeded(keyName)}: ${valueStr}${trailingComma}`
         return lines.join('\n')
       }
     }
   }
 
-  // Key not found — insert it inside the target parent section (creating
-  // intermediate sections as needed).
-  const parentParts = parts.slice(0, -1)
-  // Re-scan to find the closing brace of the deepest existing section along
-  // the path so we can insert just before it.
-  const targetPath = parentParts
-  let insertAt = -1
-  let insertIndent = 2
+  // Key not found — insert it inside the deepest EXISTING section along the
+  // path, creating any missing intermediate sections as a nested block (e.g.
+  // "swarm.providerShares.groq" when providerShares: {} doesn't exist yet).
+  const targetPath = parts.slice(0, -1)
 
-  if (targetPath.length === 0) {
-    // Top-level key (dotPath has no '.'): the section-tracking loop below
-    // never pushes the root `export default {` itself (it only matches
-    // `key: {` lines), so it can never "close" the root and would leave a
-    // top-level --set silently no-op. Insert directly before the file's
-    // final closing brace instead.
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].trim() === '}') {
-        insertAt = i
-        break
-      }
-    }
-  } else {
+  // Find the line index + indent of the closing brace of the section at
+  // `path`, or null if that section doesn't exist. Same brace-walking rules
+  // as the modify loop above.
+  const findSectionClose = (path: string[]): [number, number] | null => {
     const pathStack2: string[] = []
     const openIndents2: number[] = []
 
@@ -181,19 +174,13 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
       if (trimmed.startsWith('}')) {
         const indent = line.length - trimmed.length
         while (openIndents2.length > 0 && openIndents2[openIndents2.length - 1] >= indent) {
-          // If the section we are closing IS the target parent, insert here.
-          if (
-            pathStack2.length === targetPath.length &&
-            targetPath.every((p, idx) => pathStack2[idx] === p)
-          ) {
-            insertAt = i
-            insertIndent = indent + 2
-            break
+          // If the section we are closing IS the target, insert here.
+          if (pathStack2.length === path.length && path.every((p, idx) => pathStack2[idx] === p)) {
+            return [i, indent + 2]
           }
           pathStack2.pop()
           openIndents2.pop()
         }
-        if (insertAt !== -1) break
         continue
       }
 
@@ -212,10 +199,39 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
         continue
       }
     }
+    return null
   }
 
-  if (insertAt !== -1) {
-    const insertLine = `${' '.repeat(insertIndent)}${keyName}: ${valueStr}`
+  // The file's final closing brace is the "close" of the root object — the
+  // section walker never pushes `export default {` itself, so path length 0
+  // is handled separately here.
+  const findRootClose = (): [number, number] | null => {
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].trim() === '}') return [i, 2]
+    }
+    return null
+  }
+
+  // Longest existing prefix of targetPath wins; prefixLen === targetPath.length
+  // means the parent exists and we just insert the key line.
+  for (let prefixLen = targetPath.length; prefixLen >= 0; prefixLen--) {
+    const loc =
+      prefixLen === 0 ? findRootClose() : findSectionClose(targetPath.slice(0, prefixLen))
+    if (!loc) continue
+    const [insertAt, insertIndent] = loc
+
+    const missing = targetPath.slice(prefixLen)
+    const block: string[] = []
+    missing.forEach((section, depth) =>
+      block.push(`${' '.repeat(insertIndent + 2 * depth)}${quoteKeyIfNeeded(section)}: {`)
+    )
+    block.push(
+      `${' '.repeat(insertIndent + 2 * missing.length)}${quoteKeyIfNeeded(keyName)}: ${valueStr}`
+    )
+    for (let depth = missing.length - 1; depth >= 0; depth--) {
+      block.push(`${' '.repeat(insertIndent + 2 * depth)}},`)
+    }
+
     // Ensure previous non-blank, non-comment line ends with a comma.
     for (let j = insertAt - 1; j >= 0; j--) {
       const prev = lines[j].trimEnd()
@@ -226,32 +242,8 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
         break
       }
     }
-    lines.splice(insertAt, 0, insertLine)
+    lines.splice(insertAt, 0, ...block)
     return lines.join('\n')
-  }
-
-  // The parent section itself doesn't exist anywhere in the file yet (e.g.
-  // "swarm" is fully commented out in the CONFIG_TEMPLATE, or absent). Create
-  // it fresh as a new top-level block right before the file's final closing
-  // brace. Only handles a single missing level (targetPath.length === 1) —
-  // every dotted path this writer is used for (swarm.*, providers.<id>.*) has
-  // a top-level parent, so a deeper missing-ancestor case doesn't arise here.
-  if (targetPath.length === 1) {
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].trim() === '}') {
-        for (let j = i - 1; j >= 0; j--) {
-          const prev = lines[j].trimEnd()
-          if (prev && !prev.startsWith('//')) {
-            if (!prev.endsWith(',') && !prev.endsWith('{') && !prev.endsWith('}')) {
-              lines[j] = lines[j].trimEnd() + ','
-            }
-            break
-          }
-        }
-        lines.splice(i, 0, `  ${targetPath[0]}: {`, `    ${keyName}: ${valueStr}`, `  },`)
-        return lines.join('\n')
-      }
-    }
   }
 
   console.log(`  ⚠ Could not set ${dotPath} — edit .palade/palade.config.ts manually`)

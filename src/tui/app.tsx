@@ -109,6 +109,10 @@ export function App({
     config?.swarm?.synthesis ?? 'nvidia'
   )
   const [settingsModels, setSettingsModels] = useState<Record<string, string>>({})
+  const [settingsAgentCount, setSettingsAgentCount] = useState(config?.swarm?.agentCount ?? 8)
+  const [settingsProviderShares, setSettingsProviderShares] = useState<Record<string, number>>(
+    config?.swarm?.providerShares ?? {}
+  )
   const [liveProviderStatus, setLiveProviderStatus] = useState(providerStatus)
   const [noProviderDismissed, setNoProviderDismissed] = useState(false)
 
@@ -125,6 +129,8 @@ export function App({
         if (freshConfig) {
           setSettingsSwarmPrimary(freshConfig.swarm.primary)
           setSettingsSwarmSynthesis(freshConfig.swarm.synthesis)
+          setSettingsAgentCount(freshConfig.swarm.agentCount)
+          setSettingsProviderShares(freshConfig.swarm.providerShares ?? {})
           const models: Record<string, string> = {}
           for (const p of PROVIDERS) {
             const m = (freshConfig.providers as Record<string, { model?: string }>)[p.id]?.model
@@ -303,6 +309,8 @@ export function App({
             existingKeys={settingsKeys}
             swarmPrimary={settingsSwarmPrimary}
             swarmSynthesis={settingsSwarmSynthesis}
+            swarmAgentCount={settingsAgentCount}
+            providerShares={settingsProviderShares}
             currentModels={settingsModels}
             onKeySaved={handleKeySaved}
             onClose={handleSettingsClose}
