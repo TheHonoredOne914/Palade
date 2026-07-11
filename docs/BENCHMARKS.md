@@ -1,72 +1,108 @@
-# Palade Hybrid Swarm — Benchmark Report
+# Palade Benchmark Report
 
-Statistical performance of the Palade Hybrid AI Engine, run as a dual-provider swarm:
-**OpenRouter** (`tencent/hy3:free`) for complex domains, **OpenCode Zen** for baseline validation.
+Reproducible run of the Palade swarm against real public repositories. Every finding
+below was produced by the tool and the highlighted ones were verified by hand against
+source. No numbers here are aspirational — they come from the run described in the
+[Reproduce](#reproduce) section.
 
-## 1. Dataset
+## Setup
 
-Five production-grade codebases spanning diverse domains, architectures, and sizes:
-
-| Repository | Domain | Files Analyzed | LOC (Analyzed) |
-| :--- | :--- | ---: | ---: |
-| Sveld | Compiler / AST | 24 | ~3,500 |
-| DawnAI | Node.js Backend | 18 | ~2,100 |
-| Kreuzakt | Data Export / DB | 12 | ~1,800 |
-| Zod (`types.ts`) | Type System / Validation | 1 (capped to 50 chunks) | ~5,139 |
-| Axios (`Axios.js`) | HTTP Networking | 1 | ~284 |
-
-## 2. Detection Performance
-
-### A. Seeded bugs (recall)
-
-7 critical bugs were known or seeded in the first three repositories (Sveld, DawnAI,
-Kreuzakt). The swarm was tasked with finding them with no prior context.
-
-| Metric | Score | Explanation |
-| :--- | :--- | :--- |
-| **Recall (known bugs)** | **100% (7/7)** | All 7 target bugs found, including Unbounded Memory Growth in Kreuzakt and a Thread Deadlock in DawnAI |
-| **Precision (High/Critical)** | **100%** | Every finding the swarm flagged High or Critical was manually verified by a human as a legitimate, actionable defect |
-
-### B. Previously unreported defects (Zod & Axios)
-
-The swarm was then pointed at unmodified production source of two of the most-downloaded
-JavaScript libraries in the world. It surfaced **5 previously unreported defects** that had
-passed human code review:
-
-| Library | Severity | Finding |
-| :--- | :--- | :--- |
-| Axios | Critical | Synchronous interceptor loop swallows exceptions and dispatches requests without validation *(patched — upstream PR opened)* |
-| Axios | High | Synchronous interceptor error propagation breaks the interceptor chain |
-| Axios | High | Header cleanup ignores the options HTTP method |
-| Zod | High | Swallowed runtime exceptions in `_parseSync` logic disguised as async aborts |
-| Zod | High | Severe CPU penalty from recompiling `RegExp` objects per-validated-string in `timeRegex` |
-
-## 3. Output Volume
-
-| Metric | Total |
+| Setting | Value |
 | :--- | :--- |
-| Total findings generated | ~250+ |
-| Zod findings | 55 (0 Critical, 2 High, 18 Medium, 29 Low, 6 Info) |
-| Axios findings | 22 (1 Critical, 3 High, 6 Medium, 10 Low, 2 Info) |
-| Arbitration success rate | 100% |
+| Swarm | 2-provider hybrid: **OpenRouter** + **OpenCode Zen** |
+| OpenRouter model | `tencent/hy3:free` |
+| OpenCode Zen model | `deepseek-v4-flash-free` |
+| Agents | 6 (security, architecture, performance, maintainability, deadCode, testIntelligence) |
+| Provider shares | `{ openrouter: 3, 'opencode-zen': 3 }` |
+| Batch concurrency | 1 (serialized, to stay inside free-tier rate limits) |
 
-## 4. Arbitration Efficiency
+## Targets & Results
 
-When multiple agents (e.g. Security vs. Pragmatism) flag conflicting resolutions for the
-same line of code, the Verdict engine arbitrates.
+| Repository | File(s) | Agents parsed | Findings | Run time |
+| :--- | :--- | :--- | ---: | ---: |
+| [expressjs/cors](https://github.com/expressjs/cors) | `lib/index.js` | 6 / 6 | 6 | 338s |
+| [auth0/node-jsonwebtoken](https://github.com/auth0/node-jsonwebtoken) | `sign.js`, `verify.js`, `decode.js` | 4 / 6 | 7 | 320s |
 
-- **Conflict volume:** in Zod's `types.ts` (5,000+ lines), agents raised **40+ distinct architectural conflicts**
-- **Resolution:** 100% synthesized into single coherent verdicts — e.g. recommending a unified typed-error class to replace Zod's brittle string-matching logic
+### expressjs/cors — findings
 
-## Conclusion
+| Severity | Location | Finding |
+| :--- | :--- | :--- |
+| Medium | `lib/index.js:144` | `applyHeaders` uses recursion over the header array — stack-overflow risk on deeply nested input |
+| Low | `lib/index.js:19` | `isOriginAllowed` recurses over allowed-origin arrays (same pattern) |
+| Low | `lib/index.js:208` | Unnecessary object creation in hot path |
+| Info | — | Duplicated CSV-join and unvalidated `maxAge` trace to one missing header-serialization/validation helper |
 
-By routing specialized tasks to frontier models (via OpenRouter) alongside fast baseline
-models, the hybrid swarm achieved 100% precision and recall on the seeded-bug set and
-surfaced real, previously unreported defects in enterprise-grade libraries. Fixes for
-findings are made by humans (or their tools) — Palade reports; it does not write code.
+✅ **Hand-verified defect** (surfaced on a prior single-provider run of the same file): in
+`configureOrigin` (`lib/index.js:57–62`), when a consumer sets `origin: true` and a request
+arrives with **no `Origin` header** (server-to-server, curl, health checks), `requestOrigin`
+is `undefined`, `isOriginAllowed(undefined, true)` returns `true` (`!!true`), and cors emits
+the invalid header `Access-Control-Allow-Origin: undefined`. Reachable on the library's
+public API.
 
-## Methodology notes
+### auth0/node-jsonwebtoken — findings
 
-- Seeded-bug recall measures detection of *known* defects; real-world recall on unknown defects is inherently unmeasurable.
-- Precision was human-verified on High/Critical findings only; lower-severity findings were not exhaustively adjudicated.
-- Reproduce with: `palade review --mode standard` against the pinned versions of each target repository, `providerShares` split across OpenRouter + OpenCode Zen.
+| Severity | Location | Finding |
+| :--- | :--- | :--- |
+| Medium | `sign.js:11` / `verify.js` | Algorithm enums (`PUB_KEY_ALGS`, `EC_KEY_ALGS`, …) defined independently in both files — drift risk |
+| Medium | `sign.js:114` | Key material re-parsed (`createPrivateKey`) on every sign call unless already a `KeyObject` |
+| Medium | `verify.js:120` | Key material re-parsed on every verify call — same pattern |
+| Low | `verify.js:239` | Redundant key-size check |
+| Low | `sign.js:126` | Key-type vs. algorithm check duplicated across files |
+| Low | `index.js:5` | Lodash micro-packages duplicating stdlib |
+
+✅ **Hand-verified**: `sign.js:114` — `createPrivateKey(secretOrPrivateKey)` executes on
+every call when a caller passes a PEM string instead of a cached `KeyObject`; the parse is
+not memoized. A real, if minor, per-call cost.
+
+## Reliability Notes (read before trusting the numbers)
+
+The swarm's output quality is bounded by the model behind each agent:
+
+- **Model choice matters more than anything else.** On a wider free-tier mix
+  (`groq/llama-3.3-70b`, `nvidia/minimax-m3`, `cerebras/llama3.1-8b`), 2–4 of 6 agents per
+  run returned unparseable output — weak models emit prose instead of strict JSON, and
+  groq/nvidia hit `429` rate limits under parallel load. Restricting the swarm to
+  `hy3:free` + `deepseek-v4-flash-free` took cors to **6/6 agents parsing**.
+- **`hy3:free` is reliable but slow.** On the larger 5-chunk jsonwebtoken input the
+  **security agent timed out** (240s), so that run has no security findings. Raise
+  `swarm.timeoutMs` or narrow the input for security-critical files.
+- **`providerShares` measurably helps.** Spreading agents across two providers instead of
+  hammering one cut rate-limit failures versus a single-provider swarm.
+
+**Bottom line:** the pipeline works and surfaces real, verifiable defects. Precision and
+recall depend entirely on giving each agent a model that can both reason and emit clean
+JSON within the timeout — not on the engine.
+
+## Reproduce
+
+```bash
+npm install -g palade
+git clone --depth 1 https://github.com/expressjs/cors && cd cors
+palade init      # then set OPENROUTER_API_KEY + OPENCODE_ZEN_API_KEY
+```
+
+`palade.config.ts`:
+
+```typescript
+export default {
+  providers: {
+    openrouter: { model: 'tencent/hy3:free' },
+    'opencode-zen': { model: 'deepseek-v4-flash-free' },
+  },
+  swarm: {
+    primary: 'openrouter',
+    synthesis: 'openrouter',
+    agentCount: 6,
+    maxConcurrentBatches: 1,
+    timeoutMs: 240000,
+    providerShares: { openrouter: 3, 'opencode-zen': 3 },
+  },
+}
+```
+
+```bash
+palade review --file lib/index.js --format json
+```
+
+Add `palade.config.ts`, `.palade/`, `node_modules/`, and `test/` to `.paladeignore` so the
+config file's own contents aren't reviewed.
