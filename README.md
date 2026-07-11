@@ -20,6 +20,7 @@
 ## 📚 Table of Contents
 
 - [Why Palade?](#-why-palade)
+- [Benchmarks](#-benchmarks)
 - [Quick Start](#-quick-start)
 - [How It Works — The Five-Phase Pipeline](#-how-it-works--the-five-phase-pipeline)
 - [The Agent Swarm](#-the-agent-swarm)
@@ -48,6 +49,24 @@ Traditional AI coding assistants send your entire file to a single language mode
 4. **📋 Synthesis** — merges, deduplicates, and compiles everything into a prioritized executive summary with ROI estimates — as interactive HTML, JSON, and Markdown.
 
 **Palade does code review — nothing else.** It never refactors, executes, or generates code. Findings are read-only until a human acts on them.
+
+---
+
+## 🏆 Benchmarks
+
+Benchmarked as a hybrid swarm (OpenRouter + OpenCode Zen) against **5 production codebases** — including unmodified source from two of the most-downloaded JavaScript libraries in the world:
+
+| Metric | Result |
+| :--- | :--- |
+| **Recall** on 7 seeded critical bugs (3 repos) | **100% (7/7)** |
+| **Precision** on High/Critical findings (human-verified) | **100%** |
+| Previously unreported defects found in **Axios** | 1 Critical + 2 High *(critical one patched — upstream PR opened)* |
+| Previously unreported defects found in **Zod** | 2 High (swallowed exceptions, per-call `RegExp` recompilation) |
+| Agent conflicts arbitrated in Zod's `types.ts` alone | 40+, all resolved into coherent verdicts |
+
+Highlights: an **unbounded memory growth** bug, a **thread deadlock**, and a critical Axios interceptor flaw that **swallows exceptions and dispatches unvalidated requests** — all found with zero prior context.
+
+📊 Full methodology, dataset, and per-repo findings: **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**
 
 ---
 
