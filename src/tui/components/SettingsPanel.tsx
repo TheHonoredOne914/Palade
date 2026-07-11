@@ -4,6 +4,7 @@ import TextInput from 'ink-text-input'
 import { saveApiKey, saveConfigValue, PROVIDERS } from '../../config/apiKey.js'
 import type { ProviderId } from '../../config/apiKey.js'
 import { fetchModels } from '../../config/models.js'
+import { BUILTIN_NAMES } from '../../agents/registry.js'
 
 // (uicli-008) Both this panel and cli/commands/settings.ts's interactive
 // flow already share the single PROVIDERS source (config/apiKey.ts) for the
@@ -26,13 +27,17 @@ interface SettingsPanelProps {
   existingKeys: Record<string, string>
   swarmPrimary: string
   swarmSynthesis: string
+  swarmAgentCount: number
+  providerShares: Record<string, number>
   currentModels: Record<string, string>
   onKeySaved: (providerId: string, key: string) => void
   onClose: (message?: string) => void
 }
 
-type FocusField = 'key' | 'model' | 'swarm' | 'synthesis'
-const FOCUS_ORDER: FocusField[] = ['key', 'model', 'swarm', 'synthesis']
+type FocusField = 'key' | 'model' | 'share' | 'agents' | 'swarm' | 'synthesis'
+const FOCUS_ORDER: FocusField[] = ['key', 'model', 'share', 'agents', 'swarm', 'synthesis']
+
+const MAX_AGENTS = BUILTIN_NAMES.length
 
 interface ModelFetchState {
   status: 'loading' | 'loaded'
@@ -45,6 +50,8 @@ export function SettingsPanel({
   existingKeys,
   swarmPrimary,
   swarmSynthesis,
+  swarmAgentCount,
+  providerShares,
   currentModels,
   onKeySaved,
   onClose,
@@ -73,6 +80,10 @@ export function SettingsPanel({
   )
   const [localSwarmPrimary, setLocalSwarmPrimary] = useState(swarmPrimary)
   const [localSwarmSynthesis, setLocalSwarmSynthesis] = useState(swarmSynthesis)
+  const [agentCount, setAgentCount] = useState(Math.min(swarmAgentCount, MAX_AGENTS))
+  const [savedAgentCount, setSavedAgentCount] = useState(swarmAgentCount)
+  const [shares, setShares] = useState<Record<string, number>>(providerShares)
+  const [savedShares, setSavedShares] = useState<Record<string, number>>(providerShares)
 
   const selectedProvider = PROVIDERS[selectedProviderIdx]
   const modelEntry = modelState[selectedProvider.id]
@@ -161,6 +172,32 @@ export function SettingsPanel({
     [projectRoot]
   )
 
+  const saveAgentCount = useCallback(
+    async (count: number) => {
+      try {
+        await saveConfigValue(projectRoot, 'swarm.agentCount', count)
+        setSavedAgentCount(count)
+        setMessage(`✓ swarm.agentCount set to ${count}`)
+      } catch (err) {
+        setMessage(`✗ Error: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+    [projectRoot]
+  )
+
+  const saveShare = useCallback(
+    async (providerId: string, count: number) => {
+      try {
+        await saveConfigValue(projectRoot, `swarm.providerShares.${providerId}`, count)
+        setSavedShares((prev) => ({ ...prev, [providerId]: count }))
+        setMessage(`✓ ${providerId} agent share set to ${count}`)
+      } catch (err) {
+        setMessage(`✗ Error: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+    [projectRoot]
+  )
+
   useInput((_input, key) => {
     if (key.upArrow) {
       setFocusField(
@@ -184,6 +221,36 @@ export function SettingsPanel({
       }
       if (key.return) {
         saveModel(models[modelIdx])
+        return
+      }
+    }
+    if (focusField === 'share') {
+      const id = selectedProvider.id
+      const current = shares[id] ?? 0
+      if (key.leftArrow) {
+        setShares((prev) => ({ ...prev, [id]: Math.max(0, current - 1) }))
+        return
+      }
+      if (key.rightArrow) {
+        setShares((prev) => ({ ...prev, [id]: Math.min(agentCount, current + 1) }))
+        return
+      }
+      if (key.return) {
+        saveShare(id, current)
+        return
+      }
+    }
+    if (focusField === 'agents') {
+      if (key.leftArrow) {
+        setAgentCount((c) => Math.max(1, c - 1))
+        return
+      }
+      if (key.rightArrow) {
+        setAgentCount((c) => Math.min(MAX_AGENTS, c + 1))
+        return
+      }
+      if (key.return) {
+        saveAgentCount(agentCount)
         return
       }
     }
@@ -330,6 +397,47 @@ export function SettingsPanel({
           </Box>
         </Box>
       )}
+
+      {/* Agent share field (per provider tab) */}
+      <Box marginBottom={1}>
+        <Text color={focusField === 'share' ? '#FF3366' : '#9CA3AF'} bold={focusField === 'share'}>
+          {focusField === 'share' ? '▸ ' : '  '}
+          Agent share: {'< '}
+        </Text>
+        <Text color={focusField === 'share' ? '#00D0FF' : '#D1D5DB'}>
+          {shares[selectedProvider.id] ?? 0}
+        </Text>
+        <Text color={focusField === 'share' ? '#FF3366' : '#9CA3AF'}>{' >'}</Text>
+        <Text color="#4B5563" dimColor>
+          {'  ('}
+          {Object.values(shares).reduce((a, b) => a + b, 0)}
+          {'/'}
+          {agentCount}
+          {' allocated, saved: '}
+          {savedShares[selectedProvider.id] ?? 0}
+          {'; unallocated agents use the swarm provider)'}
+        </Text>
+      </Box>
+
+      {/* Agent count field */}
+      <Box marginBottom={1}>
+        <Text
+          color={focusField === 'agents' ? '#FF3366' : '#9CA3AF'}
+          bold={focusField === 'agents'}
+        >
+          {focusField === 'agents' ? '▸ ' : '  '}
+          Agent count: {'< '}
+        </Text>
+        <Text color={focusField === 'agents' ? '#00D0FF' : '#D1D5DB'}>{agentCount}</Text>
+        <Text color={focusField === 'agents' ? '#FF3366' : '#9CA3AF'}>{' >'}</Text>
+        <Text color="#4B5563" dimColor>
+          {'  (max '}
+          {MAX_AGENTS}
+          {', saved: '}
+          {savedAgentCount}
+          {')'}
+        </Text>
+      </Box>
 
       {/* Swarm provider field */}
       <Box marginBottom={1}>

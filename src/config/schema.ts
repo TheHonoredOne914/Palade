@@ -55,6 +55,18 @@ export const PaladeConfigSchema = z
             z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
           )
           .optional(),
+        // Declarative provider distribution: how many of the active agents run
+        // on each provider (e.g. { 'opencode-zen': 5, openrouter: 3 }).
+        // Expanded into per-agent agentProviders entries at load time
+        // (see loader.ts expandProviderShares); explicit agentProviders
+        // entries win over expanded ones. Agents not covered by any share
+        // fall through to swarm.primary.
+        providerShares: z
+          .record(
+            z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama']),
+            z.number().int().min(0)
+          )
+          .optional(),
         agentCount: z.number().int().min(1).max(12).default(8),
         timeoutMs: z.number().int().default(600000),
         maxReviewTokens: z.number().int().min(10_000).default(200_000),

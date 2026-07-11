@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { PaladeConfigSchema, type PaladeConfig } from './schema.js'
 import { DEFAULT_CONFIG } from './defaults.js'
 import { PaladeConfigError } from '../errors/types.js'
+import { BUILTIN_NAMES } from '../agents/registry.js'
 
 dotenvConfig()
 
@@ -86,6 +87,28 @@ function buildEnvConfig(): Partial<PaladeConfig> {
   return {
     providers: providers as PaladeConfig['providers'],
   }
+}
+
+/**
+ * Expand a declarative provider-share map ({ 'opencode-zen': 5, openrouter: 3 })
+ * into per-agent agentProviders entries. Shares are consumed in the map's
+ * insertion order, assigned over the active agents in registry priority order
+ * (BUILTIN_NAMES prefix of agentCount). Shares beyond agentCount are ignored;
+ * agents left without a share get no entry and fall through to swarm.primary.
+ */
+export function expandProviderShares(
+  shares: Record<string, number>,
+  agentCount: number
+): Record<string, string> {
+  const agents = BUILTIN_NAMES.slice(0, agentCount)
+  const expanded: Record<string, string> = {}
+  let i = 0
+  for (const [provider, count] of Object.entries(shares)) {
+    for (let n = 0; n < count && i < agents.length; n++) {
+      expanded[agents[i++]] = provider
+    }
+  }
+  return expanded
 }
 
 function formatZodError(error: z.ZodError): string {
@@ -226,6 +249,16 @@ export async function loadConfig(): Promise<PaladeConfig> {
       'schema',
       'Check your palade.config.ts against the schema.'
     )
+  }
+
+  // Resolve declarative provider shares into the per-agent map the router
+  // actually consumes (getProvider('primary', agentName)); explicit
+  // agentProviders entries win over expanded shares.
+  if (result.data.swarm.providerShares) {
+    result.data.swarm.agentProviders = {
+      ...expandProviderShares(result.data.swarm.providerShares, result.data.swarm.agentCount),
+      ...result.data.swarm.agentProviders,
+    } as PaladeConfig['swarm']['agentProviders']
   }
 
   // Warn if allConfiguredProviders is empty but the user has a swarm.primary set

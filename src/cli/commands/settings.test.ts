@@ -74,6 +74,23 @@ describe('cli/commands/settings setNestedValue', () => {
     expect(out).not.toContain("model: 'groq-default'")
   })
 
+  it('creates a missing intermediate section with quoted non-identifier keys', () => {
+    const out = setNestedValue(SAMPLE, 'swarm.providerShares.opencode-zen', 3)
+    expect(out).toContain('providerShares: {')
+    expect(out).toContain("'opencode-zen': 3")
+    // inserted inside swarm, before its closing brace — existing keys intact
+    expect(out).toContain('timeoutMs: 120000')
+    // no bare (invalid TS) hyphenated key
+    expect(out).not.toMatch(/^\s*opencode-zen:/m)
+  })
+
+  it('inserts into a providerShares section that already exists', () => {
+    const withShares = setNestedValue(SAMPLE, 'swarm.providerShares.opencode-zen', 3)
+    const out = setNestedValue(withShares, 'swarm.providerShares.groq', 2)
+    expect(out).toContain("'opencode-zen': 3")
+    expect(out).toContain('groq: 2')
+  })
+
   it('updates a deeply nested key (3 parts)', () => {
     const nested = `export default {
   providers: {
