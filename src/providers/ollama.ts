@@ -129,6 +129,10 @@ export default class OllamaProvider implements IProvider {
     return this.dead
   }
 
+  isDeadFromAuth(): boolean {
+    return this.dead
+  }
+
   async isAvailable(): Promise<boolean> {
     if (this.dead) return false
     try {

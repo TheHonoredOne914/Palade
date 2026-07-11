@@ -404,10 +404,10 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                   projectRoot: baseTempDir,
                   noSynthesis: true,
                   softTokenLimit: config.swarm.economyMode
-                    ? Math.min(6000, config.swarm.softTokenLimit)
+                    ? Math.min(ECONOMY_SOFT_TOKEN_CAP, config.swarm.softTokenLimit)
                     : config.swarm.softTokenLimit,
                   hardChunkLimit: config.swarm.economyMode
-                    ? Math.min(3000, config.swarm.hardChunkLimit)
+                    ? Math.min(ECONOMY_HARD_CHUNK_CAP, config.swarm.hardChunkLimit)
                     : config.swarm.hardChunkLimit,
                   signal: opts.signal,
                   onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {

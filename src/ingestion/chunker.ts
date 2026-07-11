@@ -19,8 +19,11 @@ function makeChunkId(filePath: string, startLine: number, endLine: number): stri
   return `${filePath}:${startLine}-${endLine}`
 }
 
-export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
-  if (chunk.tokenCount <= MAX_TOKENS) return [chunk]
+export function splitLargeChunk(
+  chunk: CodeChunk,
+  hardChunkLimit: number = MAX_TOKENS
+): CodeChunk[] {
+  if (chunk.tokenCount <= hardChunkLimit) return [chunk]
 
   const lines = chunk.content.split('\n')
   const chunks: CodeChunk[] = []
@@ -36,8 +39,8 @@ export function splitLargeChunk(chunk: CodeChunk): CodeChunk[] {
 
     let endIdx = Math.min(startIdx + CHUNK_LINES, lines.length)
     if (prefixChars > 0) {
-      // Shrink the first sub-chunk so prefix + content stays within MAX_TOKENS.
-      const maxContentChars = MAX_TOKENS * CHARS_PER_TOKEN - prefixChars
+      // Shrink the first sub-chunk so prefix + content stays within hardChunkLimit.
+      const maxContentChars = hardChunkLimit * CHARS_PER_TOKEN - prefixChars
       let charCount = 0
       let adjustedEnd = startIdx
       for (let i = startIdx; i < endIdx; i++) {

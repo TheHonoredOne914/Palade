@@ -17,8 +17,24 @@ const MAX_HISTORY_ENTRIES = 50
 // `entries.slice(0)`, i.e. the *entire* untrimmed array — when maxEntries is
 // 0, silently defeating the retention cap instead of producing an empty
 // array. Shared by writeHistory and appendEntry so both trim consistently.
+//
+// Trims 'full' and 'diff' kind entries against separate retention budgets
+// (each gets its own slice of maxEntries) instead of one flat FIFO cap over
+// the combined stream — a flat cap let frequent `palade diff` runs (e.g. in
+// CI) evict every 'full'-kind entry within the retention window, silently
+// breaking score delta/trend tracking (getPreviousScore and the sparkline
+// both care about the chronologically-last 'full' entry) (scorer-002).
+// Entries with no `kind` (written before the diff/full distinction existed)
+// are treated as 'full', mirroring getPreviousScore's `kind !== 'diff'`
+// filter. The combined result preserves the original chronological
+// interleaving of both kinds.
 function trimEntries(entries: ScoreHistoryEntry[], maxEntries: number): ScoreHistoryEntry[] {
-  return maxEntries > 0 ? entries.slice(-maxEntries) : []
+  if (maxEntries <= 0) return []
+  const diffEntries = entries.filter((e) => e.kind === 'diff')
+  const fullEntries = entries.filter((e) => e.kind !== 'diff')
+  const keptDiff = new Set(diffEntries.slice(-maxEntries))
+  const keptFull = new Set(fullEntries.slice(-maxEntries))
+  return entries.filter((e) => keptDiff.has(e) || keptFull.has(e))
 }
 
 function isValidCategoryScore(item: unknown): item is CategoryScore {

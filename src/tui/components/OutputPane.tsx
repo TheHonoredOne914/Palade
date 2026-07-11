@@ -2,18 +2,7 @@ import React from 'react'
 import { Box, Text } from 'ink'
 
 export interface OutputLine {
-  type:
-    | 'header'
-    | 'config-error'
-    | 'input'
-    | 'output'
-    | 'success'
-    | 'error'
-    | 'warn'
-    | 'dim'
-    | 'divider'
-    | 'finding'
-    | 'raw'
+  type: 'header' | 'input' | 'output' | 'success' | 'error' | 'warn' | 'dim' | 'divider' | 'finding'
   text: string
   severity?: 'critical' | 'high' | 'medium' | 'low' | 'info'
   /** Stable identifier assigned when the line is appended. Used as the React
