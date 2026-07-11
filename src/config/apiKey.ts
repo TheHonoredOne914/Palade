@@ -215,8 +215,7 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
   // Longest existing prefix of targetPath wins; prefixLen === targetPath.length
   // means the parent exists and we just insert the key line.
   for (let prefixLen = targetPath.length; prefixLen >= 0; prefixLen--) {
-    const loc =
-      prefixLen === 0 ? findRootClose() : findSectionClose(targetPath.slice(0, prefixLen))
+    const loc = prefixLen === 0 ? findRootClose() : findSectionClose(targetPath.slice(0, prefixLen))
     if (!loc) continue
     const [insertAt, insertIndent] = loc
 
