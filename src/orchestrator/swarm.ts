@@ -17,7 +17,8 @@ import {
   ECONOMY_SOFT_TOKEN_CAP,
   ECONOMY_HARD_CHUNK_CAP,
 } from './scheduler.js'
-import { getFallbackStats } from '../providers/router.js'
+import { getFallbackStats, updateAgentProviders } from '../providers/router.js'
+import { expandProviderShares } from '../config/loader.js'
 import { isFatalAuthError } from '../providers/errorClassification.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 import { applyLineIgnores } from '../ingestion/annotationParser.js'
@@ -81,6 +82,22 @@ export async function runSwarm(
     options.agentCount
   )
 
+  // config-load time's expandProviderShares (config/loader.ts) assumes the
+  // standard-mode agent roster (BUILTIN_NAMES prefix of agentCount) — modes
+  // with agentOverrides (onboard, ghost) dispatch a different fixed agent
+  // list that ignores agentCount entirely, so that expansion can silently not
+  // match who actually runs. Re-expand here against the real resolved roster
+  // now that getAgentsForMode() has run (providers-002).
+  if (options.providerShares) {
+    updateAgentProviders(
+      expandProviderShares(
+        options.providerShares,
+        modeAgents.length,
+        modeAgents.map((a) => a.name)
+      )
+    )
+  }
+
   let agents: IAgent[] = modeAgents
   if (options.economyMode) {
     const builtInAgents = modeAgents.filter((a) => !(a instanceof CustomAgent))
@@ -109,6 +126,11 @@ export async function runSwarm(
   const memory = new AgentMemory()
 
   const agentTimings: Partial<Record<AgentName, number>> = {}
+  // Categories whose every batch errored out (agentError set, zero findings
+  // recovered) — distinct from a category that genuinely ran clean. Threaded
+  // through SwarmResult so calculateScore can exclude these instead of
+  // scoring them a free 100 (scorer-001).
+  const failedCategories = new Set<AgentName>()
 
   // Augment the caller-supplied context with data only runSwarm has: the
   // project-wide known file list (so verifyCriticalHighFindings can tell a
@@ -146,7 +168,16 @@ export async function runSwarm(
     const allFindings: AgentFinding[] = []
     let agentError: Error | undefined = undefined
     try {
-      const batches = scheduleBatches(reviewChunks, softTokenLimit, hardChunkLimit)
+      // Economy mode's tightened caps exist for CombinedAnalyzer's larger
+      // multi-domain output — a CustomAgent instance runs as a single-domain
+      // call just like standard mode, so it doesn't need (and shouldn't be
+      // squeezed by) the smaller economy budget. Use the caller's original,
+      // non-narrowed limits for it instead (orchestrator-005).
+      const agentSoftTokenLimit =
+        agent instanceof CustomAgent ? options.softTokenLimit : softTokenLimit
+      const agentHardChunkLimit =
+        agent instanceof CustomAgent ? options.hardChunkLimit : hardChunkLimit
+      const batches = scheduleBatches(reviewChunks, agentSoftTokenLimit, agentHardChunkLimit)
       const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>
@@ -267,6 +298,18 @@ export async function runSwarm(
           `\n⚠ ${agent.name}: ${agentError.message} (keeping ${allFindings.length} partial findings)`
         )
       )
+    }
+
+    // This agent's batches all errored out and none produced a finding —
+    // mark it (and, for the economy-mode combined agent, every domain it
+    // covers) as failed so calculateScore doesn't average in a free 100 for
+    // a category that never actually got reviewed (scorer-001).
+    if (agentError && allFindings.length === 0) {
+      if (agent instanceof CombinedAnalyzer) {
+        for (const d of agent.domains) failedCategories.add(d.name)
+      } else {
+        failedCategories.add(agent.name)
+      }
     }
 
     // Drop @palade-ignored findings here, before they ever reach memory —
@@ -428,6 +471,7 @@ export async function runSwarm(
     synthesis,
     agentTimings,
     agentsRun: modeAgents.map((a) => a.name),
+    failedCategories: Array.from(failedCategories),
     totalChunks: reviewChunks.length,
     totalTokensEstimated: estimateTotalTokens(reviewChunks),
     durationMs: Date.now() - startTime,

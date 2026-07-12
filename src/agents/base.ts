@@ -473,6 +473,19 @@ export async function verifyCriticalHighFindings(
   signal?: AbortSignal
 ): Promise<AgentFinding[]> {
   const knownFilePaths = context?.knownFilePaths
+  // The verifier used to see only the bare code chunk — no spec/constitution
+  // — so a finding correctly raised by cross-referencing the business-logic
+  // spec would get silently dropped here: the verifier, blind to the
+  // violated rule, has no way to confirm it. Mirror the same spec/
+  // constitution block format buildSystemPrompt uses so the verifier has the
+  // same information the original finding-generating call had (agents-002).
+  const specConstitutionBlock =
+    (context?.spec
+      ? `\n\n=== BUSINESS LOGIC SPECIFICATION ===\n${context.spec}\n====================================\n\nCRITICAL: Cross-reference the code against the business logic specification above to ensure it is implemented correctly.`
+      : '') +
+    (context?.constitution
+      ? `\n\nAGENT CONSTITUTION (BEHAVIORAL GUIDELINES):\n${context.constitution}`
+      : '')
   const verifyOne = async (f: AgentFinding): Promise<AgentFinding | null> => {
     const codeChunk = f.filePath
       ? chunks.find(
@@ -498,7 +511,7 @@ export async function verifyCriticalHighFindings(
     }
     try {
       const verifyResponse = await provider.complete({
-        systemPrompt: 'You are an expert verifier. Reply strictly YES or NO.',
+        systemPrompt: `You are an expert verifier. Reply strictly YES or NO.${specConstitutionBlock}`,
         userPrompt: `Does the following code ACTUALLY contain this vulnerability/issue?
 Issue: ${f.title} - ${f.description}
 
@@ -516,7 +529,11 @@ Reply strictly YES or NO.`,
       cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
       cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
       const match = cleaned.match(/\b(YES|NO)\b/i)
-      if (match ? match[1].toUpperCase() === 'YES' : cleaned.toUpperCase().includes('YES')) {
+      // Fail closed: only a standalone YES/NO word confirms or drops a
+      // finding. A substring scan for "yes" anywhere in the reply (e.g.
+      // "yesterday") could wrongly confirm a finding the model never
+      // actually affirmed (agents-001).
+      if (match?.[1].toUpperCase() === 'YES') {
         return f
       }
       console.log(

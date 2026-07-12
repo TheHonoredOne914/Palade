@@ -225,9 +225,15 @@ export class FallbackProvider implements IProvider {
       // probe) so this only skips providers explicitly marked dead this
       // session.
       if (provider.isDead?.()) {
+        // Distinguish the two reasons a provider can be marked dead, mirroring
+        // isDeadFromAuth()'s distinct auth-specific signal used elsewhere in
+        // this file (providers-001) — a provider dead from a 401/403 didn't
+        // necessarily also hit its quota.
         attempts.push({
           provider: provider.name,
-          finalError: 'skipped — marked dead earlier this session (hard quota limit)',
+          finalError: provider.isDeadFromAuth?.()
+            ? 'skipped — marked dead earlier this session (auth error)'
+            : 'skipped — marked dead earlier this session (hard quota limit)',
         })
         continue
       }
@@ -456,6 +462,19 @@ function withRoleStats(provider: IProvider, role: ProviderRole): IProvider {
       return response
     },
   }
+}
+
+/**
+ * Overwrite the per-agent provider routing table getProvider() reads. Used by
+ * swarm.ts to re-expand config.swarm.providerShares against the ACTUAL agent
+ * roster for this run once getAgentsForMode() has resolved it — the
+ * config-load-time expansion (config/loader.ts's expandProviderShares) has no
+ * idea which mode will run, so it assumes the standard-mode agent list, which
+ * modes with agentOverrides (onboard, ghost) don't follow (providers-002).
+ */
+export function updateAgentProviders(agentProviders: Record<string, string>): void {
+  if (!activeConfig) return
+  activeConfig.swarm.agentProviders = agentProviders as PaladeConfig['swarm']['agentProviders']
 }
 
 export function getProvider(role: ProviderRole, agentName?: string): IProvider {

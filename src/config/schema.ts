@@ -7,6 +7,7 @@ import {
 } from './defaults.js'
 import { SEVERITY_PENALTY } from '../agents/base.js'
 import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS, DEFAULT_PENALTY_CAPS } from '../scorer/calculator.js'
+import { BUILTIN_NAMES } from '../agents/registry.js'
 
 export const ReportFormatSchema = z.enum(['html', 'json', 'md'])
 
@@ -67,7 +68,11 @@ export const PaladeConfigSchema = z
             z.number().int().min(0)
           )
           .optional(),
-        agentCount: z.number().int().min(1).max(12).default(8),
+        // Max is BUILTIN_NAMES.length — only that many built-in specialist
+        // agents exist. A higher configured value had no effect on the
+        // actual swarm but still inflated ingestion/estimator.ts's cost math
+        // by up to 50% (cli-001).
+        agentCount: z.number().int().min(1).max(BUILTIN_NAMES.length).default(8),
         timeoutMs: z.number().int().default(600000),
         maxReviewTokens: z.number().int().min(10_000).default(200_000),
         // Economy mode sends each batch of code to ONE combined multi-domain call
@@ -114,6 +119,12 @@ export const PaladeConfigSchema = z
         badge: z.boolean().default(true),
         badgePath: z.string().default(DEFAULT_BADGE_PATH),
         // Retention cap for history.json entries (oldest trimmed first).
+        // NOTE: applied PER-KIND, not to the combined file total — 'full' and
+        // 'diff' entries each get their own retention budget of this size (see
+        // history.ts's trimEntries), so history.json can grow to ~2x this
+        // number. This is intentional (a flat combined cap let frequent `palade
+        // diff` runs evict every 'full' entry and break score trend tracking)
+        // but the field name doesn't make that obvious (scorer-003).
         maxHistoryEntries: z.number().int().min(1).default(50),
         // Per-finding penalty applied when calculating category/total scores,
         // keyed by severity. Defaults match agents/base.ts's SEVERITY_PENALTY.

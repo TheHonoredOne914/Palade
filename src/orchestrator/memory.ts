@@ -94,6 +94,11 @@ export class AgentMemory {
       agents: Set<AgentName>
       filePaths: Set<string>
       lineRange?: [number, number]
+      // File-scoped symbol match key (e.g. "path::symbolName"), set only for
+      // the symbol-based grouping pass below. Used by the final dedup pass
+      // as a concrete match key when a lineRange is missing on one/both
+      // sides, instead of defaulting to "assume overlap" (orchestrator-001).
+      symbolKey?: string
     }[] = []
 
     // Cluster findings within the same file using a small union-find over
@@ -246,6 +251,7 @@ export class AgentMemory {
         },
         agents: entry.agents,
         filePaths: entry.files,
+        symbolKey,
       })
     }
 
@@ -256,9 +262,21 @@ export class AgentMemory {
     // CrossAgentFinding entries for what's really one cross-agent hit. Dedup
     // by sorted agent set + overlapping file paths (and overlapping line
     // ranges where both entries have one), keeping the first occurrence.
-    const rangesOverlap = (a?: [number, number], b?: [number, number]): boolean => {
-      if (!a || !b) return true // no line info on one/both sides — can't rule out overlap
-      return a[0] <= b[1] && b[0] <= a[1]
+    // A missing lineRange on one/both sides used to default to "assume
+    // overlap", which could cause a symbol-based cross-agent finding
+    // spanning multiple files to be silently discarded in favor of an
+    // earlier, narrower per-line/file-level finding whenever they merely
+    // shared one file and the same agent set. Require an explicit match
+    // instead: a true range overlap, or (when a lineRange is missing) the
+    // same concrete symbolKey (orchestrator-001).
+    const rangesOverlap = (
+      a?: [number, number],
+      b?: [number, number],
+      symA?: string,
+      symB?: string
+    ): boolean => {
+      if (a && b) return a[0] <= b[1] && b[0] <= a[1]
+      return symA !== undefined && symA === symB
     }
     const setsOverlap = <T>(a: Set<T>, b: Set<T>): boolean => {
       for (const v of a) if (b.has(v)) return true
@@ -274,7 +292,12 @@ export class AgentMemory {
         (existing) =>
           agentSetsEqual(existing.agents, candidate.agents) &&
           setsOverlap(existing.filePaths, candidate.filePaths) &&
-          rangesOverlap(existing.lineRange, candidate.lineRange)
+          rangesOverlap(
+            existing.lineRange,
+            candidate.lineRange,
+            existing.symbolKey,
+            candidate.symbolKey
+          )
       )
       if (isDuplicate) continue
       accepted.push(candidate)

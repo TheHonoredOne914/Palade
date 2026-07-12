@@ -41,18 +41,3 @@ export function scoreTheme(score: number) {
   if (score >= SCORE_THRESHOLDS.poor) return theme.scoreOrange
   return theme.scoreRed
 }
-
-export function severityTheme(sev: string) {
-  switch (sev) {
-    case 'critical':
-      return theme.critical
-    case 'high':
-      return theme.high
-    case 'medium':
-      return theme.medium
-    case 'low':
-      return theme.low
-    default:
-      return theme.infoSev
-  }
-}

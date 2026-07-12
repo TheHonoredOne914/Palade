@@ -180,22 +180,25 @@ export function scheduleBatches(
   }
 
   const processedChunks: CodeChunk[] = []
-  let overlapTokensTotal = 0
   for (const chunk of chunks) {
     const result = splitToLimit(chunk)
     processedChunks.push(...result.chunks)
-    overlapTokensTotal += result.overlapTokens
   }
 
-  // Subtract the overlap lines/chars counted in BOTH halves of every split so
-  // the reported total reflects actual reviewed content, not the inflated
-  // sum of children's tokenCount (orchestrator-003). Per-chunk tokenCount
-  // values themselves are left untouched — each chunk really is that size
-  // when sent to the provider, so batching below still bin-packs on the
-  // real per-call cost.
-  const totalTokens = processedChunks.reduce((sum, c) => sum + c.tokenCount, 0) - overlapTokensTotal
+  // Real (non-subtracted) per-chunk token sum — this is what the bin-packing
+  // loop below actually enforces softTokenLimit against (chunk.tokenCount is
+  // the real size sent to the provider for each chunk). The fast-path gate
+  // must use the SAME sum: gating on an overlap-adjusted total (subtracting
+  // the lines/chars double-counted across split halves, orchestrator-003)
+  // instead let a chunk set whose real token sum exceeds softTokenLimit slip
+  // through as one oversized batch whenever the overlap-adjusted total
+  // happened to fall under the limit (orchestrator-004). An overlap-adjusted
+  // total remains appropriate for user-facing token estimate reporting (see
+  // estimateTotalTokens/pipeline.ts's own logging) — just never for this
+  // batching decision.
+  const rawTotalTokens = processedChunks.reduce((sum, c) => sum + c.tokenCount, 0)
 
-  if (totalTokens <= softTokenLimit) {
+  if (rawTotalTokens <= softTokenLimit) {
     return [processedChunks]
   }
 
