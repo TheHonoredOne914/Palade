@@ -1,6 +1,13 @@
 import { type AgentName, BaseSpecialistAgent } from '../base.js'
 
 // Exported so economy mode's combined prompt (combined.ts) can reuse the
+// exact same partial-chunk warning text instead of a hand-paraphrased summary
+// that can drift from what this agent actually says, mirroring deadCode.ts's
+// DEAD_CODE_WARNING / testIntelligence.ts's TEST_INTELLIGENCE_WARNING
+// (agents-003).
+export const MAINTAINABILITY_WARNING = `CRITICAL CONTEXT WARNING: You are reviewing PARTIAL chunks of a codebase, not the entire program. Do NOT assert that logic is "duplicated across 2+ files" or that a naming convention is inconsistent "across the module" unless you can see both occurrences in the chunks provided. Only flag LOCALLY visible duplication/inconsistency, or duplication surfaced via injected cross-file context you were actually given.`
+
+// Exported so economy mode's combined prompt (combined.ts) can reuse the
 // exact same domain-focus text instead of a second hand-written copy
 // (agents-001).
 export const MAINTAINABILITY_FOCUS = `Additional maintainability focus:
@@ -12,7 +19,9 @@ const SYSTEM_PROMPT = `You are a specialist maintainability code reviewer. You a
 
 Your job: identify maintainability issues in the code provided.
 
-Before outputting any JSON, you MUST write a <thinking> block to trace data flow, analyze edge cases, and justify your logic. 
+${MAINTAINABILITY_WARNING}
+
+Before outputting any JSON, you MUST write a <thinking> block to trace data flow, analyze edge cases, and justify your logic.
 At the end of your <thinking> block, perform a Self-Critique: ask yourself if there are any conditions where the code is actually safe or if you might be hallucinating. If the code is safe, drop the finding.
 
 After your <thinking> block, return ONLY a valid JSON array of findings. No other text.

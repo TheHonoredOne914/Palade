@@ -22,6 +22,15 @@ export interface SwarmResult {
    * that never ran (scorer-001).
    */
   agentsRun?: AgentName[]
+  /**
+   * Names of categories among `agentsRun` whose every batch errored out
+   * (zero findings recovered) — these ran but never produced a real result,
+   * so they must be excluded (not scored a free 100) when computing the
+   * score (scorer-001). Callers should pass
+   * `agentsRun.filter(a => !failedCategories.includes(a))` as
+   * calculateScore's executedCategories.
+   */
+  failedCategories?: AgentName[]
   totalChunks: number
   totalTokensEstimated: number
   durationMs: number
@@ -76,6 +85,14 @@ export interface SwarmOptions {
    * Custom agents are additive and not counted against this cap.
    */
   agentCount?: number
+  /**
+   * Declarative provider distribution (config.swarm.providerShares), threaded
+   * through so runSwarm can re-expand it against the ACTUAL agent roster for
+   * this run once getAgentsForMode() has resolved it — the config-load-time
+   * expansion assumes the standard-mode agent list, which modes with
+   * agentOverrides (onboard, ghost) don't follow (providers-002).
+   */
+  providerShares?: Record<string, number>
   /**
    * Strict Triage mode: Throw an error if any file is dropped due to maxReviewTokens limit.
    */

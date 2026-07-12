@@ -403,6 +403,7 @@ export async function reviewCommand(
         maxReviewTokens: config.swarm.maxReviewTokens,
         customAgents: customAgentDefs,
         agentCount: config.swarm.agentCount,
+        providerShares: config.swarm.providerShares,
         economyMode: opts.economy ?? config.swarm.economyMode,
         exhaustive: opts.exhaustive,
         strictTriage: opts.strictTriage,
@@ -431,6 +432,19 @@ export async function reviewCommand(
     if (err instanceof ReviewCancelledError) {
       console.log(chalk.dim('\n  Review cancelled — no score or report generated.'))
       throw new CliExitError(0)
+    }
+    // A fatal auth error still carries whatever findings were collected
+    // before it was thrown (see swarm.ts's partialFindings attachment) —
+    // surface that so the user knows the run wasn't a total loss, even
+    // though this path currently doesn't write a report for them
+    // (orchestrator-003).
+    const partialFindings = (err as { partialFindings?: unknown[] })?.partialFindings
+    if (Array.isArray(partialFindings) && partialFindings.length > 0) {
+      console.warn(
+        chalk.yellow(
+          `  ⚠ ${partialFindings.length} finding(s) were collected before the fatal error and were discarded.`
+        )
+      )
     }
     if (err instanceof AllProvidersExhaustedError) {
       console.error(
@@ -465,7 +479,7 @@ export async function reviewCommand(
       complexityPenalties: config.score.complexityPenalties,
       penaltyCaps: config.score.penaltyCaps,
     },
-    swarmResult.agentsRun
+    swarmResult.agentsRun?.filter((a) => !swarmResult.failedCategories?.includes(a))
   )
 
   // 10. Append to history

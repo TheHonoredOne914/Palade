@@ -232,7 +232,17 @@ export function SettingsPanel({
         return
       }
       if (key.rightArrow) {
-        setShares((prev) => ({ ...prev, [id]: Math.min(agentCount, current + 1) }))
+        // Clamp to the remaining unallocated capacity across ALL providers,
+        // not just agentCount alone — otherwise several providers can each
+        // be pushed up to agentCount, silently producing a total that
+        // exceeds agentCount (expandProviderShares then truncates it based
+        // on object key order with no warning shown) (tui-001).
+        const othersTotal = Object.entries(shares).reduce(
+          (sum, [pid, val]) => (pid === id ? sum : sum + (val ?? 0)),
+          0
+        )
+        const maxForThis = Math.max(0, agentCount - othersTotal)
+        setShares((prev) => ({ ...prev, [id]: Math.min(maxForThis, current + 1) }))
         return
       }
       if (key.return) {

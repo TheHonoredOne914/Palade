@@ -257,6 +257,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           maxReviewTokens: config.swarm.maxReviewTokens,
           customAgents: customAgentDefs,
           agentCount: config.swarm.agentCount,
+          providerShares: config.swarm.providerShares,
           economyMode: config.swarm.economyMode,
           // A large diff used to hard-abort the whole run the moment triage
           // dropped any file for the token budget, unlike `review` (which
@@ -289,6 +290,18 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       console.error(
         theme.error(`  Analysis failed: ${err instanceof Error ? err.message : String(err)}`)
       )
+      // A fatal auth error still carries whatever findings were collected
+      // before it was thrown (see swarm.ts's partialFindings attachment) —
+      // surface that so the user knows the run wasn't a total loss
+      // (orchestrator-003).
+      const partialFindings = (err as { partialFindings?: unknown[] })?.partialFindings
+      if (Array.isArray(partialFindings) && partialFindings.length > 0) {
+        console.warn(
+          theme.warning(
+            `  ⚠ ${partialFindings.length} finding(s) were collected before the fatal error and were discarded.`
+          )
+        )
+      }
       throw err
     }
 
@@ -319,7 +332,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
         complexityPenalties: config.score.complexityPenalties,
         penaltyCaps: config.score.penaltyCaps,
       },
-      swarmResult.agentsRun
+      swarmResult.agentsRun?.filter((a) => !swarmResult.failedCategories?.includes(a))
     )
 
     const updatedHistory = await appendEntry(

@@ -68,7 +68,14 @@ function fingerprintFor(finding: AgentFinding): string {
   const tagKey = [...new Set((finding.tags ?? []).filter((t) => typeof t === 'string'))]
     .sort()
     .join(',')
-  const basis = `${finding.agentName}:${finding.severity}:${file}:${symbol}:${lineBucket}:${tagKey}`
+  // Two genuinely different findings from the same agent at the same
+  // location/severity/tags used to collide on the basis below and get
+  // silently force-merged by merger.ts's exact-fingerprint fast path. A short
+  // hash of the title (not the full description — this only needs to
+  // distinguish distinct claims, not fully identify them) is enough to
+  // separate them (orchestrator-006).
+  const titleKey = (finding.title ?? '').trim().toLowerCase().slice(0, 40)
+  const basis = `${finding.agentName}:${finding.severity}:${file}:${symbol}:${lineBucket}:${tagKey}:${titleKey}`
   const digest = crypto.createHash('sha1').update(basis).digest('hex').slice(0, 12)
   return `${finding.agentName}:${finding.severity}:${file}:${symbol}:${digest}`
 }
@@ -107,15 +114,50 @@ export function validateAndFingerprintFindings(
       continue
     }
 
+    // When multiple overlapping chunks for this file both contain
+    // finding.lineStart, taking the first match unconditionally could clamp
+    // lineEnd to a chunk that only partially covers the finding's true range
+    // even when a later candidate chunk would have fully contained it —
+    // silently truncating the reported range. Prefer a chunk that fully
+    // contains [lineStart, lineEnd] when one exists; only fall back to the
+    // first partial match if none does (orchestrator-002).
+    const lineStart =
+      finding.lineStart === undefined
+        ? undefined
+        : Number.isInteger(finding.lineStart)
+          ? finding.lineStart
+          : Math.round(finding.lineStart)
+    const lineEnd =
+      finding.lineEnd === undefined
+        ? undefined
+        : Number.isInteger(finding.lineEnd)
+          ? finding.lineEnd
+          : Math.round(finding.lineEnd)
+
     let clampedFinding: AgentFinding | null = null
     let matchingChunk: CodeChunk | null = null
+    let fallbackFinding: AgentFinding | null = null
+    let fallbackChunk: CodeChunk | null = null
     for (const chunk of candidateChunks) {
       const match = getMatchingChunkAndClamp(finding, chunk)
-      if (match) {
+      if (!match) continue
+      if (!fallbackFinding) {
+        fallbackFinding = match
+        fallbackChunk = chunk
+      }
+      const fullyContains =
+        lineStart === undefined ||
+        lineEnd === undefined ||
+        (chunk.startLine <= lineStart && chunk.endLine >= lineEnd)
+      if (fullyContains) {
         clampedFinding = match
         matchingChunk = chunk
         break
       }
+    }
+    if (!clampedFinding) {
+      clampedFinding = fallbackFinding
+      matchingChunk = fallbackChunk
     }
 
     if (!clampedFinding || !matchingChunk) {

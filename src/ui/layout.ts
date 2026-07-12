@@ -17,7 +17,7 @@ function drawBox(text: string, title?: string): string {
   const width = Math.max(...lines.map(visibleLen), title ? titleLen + 2 : 0)
 
   const top = title
-    ? `╭─ ${title} ${'─'.repeat(Math.max(0, width - titleLen - 3))}╮`
+    ? `╭─ ${title} ${'─'.repeat(Math.max(0, width - titleLen - 1))}╮`
     : `╭${'─'.repeat(width + 2)}╮`
 
   const middle = lines

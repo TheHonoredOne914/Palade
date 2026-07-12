@@ -57,15 +57,32 @@ describe('orchestrator/findingValidation', () => {
     expect(validated).toEqual([])
   })
 
-  it('normalizes fingerprints across title wording differences at the same location', () => {
+  it('normalizes fingerprints across trivial title formatting differences at the same location', () => {
     const [a, b] = validateAndFingerprintFindings(
       [
         finding({ id: 'a', title: 'Missing auth check' }),
-        finding({ id: 'b', title: 'Authorization check missing' }),
+        finding({ id: 'b', title: '  Missing auth check  ' }),
       ],
       chunks
     )
 
     expect(a.findingFingerprint).toBe(b.findingFingerprint)
+  })
+
+  it('gives genuinely different findings at the same location distinct fingerprints (orchestrator-006)', () => {
+    // Same agent/severity/file/symbol/line/tags but a different title used to
+    // collide on the same fingerprint and get silently force-merged by
+    // merger.ts's exact-fingerprint fast path. Near-duplicate wording of the
+    // *same* underlying issue is still merged, just via mergeFindings' own
+    // title-similarity (jaccard) pass rather than this exact fingerprint.
+    const [a, b] = validateAndFingerprintFindings(
+      [
+        finding({ id: 'a', title: 'Missing auth check' }),
+        finding({ id: 'b', title: 'Unbounded recursion in parser' }),
+      ],
+      chunks
+    )
+
+    expect(a.findingFingerprint).not.toBe(b.findingFingerprint)
   })
 })

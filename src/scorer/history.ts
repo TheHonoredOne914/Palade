@@ -266,11 +266,16 @@ export async function appendEntry(
     return readHistory(historyPath)
   }
   try {
-    const existing = readHistory(historyPath)
-    existing.push(entry)
+    const beforeAppend = readHistory(historyPath)
+    const existing = [...beforeAppend, entry]
     const wrote = writeHistory(historyPath, existing, maxEntries)
     if (!wrote) {
       console.warn(`[palade] failed to write history.json — this entry was not persisted to disk.`)
+      // Disk write failed — the optimistic `existing` array (including this
+      // run's entry) was never actually persisted, so returning it would let
+      // callers display/rely on data that vanishes on the next run. Return
+      // the last known-good persisted state instead (scorer-002).
+      return trimEntries(beforeAppend, maxEntries)
     }
     // Return what was actually persisted — the untrimmed array would diverge
     // from the next readHistory() once the retention cap kicks in.

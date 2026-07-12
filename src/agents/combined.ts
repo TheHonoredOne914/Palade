@@ -18,7 +18,7 @@ import { validateAndFingerprintFindings } from '../orchestrator/findingValidatio
 import { SECURITY_FOCUS } from './specialist/security.js'
 import { ARCHITECTURE_FOCUS } from './specialist/architecture.js'
 import { PERFORMANCE_FOCUS } from './specialist/performance.js'
-import { MAINTAINABILITY_FOCUS } from './specialist/maintainability.js'
+import { MAINTAINABILITY_WARNING, MAINTAINABILITY_FOCUS } from './specialist/maintainability.js'
 import { DEAD_CODE_WARNING, DEAD_CODE_FOCUS } from './specialist/deadCode.js'
 import {
   TEST_INTELLIGENCE_WARNING,
@@ -115,7 +115,7 @@ const DOMAIN_GUARDRAILS: Partial<Record<AgentName, string>> = {
   security: SECURITY_FOCUS,
   architecture: ARCHITECTURE_FOCUS,
   performance: PERFORMANCE_FOCUS,
-  maintainability: MAINTAINABILITY_FOCUS,
+  maintainability: `${MAINTAINABILITY_WARNING}\n\n${MAINTAINABILITY_FOCUS}`,
   deadCode: `${DEAD_CODE_WARNING}\n\n${DEAD_CODE_FOCUS}`,
   testIntelligence: `${TEST_INTELLIGENCE_WARNING}\n\n${TEST_INTELLIGENCE_FOCUS}`,
   logic: LOGIC_FOCUS,
@@ -172,7 +172,10 @@ Each finding must match this exact schema, and MUST include its originating agen
  */
 export class CombinedAnalyzer implements IAgent {
   readonly name: AgentName = 'combined' as AgentName
-  private readonly domains: DomainSpec[]
+  // Public (not private) so swarm.ts can attribute a fully-failed combined
+  // batch back to each logical domain it covers, instead of just 'combined'
+  // (scorer-001).
+  readonly domains: DomainSpec[]
 
   constructor(domains?: DomainSpec[]) {
     this.domains = domains ?? DEFAULT_DOMAINS
