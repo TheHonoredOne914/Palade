@@ -21,6 +21,31 @@ regenerate it before relying on query results for those areas — `graphify upda
 followed by `graphify cluster-only . --no-label` to refresh `GRAPH_REPORT.md`/`graph.html` — then commit the
 regenerated `graphify-out/` files alongside your code change. Skip this for doc-only or comment-only edits.
 
+## Cross-Session Memory (claude-mem) — Opt-In
+
+This repo can also use [claude-mem](https://github.com/thedotmack/claude-mem) (`thedotmack/claude-mem`), a
+Claude Code plugin that captures tool observations during a session, compresses them, and lets you search
+past work (`mem-search`, `smart_search`, `timeline`, etc.) instead of re-reading files you've already seen.
+It is **not** wired into the SessionStart hook — it installs a Claude Code plugin, runs a local background
+worker daemon (Bun, `http://127.0.0.1:37700`), and does an `npx`-triggered install — enough side effects that
+it's opt-in rather than silently auto-run on every session, local or web.
+
+To turn it on:
+
+```bash
+npm run mem:install   # npx claude-mem install --provider claude (uses your existing Claude Code
+                       # subscription for summarization — no separate API key needed)
+npm run mem:start      # starts the worker daemon (http://127.0.0.1:37700)
+npm run mem:status     # check whether the worker is running
+```
+
+**Where memory lives:** everything is stored in `~/.claude-mem` on the machine running it — never inside this
+repo, and never committed. On a **local** checkout this persists naturally across your own sessions, exactly
+as designed upstream. In a **Claude Code on the web** session, the container is ephemeral, so `~/.claude-mem`
+resets on your next fresh session — running `mem:install`/`mem:start` there only gives you memory *within*
+the current session (still useful on a long session: avoids re-reading things already seen), not across
+separate web sessions.
+
 # Palade: Mental Model \& Architecture Guide
 
 

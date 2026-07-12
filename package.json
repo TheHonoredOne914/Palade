@@ -45,6 +45,9 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
     "graph:update": "graphify update . --force && graphify cluster-only . --no-label",
+    "mem:install": "npx claude-mem install --provider claude",
+    "mem:start": "npx claude-mem start",
+    "mem:status": "npx claude-mem status",
     "prepublishOnly": "npm run clean && npm run build && npm run format:check && npm test"
   },
   "dependencies": {
