@@ -189,3 +189,69 @@ describe('buildSystemPrompt', () => {
     expect(res).toContain('a.ts:10 — "check this"')
   })
 })
+
+import { completeAndParseFindings } from './base.js'
+import type { CompletionRequest, CompletionResponse, IProvider } from '../providers/base.js'
+
+function fakeProvider(contents: string[]): { provider: IProvider; calls: CompletionRequest[] } {
+  const calls: CompletionRequest[] = []
+  let i = 0
+  const provider: IProvider = {
+    name: 'fake',
+    model: 'fake-1',
+    async complete(req: CompletionRequest): Promise<CompletionResponse> {
+      calls.push(req)
+      const content = contents[Math.min(i++, contents.length - 1)]
+      return {
+        content,
+        inputTokens: 0,
+        outputTokens: 0,
+        durationMs: 0,
+        provider: 'fake',
+        model: 'fake-1',
+      }
+    },
+    async isAvailable() {
+      return true
+    },
+  }
+  return { provider, calls }
+}
+
+const REQ: CompletionRequest = { systemPrompt: 'sys', userPrompt: 'usr' }
+const VALID = '[{"severity":"high","title":"X","description":"d"}]'
+const PROSE = 'Sure! Here is my analysis: the code looks mostly fine but...'
+
+describe('completeAndParseFindings', () => {
+  it('returns findings without retry when first response is valid', async () => {
+    const { provider, calls } = fakeProvider([VALID])
+    const { findings } = await completeAndParseFindings(provider, REQ, AGENT)
+    expect(calls).toHaveLength(1)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].title).toBe('X')
+  })
+
+  it('does NOT retry on a valid empty [] response', async () => {
+    const { provider, calls } = fakeProvider(['[]'])
+    const { findings } = await completeAndParseFindings(provider, REQ, AGENT)
+    expect(calls).toHaveLength(1)
+    expect(findings).toHaveLength(0)
+  })
+
+  it('retries once with a strict-JSON correction when the first response is unparsable', async () => {
+    const { provider, calls } = fakeProvider([PROSE, VALID])
+    const { findings } = await completeAndParseFindings(provider, REQ, AGENT)
+    expect(calls).toHaveLength(2)
+    expect(calls[1].systemPrompt).toContain('ONLY a valid JSON array')
+    expect(findings).toHaveLength(1)
+    expect(findings[0].title).toBe('X')
+  })
+
+  it('surfaces the parse-failure sentinel when both attempts fail', async () => {
+    const { provider, calls } = fakeProvider([PROSE, PROSE])
+    const { findings } = await completeAndParseFindings(provider, REQ, AGENT)
+    expect(calls).toHaveLength(2)
+    expect(findings).toHaveLength(1)
+    expect(findings[0].tags).toContain('parse-failure')
+  })
+})

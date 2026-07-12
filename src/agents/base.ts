@@ -455,7 +455,61 @@ export function buildSystemPrompt(
 }
 
 import { getProvider } from '../providers/router.js'
-import { createLimiter, type IProvider } from '../providers/base.js'
+import {
+  createLimiter,
+  type IProvider,
+  type CompletionRequest,
+  type CompletionResponse,
+} from '../providers/base.js'
+
+/** True when parseFindingsResponse returned ONLY its parse-failure sentinel. */
+export function isParseFailureSentinel(findings: AgentFinding[]): boolean {
+  return findings.length === 1 && findings[0].tags.includes('parse-failure')
+}
+
+const JSON_CORRECTION =
+  '\n\nCRITICAL: Your previous response could not be parsed as JSON. Respond with ONLY a valid JSON array of finding objects — no prose, no explanation, no markdown code fences. If there are genuinely no findings, respond with exactly [].'
+
+/**
+ * Calls the provider and parses the findings response, retrying ONCE with a
+ * strict JSON-only correction if the first response was unparsable (prose or
+ * garbled output instead of a JSON array). Weak free-tier models frequently
+ * recover on a strict retry — this was the dominant failure mode in
+ * docs/BENCHMARKS.md (2–4 of 6 agents returning unparsable output). Bounded to
+ * a single extra call so a persistently broken model can't loop. If the retry
+ * also fails, the original parse-failure sentinel is returned so the
+ * review-incomplete signal still reaches the user.
+ *
+ * Note: an empty-but-valid `[]` response ("found nothing") is NOT a parse
+ * failure and never triggers a retry.
+ */
+export async function completeAndParseFindings(
+  provider: IProvider,
+  request: CompletionRequest,
+  agentName: AgentName,
+  trustModelAgentName = false
+): Promise<{ findings: AgentFinding[]; response: CompletionResponse }> {
+  const response = await provider.complete(request)
+  const findings = parseFindingsResponse(response.content ?? '', agentName, trustModelAgentName)
+  if (!isParseFailureSentinel(findings)) {
+    return { findings, response }
+  }
+
+  console.warn(
+    chalk.yellow(
+      `  ↻ ${agentName}: unparsable response — retrying once with strict JSON instruction`
+    )
+  )
+  const retry = await provider.complete({
+    ...request,
+    systemPrompt: request.systemPrompt + JSON_CORRECTION,
+  })
+  const retryFindings = parseFindingsResponse(retry.content ?? '', agentName, trustModelAgentName)
+  if (!isParseFailureSentinel(retryFindings)) {
+    return { findings: retryFindings, response: retry }
+  }
+  return { findings, response }
+}
 
 /**
  * Re-asks the model a strict YES/NO question to confirm each critical/high
@@ -611,16 +665,12 @@ export abstract class BaseSpecialistAgent implements IAgent {
         context.modeConfig
       )
       const userPrompt = buildChunkContext(chunks)
-      const response = await provider.complete({
-        systemPrompt,
-        userPrompt,
-        maxTokens: computeMaxTokens(chunks.length),
-        signal,
-      })
-      const findings = validateAndFingerprintFindings(
-        parseFindingsResponse(response.content ?? '', this.name),
-        chunks
+      const { findings: parsed, response } = await completeAndParseFindings(
+        provider,
+        { systemPrompt, userPrompt, maxTokens: computeMaxTokens(chunks.length), signal },
+        this.name
       )
+      const findings = validateAndFingerprintFindings(parsed, chunks)
 
       for (const f of findings) {
         f.provider = response.provider
