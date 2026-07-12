@@ -231,15 +231,62 @@ palade diff --base main        # findings on changed chunks only
 palade diff --ci               # exit 1 if critical findings introduced
 ```
 
-### `palade watch`
+### `palade watch` — the always-on review daemon
 
-A review daemon: watches files, debounces changes, re-reviews automatically.
+A review daemon that watches your files, debounces edits, and re-runs the full agent swarm
+the moment code changes — no command to re-run, no CI round-trip. Findings stream to the
+terminal **and** to a single, always-current markdown file: **`.palade/watch-bugs.md`**.
 
 ```bash
-palade watch
-palade watch --continuous              # background-sweep the codebase when idle
-palade watch --sensitivity high        # drift sensitivity: low|medium|high
+palade watch                           # watch on save
+palade watch --continuous              # also background-sweep the whole codebase when idle
+palade watch --sensitivity high        # debounce: low (5s) | medium (2s) | high (500ms)
 ```
+
+- **Debounced, per-file scanning** — edit a file, palade scans *that* file with every agent
+  (security, architecture, performance, …) and updates the report. A fresh edit preempts an
+  in-flight background sweep so your latest change is never behind a queue.
+- **`--continuous` sweep** — when you're idle, palade keeps working through the rest of the
+  codebase in the background (shuffled, so coverage isn't front-loaded), while any file you
+  touch jumps the queue.
+- **Never crashes** — a timed-out or unparsable agent is skipped, not fatal. The daemon runs
+  until you `Ctrl+C`.
+
+#### 🤝 Pair it with your AI coding agent — a self-driving fix loop
+
+`.palade/watch-bugs.md` is written for a machine to read. Point any coding agent (Claude
+Code, Cursor, Aider, …) at it and you get a closed loop that needs no human in the middle:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. AI agent edits code                                      │
+│  2. palade watch detects the change → runs the swarm         │
+│  3. findings land in .palade/watch-bugs.md (severity+line)   │
+│  4. AI agent reads watch-bugs.md → fixes the bugs            │
+│  5. its fix triggers a re-scan → back to step 2              │
+└─────────────────────────────────────────────────────────────┘
+        palade keeps finding.   your agent keeps fixing.
+```
+
+The file is plain, stable markdown — file-grouped, one bullet per finding with severity,
+line number, the agent that flagged it, and the description:
+
+```markdown
+# Watch Mode Findings
+
+*Last updated: 3:41:07 PM*
+
+## `src/auth/session.ts`
+- **[CRITICAL]** Session token compared with `==` (timing-unsafe) (Line 88)
+  - *security*: Use a constant-time comparison; `==` leaks length/prefix timing.
+- **[MEDIUM]** Unbounded in-memory session map (Line 12)
+  - *performance*: Sessions are never evicted; memory grows without limit.
+```
+
+Just tell your agent: *"Keep reading `.palade/watch-bugs.md` and fixing what it lists until
+it's empty."* Run `palade watch` in one pane, your agent in another, and the two run a
+continuous find-and-fix loop on their own — palade is the reviewer that never gets tired,
+your agent is the hands.
 
 ### `palade score`
 
