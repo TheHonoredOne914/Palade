@@ -10,7 +10,7 @@ import {
   buildChunkContext,
   buildSystemPrompt,
   computeMaxTokens,
-  parseFindingsResponse,
+  completeAndParseFindings,
   verifyCriticalHighFindings,
 } from '../base.js'
 import { validateAndFingerprintFindings } from '../../orchestrator/findingValidation.js'
@@ -55,16 +55,12 @@ export class CustomAgent implements IAgent {
         context.modeConfig
       )
       const userPrompt = buildChunkContext(chunks)
-      const response = await provider.complete({
-        systemPrompt,
-        userPrompt,
-        maxTokens: computeMaxTokens(chunks.length),
-        signal,
-      })
-      const findings = validateAndFingerprintFindings(
-        parseFindingsResponse(response.content ?? '', this.name),
-        chunks
+      const { findings: parsed, response } = await completeAndParseFindings(
+        provider,
+        { systemPrompt, userPrompt, maxTokens: computeMaxTokens(chunks.length), signal },
+        this.name
       )
+      const findings = validateAndFingerprintFindings(parsed, chunks)
       // Apply custom score penalties only when this agent explicitly
       // configured a severityPenalty override; otherwise leave f.scorePenalty
       // unset so calculateScore's configured severityWeights apply.

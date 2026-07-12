@@ -9,7 +9,7 @@ import {
   buildChunkContext,
   buildSystemPrompt,
   computeMaxTokens,
-  parseFindingsResponse,
+  completeAndParseFindings,
   unparsableResponseFinding,
   verifyCriticalHighFindings,
 } from './base.js'
@@ -199,13 +199,12 @@ export class CombinedAnalyzer implements IAgent {
       // every domain AND every chunk in the batch, so the output budget must
       // scale with both (agents-003).
       const maxTokens = computeMaxTokens(chunks.length, this.domains.length)
-      const response = await provider.complete({
-        systemPrompt,
-        userPrompt,
-        maxTokens,
-        signal,
-      })
-      const rawFindings = parseFindingsResponse(response.content ?? '', this.name, true)
+      const { findings: rawFindings, response } = await completeAndParseFindings(
+        provider,
+        { systemPrompt, userPrompt, maxTokens, signal },
+        this.name,
+        true
+      )
       const findings = attributeFindings(
         rawFindings,
         this.domains,

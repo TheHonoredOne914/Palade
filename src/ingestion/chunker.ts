@@ -105,21 +105,10 @@ function isComplexityNode(n: ts.Node): boolean {
   )
 }
 
-function calculateComplexity(node: ts.Node): number {
-  let complexity = 1
-  ts.forEachChild(node, function visit(n) {
-    if (isComplexityNode(n)) complexity++
-    ts.forEachChild(n, visit)
-  })
-  return complexity
-}
-
-// Same traversal as calculateComplexity, but over a list of already-parsed
-// top-level nodes instead of re-parsing their concatenated text into a
-// synthetic source file. A chunk spans one or more top-level nodes from the
-// ORIGINAL sourceFile; treating each of them the way calculateComplexity
-// treats a direct child of its root (checked, then recursed into) reproduces
-// the exact same count without a second full parse per chunk.
+// Counts cyclomatic complexity over a list of already-parsed top-level nodes
+// (no re-parse of concatenated text into a synthetic source file). A chunk
+// spans one or more top-level nodes from the ORIGINAL sourceFile; each is
+// checked, then recursed into, reproducing a standard cyclomatic count.
 function calculateComplexityForNodes(nodes: ts.Node[]): number {
   let complexity = 1
   const visit = (n: ts.Node) => {
