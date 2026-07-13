@@ -88,14 +88,14 @@ export async function runSwarm(
   // list that ignores agentCount entirely, so that expansion can silently not
   // match who actually runs. Re-expand here against the real resolved roster
   // now that getAgentsForMode() has run (providers-002).
+  let expandedAgentProviders: Record<string, string> | undefined
   if (options.providerShares) {
-    updateAgentProviders(
-      expandProviderShares(
-        options.providerShares,
-        modeAgents.length,
-        modeAgents.map((a) => a.name)
-      )
+    expandedAgentProviders = expandProviderShares(
+      options.providerShares,
+      modeAgents.length,
+      modeAgents.map((a) => a.name)
     )
+    updateAgentProviders(expandedAgentProviders)
   }
 
   let agents: IAgent[] = modeAgents
@@ -121,6 +121,27 @@ export async function runSwarm(
         )
       })
       agents = [new CombinedAnalyzer(activeDomains), ...customAgents]
+
+      // The share expansion above was keyed by the pre-collapse specialist
+      // names (security, architecture, ...) — CombinedAnalyzer replaces all
+      // of them with a single agent named 'combined', so those entries are
+      // now orphaned and getProvider('primary', 'combined') would never find
+      // an override, silently falling back to swarm.primary regardless of
+      // configured shares (providers-006). Re-map onto 'combined' directly:
+      // pick the plurality provider (largest configured share; ties keep the
+      // first configured key, since Array#sort is stable) so economy mode
+      // still respects at least one meaningfully-chosen provider. Merge with
+      // (rather than replace) the prior expansion so custom agents' own
+      // entries — unaffected by the collapse — aren't lost.
+      if (options.providerShares && Object.keys(options.providerShares).length > 0) {
+        const [pluralityProvider] = Object.entries(options.providerShares).sort(
+          (a, b) => b[1] - a[1]
+        )[0]
+        updateAgentProviders({
+          ...(expandedAgentProviders ?? {}),
+          combined: pluralityProvider,
+        })
+      }
     }
   }
   const memory = new AgentMemory()

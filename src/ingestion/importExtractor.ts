@@ -58,10 +58,7 @@ function extractGoImports(content: string): string[] {
 export function extractImportSpecifiers(content: string, filePath: string): string[] {
   if (TS_JS_EXTENSION.test(filePath)) {
     try {
-      const s = Date.now()
       const res = extractViaAst(content, filePath)
-      const e = Date.now()
-      if (e - s > 100) console.log(`DEBUG: AST extraction for ${filePath} took ${e - s}ms`)
       return res
     } catch {
       // fall through to regex fallback below

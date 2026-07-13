@@ -46,11 +46,18 @@ function matchDefect(claim: AgentClaim, defects: Defect[], tolerance: number): D
     (d) => fileMatches(claim.file, d.file) && Math.abs(claim.lineStart - d.lineStart) <= tolerance
   )
   if (candidates.length === 0) return undefined
-  const real = candidates.find((d) => d.category === 'real-bug')
-  if (real) return real
-  return candidates.reduce((best, d) =>
-    Math.abs(d.lineStart - claim.lineStart) < Math.abs(best.lineStart - claim.lineStart) ? d : best
-  )
+  // Pick the closest in-tolerance candidate across ALL categories, not
+  // real-bug-first — a real-bug candidate used to always win even when an
+  // in-tolerance false-positive trap was strictly closer to the claimed
+  // line, wrongly scoring the trap claim as a true positive against the
+  // farther real bug. Only break exact-distance ties in favor of real-bug.
+  return candidates.reduce((best, d) => {
+    const dDist = Math.abs(d.lineStart - claim.lineStart)
+    const bestDist = Math.abs(best.lineStart - claim.lineStart)
+    if (dDist < bestDist) return d
+    if (dDist === bestDist && d.category === 'real-bug' && best.category !== 'real-bug') return d
+    return best
+  })
 }
 
 export function scoreAgent(

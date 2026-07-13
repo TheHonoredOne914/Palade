@@ -95,30 +95,6 @@ async function parseFileAsync(absolutePath: string, isHashComment: boolean): Pro
   return annotations
 }
 
-export function parseAnnotations(manifests: FileManifest[]): Promise<Map<string, Annotation[]>> {
-  return parseAnnotationsAsync(manifests)
-}
-
-async function parseAnnotationsAsync(
-  manifests: FileManifest[]
-): Promise<Map<string, Annotation[]>> {
-  const map = new Map<string, Annotation[]>()
-  // Parse all files concurrently instead of sequentially
-  const results = await Promise.all(
-    manifests.map(async (manifest) => {
-      const isHashComment = manifest.language === 'python' || manifest.language === 'ruby'
-      const annotations = await parseFileAsync(manifest.absolutePath, isHashComment)
-      return { path: manifest.path, annotations }
-    })
-  )
-  for (const { path, annotations } of results) {
-    if (annotations.length > 0) {
-      map.set(path, annotations)
-    }
-  }
-  return map
-}
-
 // ── Phase 11: Annotation Summary ─────────────────────────────
 
 export function buildAnnotationSummary(

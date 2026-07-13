@@ -68,13 +68,17 @@ export class ProviderPool implements IProvider {
     return results.some((r) => r)
   }
 
-  // Delegate to every member so the pool's own isAvailable()/isDead()
-  // aggregation reflects the mark — this is normally only called once every
-  // member is already unavailable (see router.ts's stillAvailable check),
-  // but keeps the pool consistent with the shared-instance dead-tracking
-  // used by every other IProvider implementation.
+  // Intentional no-op. Marking every member dead in one call would take down
+  // every healthy sibling key over a single bad key's fatal error — the
+  // opposite of the scoped, per-key dead-marking this pool exists to support.
+  // Callers should mark the specific responsible member dead instead, via the
+  // PROVIDER_POOL_SOURCE-tagged error from complete() (see router.ts's
+  // markResponsibleProviderDead, which already prefers that scoped path over
+  // calling markDead() on the pool wrapper itself). Kept as a no-op rather
+  // than removed to satisfy the optional IProvider#markDead contract for any
+  // caller that reaches this instance directly.
   markDead(): void {
-    for (const p of this.providers) p.markDead?.()
+    // no-op — see comment above
   }
 
   // Dead only once every member is dead — a pool with any healthy key left

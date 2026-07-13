@@ -1,7 +1,6 @@
 import chalk from 'chalk'
 import type { PaladeConfig } from '../config/schema.js'
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import { FATAL_QUOTA_KEYWORDS, isQuotaTaggedError } from './base.js'
 import { GroqProvider } from './groq.js'
 import { CerebrasProvider } from './cerebras.js'
 import { NoProvidersError, AuthError } from '../errors/types.js'
@@ -29,32 +28,6 @@ export class AllProvidersExhaustedError extends Error {
     super(`All ${attempts.length} providers failed. See .attempts for details.`)
     this.name = 'AllProvidersExhaustedError'
   }
-}
-
-// Bare 'daily' / 'quota' used to be fatal keywords, which meant an incidental
-// occurrence of either word in an unrelated error body would
-// permanently mark a provider dead. Tightened to the specific phrases our
-// adapters actually throw (see groq.ts/cerebras.ts/nvidia.ts/openrouter.ts/
-// opencode-zen.ts daily-limit messages) so a stray 'daily' or 'quota'
-// substring elsewhere in a body can't trip this.
-// Imported from base.ts (not redeclared here) so this stays in lockstep with
-// isDailyLimitError's body-scan — the two independently-maintained copies had
-// drifted apart before (this list had 'insufficient_quota'/'monthly limit',
-// isDailyLimitError's regex didn't).
-const FATAL_KEYWORDS = FATAL_QUOTA_KEYWORDS
-
-// Only scan for fatal-quota phrasing on an error the adapter has ALREADY
-// classified as quota/429-related (via base.ts's tagQuotaError, set only
-// when isDailyLimitError(body) matched on an actual 429 response) — mirrors
-// isDailyLimitError's own "trust a structured signal first" approach.
-// Previously this scanned the message text of ANY thrown error regardless of
-// HTTP status, so a genuinely unrelated non-429 error whose raw body
-// happened to contain a phrase like "monthly limit" was misclassified as a
-// fatal quota exhaustion (providers-002).
-function isFatalMessage(error: Error): boolean {
-  if (!isQuotaTaggedError(error)) return false
-  const lower = error.message.toLowerCase()
-  return FATAL_KEYWORDS.some((keyword) => lower.includes(keyword))
 }
 
 export type ProviderRole = 'primary' | 'synthesis' | 'triage'
@@ -248,29 +221,40 @@ export class FallbackProvider implements IProvider {
         return response
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
+
+        // Cancellation, not a genuine provider failure — every adapter
+        // already propagates a real AbortError when req.signal fires (see
+        // fetchWithRetry in base.ts), so surface it as-is immediately instead
+        // of recording it as a failed attempt and either retrying the next
+        // provider in the chain (pointless — the caller has already stopped
+        // caring about this call) or falling through to AllProvidersExhaustedError/
+        // AuthError below, which would silently swallow the abort and break
+        // the "return [] on AbortError" cancellation contract relied on by
+        // agents/base.ts, combined.ts, and synthesis.ts.
+        if (lastError.name === 'AbortError') {
+          throw lastError
+        }
+
         attempts.push({
           provider: provider.name,
           finalError: sanitizeErrorMessage(lastError.message),
         })
         attemptedAny = true
 
-        const isFatal = isFatalMessage(lastError)
         if (isFatalAuthError(lastError)) {
           lastAuthLikeError = lastError
         } else {
           allAttemptsAuthLike = false
         }
 
-        // No router-side dead-marking needed for the isFatal (quota) case:
-        // isFatalMessage() only returns true for errors the adapter itself
-        // already tagged via tagQuotaError() — and every adapter sets its own
-        // dailyLimitExhausted flag (which isDead()/isAvailable() already
-        // read) BEFORE throwing, as a precondition for reaching that
-        // classification at all. So the responsible instance is already dead
-        // by the time we get here; calling markResponsibleProviderDead()
-        // there would be a no-op (providers-001) — adapters' self-marking is
-        // the actual source of truth.
-        if (!isFatal && isFatalAuthError(lastError)) {
+        // Quota-tagged errors and auth errors are mutually exclusive by
+        // construction (isFatalAuthError only matches 401/403-classified
+        // errors, never the quota/429 path), so no separate "isFatal (quota)"
+        // guard is needed here — adapters already self-mark quota-dead
+        // providers via tagQuotaError()/dailyLimitExhausted before throwing
+        // (providers-001), so the only case router.ts needs to handle here is
+        // the auth one below.
+        if (isFatalAuthError(lastError)) {
           // A 401/403 means the key itself is invalid — unlike the quota case
           // above, isAvailable() is a quota-only check and can never detect
           // this, so gating on "stillAvailable" would never mark the provider
