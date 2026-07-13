@@ -175,14 +175,45 @@ export function SettingsPanel({
   const saveAgentCount = useCallback(
     async (count: number) => {
       try {
+        // Trim already-saved provider shares whose sum now exceeds the new
+        // agentCount — mirrors the share field's own clamp (tui-001) just
+        // above. Without this, shrinking agentCount below the saved shares'
+        // total silently reproduces the over-allocation bug that clamp was
+        // written to prevent: expandProviderShares would then truncate the
+        // excess based on object key order with no warning shown.
+        const total = Object.values(shares).reduce((sum, v) => sum + (v ?? 0), 0)
+        let trimmed = false
+        if (total > count) {
+          trimmed = true
+          let excess = total - count
+          const next: Record<string, number> = { ...shares }
+          for (const id of Object.keys(next)) {
+            if (excess <= 0) break
+            const val = next[id] ?? 0
+            const reduceBy = Math.min(val, excess)
+            next[id] = val - reduceBy
+            excess -= reduceBy
+          }
+          for (const [id, val] of Object.entries(next)) {
+            if (val !== shares[id]) {
+              await saveConfigValue(projectRoot, `swarm.providerShares.${id}`, val)
+            }
+          }
+          setShares(next)
+          setSavedShares(next)
+        }
         await saveConfigValue(projectRoot, 'swarm.agentCount', count)
         setSavedAgentCount(count)
-        setMessage(`✓ swarm.agentCount set to ${count}`)
+        setMessage(
+          trimmed
+            ? `✓ swarm.agentCount set to ${count} (provider shares trimmed to fit)`
+            : `✓ swarm.agentCount set to ${count}`
+        )
       } catch (err) {
         setMessage(`✗ Error: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
-    [projectRoot]
+    [projectRoot, shares]
   )
 
   const saveShare = useCallback(

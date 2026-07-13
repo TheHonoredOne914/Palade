@@ -12,17 +12,6 @@ import { LogicAgent } from './specialist/logic.js'
 import type { CustomAgentDefinition } from './custom/schema.js'
 import { CustomAgent } from './custom/agent.js'
 
-export const BUILTIN_NAMES = [
-  'security',
-  'architecture',
-  'performance',
-  'maintainability',
-  'deadCode',
-  'testIntelligence',
-  'pragmatism',
-  'logic',
-] as const
-
 const BUILTIN_AGENTS = new Map<AgentName, IAgent>([
   ['security', new SecurityAgent()],
   ['architecture', new ArchitectureAgent()],
@@ -33,6 +22,11 @@ const BUILTIN_AGENTS = new Map<AgentName, IAgent>([
   ['pragmatism', new PragmatismAgent()],
   ['logic', new LogicAgent()],
 ])
+
+// Derived from BUILTIN_AGENTS's key set (insertion order preserved by Map)
+// rather than hand-typed, so this can't drift from the map above the way it
+// once could — mirrors AGENT_REGISTRY's derivation just below.
+export const BUILTIN_NAMES = Array.from(BUILTIN_AGENTS.keys()) as AgentName[]
 
 /**
  * Derived from BUILTIN_AGENTS for backward compatibility.
