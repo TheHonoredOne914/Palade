@@ -107,8 +107,8 @@ export async function watchCommand(opts: {
         sweepQueue[i] = sweepQueue[j]
         sweepQueue[j] = temp
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.warn(theme.error(`⚠ Failed to initialize background sweep queue: ${err instanceof Error ? err.message : String(err)}`))
     }
   }
 
@@ -177,6 +177,7 @@ export async function watchCommand(opts: {
       // both resolved once above into `watchAgents`).
       const agents = watchAgents
       const allFindings: AgentFinding[] = []
+      let hasErrors = false
       // In economy mode, cap batch sizes the same way review.ts/diff.ts do
       // before passing options into runSwarm — otherwise this call falls
       // back to scheduler.ts's un-capped defaults (16000/6000), letting a
@@ -206,9 +207,12 @@ export async function watchCommand(opts: {
             const findings = await agent.analyze(batch, context, ac.signal)
             allFindings.push(...findings)
           } catch (err: unknown) {
+            hasErrors = true
             if (err instanceof Error && err.name === 'AbortError') {
               if (signal?.aborted) throw err // pass parent aborts up
               console.log(theme.dim(`    ⚠ ${agent.name} timed out.`))
+            } else {
+              console.log(theme.dim(`    ⚠ ${agent.name} failed: ${err instanceof Error ? err.message : String(err)}`))
             }
           } finally {
             clearTimeout(timer)
@@ -239,9 +243,11 @@ export async function watchCommand(opts: {
           for (const key of keysToDelete) accumulatedFindings.delete(key)
         }
         console.log('\n' + formatDriftAlert(filePath, finalFindings))
-      } else {
+      } else if (!hasErrors) {
         accumulatedFindings.delete(filePath)
         console.log(theme.success(`  ✓ Clean: ${filePath}\n`))
+      } else {
+        console.log(theme.dim(`  ⚠ Scan incomplete due to errors, keeping previous findings for: ${filePath}\n`))
       }
 
       updateWatchReport()
@@ -250,7 +256,7 @@ export async function watchCommand(opts: {
         console.log(theme.dim(`  ⚠ Aborted scan of ${filePath} for higher priority task.`))
         throw err
       }
-      // watch mode never crashes
+      console.warn(theme.error(`  ⚠ Error scanning ${filePath}: ${err instanceof Error ? err.message : String(err)}`))
     }
   }
 
