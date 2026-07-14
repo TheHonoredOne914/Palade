@@ -12,6 +12,10 @@ import { BUILTIN_NAMES } from '../agents/registry.js'
 
 export const ReportFormatSchema = z.enum(['html', 'json', 'md'])
 
+// Single source of truth for provider IDs used in swarm config validation.
+// Add new providers here; all five swarm fields below will pick it up.
+const PROVIDER_ENUM = z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
+
 const ProviderConfigSchema = z.object({
   apiKey: z.string().default(''),
   apiKeys: z.array(z.string().min(1)).optional(),
@@ -42,30 +46,18 @@ export const PaladeConfigSchema = z
     }),
     swarm: z
       .object({
-        primary: z
-          .enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
-          .default('opencode-zen'),
-        synthesis: z
-          .enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
-          .default('nvidia'),
-        triage: z
-          .enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
-          .optional(),
+        primary: PROVIDER_ENUM.default('opencode-zen'),
+        synthesis: PROVIDER_ENUM.default('nvidia'),
+        triage: PROVIDER_ENUM.optional(),
         agentProviders: z
           .record(
             z.string(),
-            z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
+            PROVIDER_ENUM
           )
           .optional(),
-        // Declarative provider distribution: how many of the active agents run
-        // on each provider (e.g. { 'opencode-zen': 5, openrouter: 3 }).
-        // Expanded into per-agent agentProviders entries at load time
-        // (see loader.ts expandProviderShares); explicit agentProviders
-        // entries win over expanded ones. Agents not covered by any share
-        // fall through to swarm.primary.
         providerShares: z
           .record(
-            z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama']),
+            PROVIDER_ENUM,
             z.number().int().min(0)
           )
           .optional(),
@@ -154,6 +146,9 @@ export const PaladeConfigSchema = z
             lowFactor: z.number().default(0.5),
             highThreshold: z.number().int().min(0).default(20),
             highFactor: z.number().default(1.5),
+          })
+          .refine((v) => v.lowThreshold < v.highThreshold, {
+            message: 'complexityPenalties.lowThreshold must be less than highThreshold',
           })
           .default({}),
         // Category/total penalty caps used when computing the final score.
