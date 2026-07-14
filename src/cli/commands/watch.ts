@@ -21,8 +21,6 @@ import { CliExitError } from '../../errors/types.js'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { mergeFindings } from '../../orchestrator/merger.js'
-import { validateFindings } from '../../orchestrator/findingValidation.js'
-import { triageFindings } from '../../orchestrator/triage.js'
 
 const DEBOUNCE_MS: Record<string, number> = {
   low: 5000,
@@ -221,9 +219,7 @@ export async function watchCommand(opts: {
 
       let finalFindings = allFindings
       if (allFindings.length > 0) {
-        const deduped = mergeFindings(allFindings)
-        const validated = validateFindings(deduped, manifests)
-        finalFindings = await triageFindings(validated)
+        finalFindings = mergeFindings(allFindings)
       }
 
       if (finalFindings.length > 0) {

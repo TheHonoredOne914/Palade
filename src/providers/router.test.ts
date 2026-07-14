@@ -6,7 +6,8 @@ import { AuthError } from '../errors/types.js'
 function mockProvider(
   name: string,
   model: string,
-  behavior: 'success' | 'fail-retryable' | 'fail-fatal' = 'success'
+  behavior: 'success' | 'fail-retryable' | 'fail-fatal' | 'fail-unclassified' = 'success',
+  available = true
 ): IProvider {
   return {
     name,
@@ -14,6 +15,7 @@ function mockProvider(
     complete: vi.fn(async (): Promise<CompletionResponse> => {
       if (behavior === 'fail-retryable') throw new Error('503 service unavailable')
       if (behavior === 'fail-fatal') throw new AuthError('invalid api key', 401, name)
+      if (behavior === 'fail-unclassified') throw new Error('upstream returned proprietary error code 418')
       return {
         content: `response from ${name}`,
         inputTokens: 10,
@@ -23,7 +25,7 @@ function mockProvider(
         model,
       }
     }),
-    isAvailable: vi.fn(async () => behavior === 'success'),
+    isAvailable: vi.fn(async () => available),
   }
 }
 
@@ -87,7 +89,7 @@ describe('FallbackProvider', () => {
   // --- Test 3: Primary fails with an unclassified error (matches neither the
   // retryable nor fatal keyword lists) ---
   it('falls back to the next provider on an unclassified error instead of throwing immediately', async () => {
-    primary = mockProvider('primary', 'model-a', 'fail-fatal')
+    primary = mockProvider('primary', 'model-a', 'fail-unclassified')
     const fp = new FallbackProvider(primary, [fallback1])
 
     const res = await fp.complete(dummyReq)
@@ -106,7 +108,15 @@ describe('FallbackProvider', () => {
     fallback1 = mockProvider('fallback1', 'model-b', 'fail-fatal')
     const fp = new FallbackProvider(primary, [fallback1])
 
-    await expect(fp.complete(dummyReq)).rejects.toThrow(AuthError)
+    let error: AuthError | undefined
+    try {
+      await fp.complete(dummyReq)
+    } catch (e: any) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(AuthError)
+    expect(error?.status).toBe(401)
+    expect(error?.providerName).toBe('fallback1')
   })
 
   // --- Test 3c: All providers fail with a genuinely unclassified, non-auth error ---
@@ -139,7 +149,16 @@ describe('FallbackProvider', () => {
     fallback1 = mockProvider('fallback1', 'model-b', 'fail-retryable')
     const fp = new FallbackProvider(primary, [fallback1])
 
-    await expect(fp.complete(dummyReq)).rejects.toThrow(AllProvidersExhaustedError)
+    let caught: any
+    try {
+      await fp.complete(dummyReq)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(AllProvidersExhaustedError)
+    expect(caught.attempts).toHaveLength(2)
+    expect(caught.attempts[0].provider).toBe('primary')
+    expect(caught.attempts[0].finalError).toContain('503 service unavailable')
     expect(primary.complete).toHaveBeenCalled()
     expect(fallback1.complete).toHaveBeenCalled()
   })
@@ -181,8 +200,8 @@ describe('FallbackProvider', () => {
   })
 
   it('isAvailable returns true when primary is unavailable but fallback is available', async () => {
-    primary = mockProvider('primary', 'model-a', 'fail-fatal')
-    fallback1 = mockProvider('fallback1', 'model-b', 'success')
+    primary = mockProvider('primary', 'model-a', 'fail-fatal', false)
+    fallback1 = mockProvider('fallback1', 'model-b', 'success', true)
     const fp = new FallbackProvider(primary, [fallback1])
 
     const result = await fp.isAvailable()
@@ -191,8 +210,8 @@ describe('FallbackProvider', () => {
   })
 
   it('isAvailable returns false when all providers are unavailable', async () => {
-    primary = mockProvider('primary', 'model-a', 'fail-fatal')
-    fallback1 = mockProvider('fallback1', 'model-b', 'fail-fatal')
+    primary = mockProvider('primary', 'model-a', 'fail-fatal', false)
+    fallback1 = mockProvider('fallback1', 'model-b', 'fail-fatal', false)
     const fp = new FallbackProvider(primary, [fallback1])
 
     const result = await fp.isAvailable()
