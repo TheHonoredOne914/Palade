@@ -309,6 +309,7 @@ export async function watchCommand(opts: {
   const watcher = chokidar.watch('.', {
     ignored: (path: string) => {
       const rel = path.replace(/\\/g, '/')
+      if (rel === '.' || rel === '') return false
       return ignoreFilter.ignores(rel)
     },
     persistent: true,
