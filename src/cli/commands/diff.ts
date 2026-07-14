@@ -46,6 +46,33 @@ interface DiffOpts {
   strictTriage?: boolean
 }
 
+function injectContextAndSplit(chunks: CodeChunk[]): CodeChunk[] {
+  const keywordIndex = buildKeywordIndex(chunks)
+  const contextPrefixes = chunks.map((chunk) =>
+    mergeContexts(
+      buildRetrievedContext(chunk, chunks),
+      getKeywordContext(chunk, keywordIndex)
+    )
+  )
+  const enriched = chunks.map((chunk, i) => {
+    const contextPrefix = contextPrefixes[i]
+    if (contextPrefix) {
+      return {
+        ...chunk,
+        contextPrefix,
+        tokenCount: estimateTokens(contextPrefix + chunk.content),
+      }
+    }
+    return chunk
+  })
+  return enriched.flatMap((chunk) => {
+    if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > MAX_TOKENS) {
+      return splitLargeChunk(chunk)
+    }
+    return [chunk]
+  })
+}
+
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new CliExitError(1)
@@ -118,39 +145,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, ''))
     )
     let activeChunks = chunks.filter((c) => !ignoredFileSet.has(c.filePath.replace(/^\.?\/+/, '')))
-
-    // Mirror pipeline.ts's context injection so diff reviews get the same
-    // cross-file "here's what else uses/imports this symbol" context as a
-    // full `review` run, instead of every agent seeing each chunk in
-    // isolation. Context is built from non-ignored chunks only, matching
-    // pipeline.ts (an @palade ignore-file'd file's source must not get
-    // quoted into other prompts).
-    const contextSourceChunks = chunks.filter(
-      (c) => !ignoredFileSet.has(c.filePath.replace(/^\.?\/+/, ''))
-    )
-    const keywordIndex = buildKeywordIndex(contextSourceChunks)
-    const contextPrefixes = activeChunks.map((chunk) =>
-      mergeContexts(
-        buildRetrievedContext(chunk, contextSourceChunks),
-        getKeywordContext(chunk, keywordIndex)
-      )
-    )
-    activeChunks.forEach((chunk, i) => {
-      const contextPrefix = contextPrefixes[i]
-      if (contextPrefix) {
-        activeChunks[i] = {
-          ...chunk,
-          contextPrefix,
-          tokenCount: estimateTokens(contextPrefix + chunk.content),
-        }
-      }
-    })
-    activeChunks = activeChunks.flatMap((chunk) => {
-      if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > MAX_TOKENS) {
-        return splitLargeChunk(chunk)
-      }
-      return [chunk]
-    })
+    activeChunks = injectContextAndSplit(activeChunks)
 
     console.log(
       theme.dim(
@@ -378,6 +373,9 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
             const oldContent = getFileContentAtRef(mergeBase, f.oldPath ?? f.path, projectRoot)
             if (oldContent === null) continue
             const dest = join(baseTempDir, f.path)
+            if (!dest.startsWith(baseTempDir)) {
+              throw new Error(`Path traversal attempt detected in git changed files: ${f.path}`)
+            }
             mkdirSync(dirname(dest), { recursive: true })
             writeFileSync(dest, oldContent, 'utf-8')
             writtenPaths.push(f.path)
@@ -390,12 +388,15 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
             const baseScope: ScopeOptions = { projectRoot: baseTempDir, files: writtenPaths }
             const baseManifests = await walkProject(baseTempDir, baseScope)
             if (baseManifests.length > 0) {
-              const baseChunks = await chunkFiles(baseManifests)
+              const baseChunks = injectContextAndSplit(await chunkFiles(baseManifests))
               const baseContext: AgentContext = {
                 projectLanguages: (await detectLanguages(baseTempDir, baseScope)).primary,
                 totalFiles: baseManifests.length,
                 totalChunks: baseChunks.length,
                 mode: 'standard',
+                includeSkills: config.swarm.includeSkills,
+                spec: context.spec,
+                constitution: context.constitution,
               }
               const baseSwarmResult = await runSwarm(
                 baseChunks,
@@ -406,6 +407,9 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                   customAgents: customAgentDefs,
                   agentCount: config.swarm.agentCount,
                   economyMode: config.swarm.economyMode,
+                  providerShares: config.swarm.providerShares,
+                  maxConcurrentBatches: config.swarm.maxConcurrentBatches,
+                  severityWeights: config.swarm.severityWeights,
                   projectRoot: baseTempDir,
                   noSynthesis: true,
                   softTokenLimit: config.swarm.softTokenLimit,
