@@ -3,6 +3,7 @@ import chalk from 'chalk'
 import type { CodeChunk, Language } from '../ingestion/types.js'
 import type { ModeConfig } from '../modes/index.js'
 import { validateAndFingerprintFindings } from '../orchestrator/findingValidation.js'
+import { SEVERITY_PENALTY } from '../config/defaults.js'
 
 export type ReviewMode = 'standard' | 'security' | 'onboard' | 'debt' | 'ghost'
 
@@ -126,13 +127,7 @@ export interface IAgent {
   analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]>
 }
 
-export const SEVERITY_PENALTY: Record<Severity, number> = {
-  critical: 10,
-  high: 5,
-  medium: 2,
-  low: 0.5,
-  info: 0,
-}
+
 
 // A flat output cap starves large batches the same way combined.ts's flat cap
 // starved multi-domain calls: more chunks reviewed means more potential

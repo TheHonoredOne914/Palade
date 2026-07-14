@@ -4,9 +4,10 @@ import {
   DEFAULT_CONSTITUTION_PATH,
   DEFAULT_SPEC_PATH,
   DEFAULT_CONFIG,
+  SEVERITY_PENALTY,
+  DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
+  DEFAULT_PENALTY_CAPS,
 } from './defaults.js'
-import { SEVERITY_PENALTY } from '../agents/base.js'
-import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS, DEFAULT_PENALTY_CAPS } from '../scorer/calculator.js'
 import { BUILTIN_NAMES } from '../agents/registry.js'
 
 export const ReportFormatSchema = z.enum(['html', 'json', 'md'])

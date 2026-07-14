@@ -1,5 +1,5 @@
 import type { AgentFinding, AgentName, Severity } from '../agents/base.js'
-import { SEVERITY_PENALTY } from '../agents/base.js'
+import { SEVERITY_PENALTY } from '../config/defaults.js'
 import type { CrossAgentFinding } from './types.js'
 import {
   SEVERITY_RANK,

@@ -1,7 +1,12 @@
 import type { AgentFinding, Severity } from '../agents/base.js'
-import { SEVERITY_PENALTY } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from './types.js'
+import {
+  SEVERITY_PENALTY,
+  DEFAULT_PENALTY_CAPS,
+  DEFAULT_COMPLEXITY_PENALTIES,
+  DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
+} from '../config/defaults.js'
 
 // Floors are intentionally asymmetric: a single category is allowed to sink
 // further (floor 10) than the blended overall score (floor 5), so one bad
@@ -27,24 +32,12 @@ export interface PenaltyCaps {
   totalPenaltyCap: number
 }
 
-export const DEFAULT_PENALTY_CAPS: PenaltyCaps = {
-  categoryPenaltyCap: DEFAULT_CATEGORY_PENALTY_CAP,
-  totalPenaltyCap: DEFAULT_TOTAL_PENALTY_CAP,
-}
-
 /** Complexity-multiplier thresholds/factors, overridable via `config.score.complexityPenalties`. */
 export interface ComplexityPenalties {
   lowThreshold: number
   lowFactor: number
   highThreshold: number
   highFactor: number
-}
-
-export const DEFAULT_COMPLEXITY_PENALTIES: ComplexityPenalties = {
-  lowThreshold: 5,
-  lowFactor: 0.5,
-  highThreshold: 20,
-  highFactor: 1.5,
 }
 
 /**
@@ -71,12 +64,6 @@ export interface CrossAgentPenaltyWeights {
   critical: number
   high: number
   medium: number
-}
-
-export const DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS: CrossAgentPenaltyWeights = {
-  critical: 15,
-  high: 8,
-  medium: 4,
 }
 
 /**
