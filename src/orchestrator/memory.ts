@@ -22,6 +22,21 @@ function highestSeverity(findings: AgentFinding[]): Severity {
   return 'info'
 }
 
+/** Union-find with path compression for clustering passes. */
+function makeUnionFind(n: number) {
+  const parent = Array.from({ length: n }, (_, i) => i)
+  const find = (x: number): number => {
+    if (parent[x] !== x) parent[x] = find(parent[x])
+    return parent[x]
+  }
+  const union = (x: number, y: number): void => {
+    const rx = find(x)
+    const ry = find(y)
+    if (rx !== ry) parent[rx] = ry
+  }
+  return { find, union }
+}
+
 export class AgentMemory {
   private store: Map<AgentName, AgentFinding[]> = new Map()
 
@@ -108,16 +123,7 @@ export class AgentMemory {
     // grouped together.
     for (const [filePath, fileFindings] of findingsByFile) {
       const n = fileFindings.length
-      const parent = Array.from({ length: n }, (_, i) => i)
-      const find = (x: number): number => {
-        if (parent[x] !== x) parent[x] = find(parent[x])
-        return parent[x]
-      }
-      const union = (x: number, y: number): void => {
-        const rx = find(x)
-        const ry = find(y)
-        if (rx !== ry) parent[rx] = ry
-      }
+      const { find, union } = makeUnionFind(n)
 
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
@@ -170,16 +176,7 @@ export class AgentMemory {
     // instead, mirroring merger.ts's file-level merge branch (orchestrator-002).
     for (const [filePath, fileFindings] of findingsByFileNoLine) {
       const n = fileFindings.length
-      const parent = Array.from({ length: n }, (_, i) => i)
-      const find = (x: number): number => {
-        if (parent[x] !== x) parent[x] = find(parent[x])
-        return parent[x]
-      }
-      const union = (x: number, y: number): void => {
-        const rx = find(x)
-        const ry = find(y)
-        if (rx !== ry) parent[rx] = ry
-      }
+      const { find, union } = makeUnionFind(n)
 
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
