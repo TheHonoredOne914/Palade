@@ -1,10 +1,10 @@
 import crypto from 'node:crypto'
 import chalk from 'chalk'
 import pLimit from 'p-limit'
-import type { AgentFinding, AgentContext, AgentName, IAgent } from '../agents/base.js'
+import type { AgentFinding, AgentContext, AgentName } from '../agents/base.js'
 import { getAgentsForMode } from '../agents/registry.js'
 import { synthesize as analyzeSynthesis, type SynthesisResult } from '../agents/synthesis.js'
-import { CombinedAnalyzer, DEFAULT_DOMAINS } from '../agents/combined.js'
+import { CombinedAnalyzer } from '../agents/combined.js'
 import { CustomAgent } from '../agents/custom/agent.js'
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
@@ -22,6 +22,8 @@ import { isFatalAuthError } from '../providers/errorClassification.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 import { applyLineIgnores } from '../ingestion/annotationParser.js'
 import { ReviewCancelledError } from '../errors/types.js'
+
+const DEFAULT_MAX_CONCURRENT_BATCHES = 5
 
 export async function runSwarm(
   allChunks: CodeChunk[],
@@ -173,7 +175,7 @@ export async function runSwarm(
       const agentHardChunkLimit =
         agent instanceof CustomAgent ? options.hardChunkLimit : hardChunkLimit
       const batches = scheduleBatches(reviewChunks, agentSoftTokenLimit, agentHardChunkLimit)
-      const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
+      const limit = pLimit(agentContext.maxConcurrentBatches ?? DEFAULT_MAX_CONCURRENT_BATCHES) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>
         limit(async () => {
@@ -280,11 +282,6 @@ export async function runSwarm(
         // call further down in this same agent promise, silently losing
         // partial findings from batches that completed fine.
         memory.record(agent.name, applyLineIgnores(allFindings, options.ignoredLines ?? []))
-        // Attach the partial findings collected so far to the thrown error so
-        // a caller that catches it (review.ts, diff.ts currently just log the
-        // message) COULD recover them instead of the generic re-throw making
-        // this "preserve partial findings" step unreachable in practice.
-        Object.assign(agentError, { partialFindings: memory.getAll() })
         throw agentError
       }
 
@@ -380,7 +377,7 @@ export async function runSwarm(
     // pure latency at the end of the run. Arbitration calls are independent
     // of each other, so run them concurrently under the same per-agent batch
     // concurrency cap used elsewhere in the swarm.
-    const limit = pLimit(options.maxConcurrentBatches ?? 5)
+    const limit = pLimit(agentContext.maxConcurrentBatches ?? DEFAULT_MAX_CONCURRENT_BATCHES)
     await Promise.allSettled(
       conflicts.map((conflict) =>
         limit(async () => {
