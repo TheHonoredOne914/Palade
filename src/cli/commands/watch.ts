@@ -1,6 +1,7 @@
-import chokidar from 'chokidar'
+import chokidar, { type FSWatcher } from 'chokidar'
 import chalk from 'chalk'
 import { loadConfig } from '../../config/loader.js'
+import type { PaladeConfig } from '../../config/schema.js'
 import { DEFAULT_CONFIG } from '../../config/defaults.js'
 import { initRouter } from '../../providers/router.js'
 import { walkProject, buildIgnoreFilter } from '../../ingestion/walker.js'
@@ -26,6 +27,343 @@ const DEBOUNCE_MS: Record<string, number> = {
   low: 5000,
   medium: 2000,
   high: 500,
+}
+
+class WatchController {
+  private readonly projectRoot: string
+  private readonly debounceMs: number
+  private readonly isContinuous: boolean
+  private readonly config: PaladeConfig
+  private readonly watchAgents: IAgent[]
+
+  private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private isProcessing = false
+  private readonly accumulatedFindings = new Map<string, AgentFinding[]>()
+  private readonly MAX_ACCUMULATED_FILES = 200
+  
+  private sweepQueue: string[] = []
+  private readonly urgentQueue: string[] = []
+  private readonly urgentSet = new Set<string>()
+  private readonly sweepSet = new Set<string>()
+  
+  private loopTimer: ReturnType<typeof setTimeout> | null = null
+  private currentSweepController: AbortController | null = null
+  private watcher: FSWatcher | null = null
+  private resolveDone!: () => void
+  private donePromise!: Promise<void>
+  private readonly boundOnExit = this.onExit.bind(this)
+  private readonly boundOnSigint = this.onSigint.bind(this)
+
+  constructor(
+    projectRoot: string,
+    debounceMs: number,
+    isContinuous: boolean,
+    config: PaladeConfig,
+    watchAgents: IAgent[]
+  ) {
+    this.projectRoot = projectRoot
+    this.debounceMs = debounceMs
+    this.isContinuous = isContinuous
+    this.config = config
+    this.watchAgents = watchAgents
+  }
+
+  public async start(): Promise<void> {
+    if (this.isContinuous) {
+      console.log(
+        theme.dim(`  Continuous background sweep enabled. Resolving initial file list...`)
+      )
+      try {
+        const manifests = await walkProject(this.projectRoot, { projectRoot: this.projectRoot })
+        this.sweepQueue = manifests.map((m) => m.path)
+        manifests.forEach(m => this.sweepSet.add(m.path))
+        // Shuffle the queue so sweeps don't always start deterministically
+        for (let i = this.sweepQueue.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1))
+          const temp = this.sweepQueue[i]
+          this.sweepQueue[i] = this.sweepQueue[j]
+          this.sweepQueue[j] = temp
+        }
+      } catch (err) {
+        console.warn(theme.error(`⚠ Failed to initialize background sweep queue: ${err instanceof Error ? err.message : String(err)}`))
+      }
+    }
+
+    // Initial empty report
+    void this.updateWatchReport()
+
+    // Kick off the background sweep if continuous is enabled
+    if (this.isContinuous) {
+      void this.processNext()
+    }
+
+    const ignoreFilter = await buildIgnoreFilter(this.projectRoot)
+
+    this.watcher = chokidar.watch('.', {
+      ignored: (path: string) => {
+        const rel = path.replace(/\\/g, '/')
+        if (rel === '.' || rel === '') return false
+        return ignoreFilter.ignores(rel)
+      },
+      persistent: true,
+      ignoreInitial: true,
+      awaitWriteFinish: { stabilityThreshold: 300 },
+    })
+
+    this.watcher.on('unlink', (path: string) => {
+      const timer = this.debounceTimers.get(path)
+      if (timer) {
+        clearTimeout(timer)
+        this.debounceTimers.delete(path)
+      }
+    })
+
+    const boundEnqueue = this.enqueueFileEvent.bind(this)
+    this.watcher.on('change', boundEnqueue)
+    this.watcher.on('add', boundEnqueue)
+
+    this.donePromise = new Promise<void>((r) => { this.resolveDone = r })
+    
+    process.on('exit', this.boundOnExit)
+    process.on('SIGINT', this.boundOnSigint)
+
+    try {
+      await this.donePromise
+    } finally {
+      this.stop()
+    }
+  }
+
+  private stop(): void {
+    process.removeListener('exit', this.boundOnExit)
+    process.removeListener('SIGINT', this.boundOnSigint)
+    for (const timer of this.debounceTimers.values()) clearTimeout(timer)
+    this.debounceTimers.clear()
+    if (this.loopTimer) clearTimeout(this.loopTimer)
+    try { this.watcher?.close() } catch {}
+  }
+
+  private onExit(): void {
+    try { this.watcher?.close() } catch {}
+  }
+
+  private onSigint(): void {
+    this.resolveDone()
+  }
+
+  private enqueueFileEvent(path: string): void {
+    const existing = this.debounceTimers.get(path)
+    if (existing) clearTimeout(existing)
+    
+    this.debounceTimers.set(
+      path,
+      setTimeout(() => {
+        this.debounceTimers.delete(path)
+        const normalizedPath = path.split('\\').join('/')
+
+        if (!this.urgentSet.has(normalizedPath)) {
+          this.urgentSet.add(normalizedPath)
+          this.urgentQueue.push(normalizedPath)
+        }
+
+        if (this.isContinuous && !this.sweepSet.has(normalizedPath)) {
+          this.sweepQueue.push(normalizedPath)
+          this.sweepSet.add(normalizedPath)
+        }
+
+        if (this.currentSweepController) {
+          this.currentSweepController.abort()
+        }
+
+        void this.processNext()
+      }, this.debounceMs)
+    )
+  }
+
+  private async processNext(): Promise<void> {
+    if (this.isProcessing) return
+    this.isProcessing = true
+    this.currentSweepController = null
+
+    try {
+      let nextFile: string | undefined
+      const isUrgent = this.urgentQueue.length > 0
+
+      if (isUrgent) {
+        nextFile = this.urgentQueue.shift()
+        if (nextFile) this.urgentSet.delete(nextFile)
+        
+        if (this.isContinuous && nextFile) {
+          this.sweepQueue = this.sweepQueue.filter((f) => f !== nextFile)
+          this.sweepQueue.push(nextFile)
+          this.sweepSet.add(nextFile)
+        }
+      } else if (this.isContinuous && this.sweepQueue.length > 0) {
+        nextFile = this.sweepQueue.shift()
+        if (nextFile) this.sweepSet.delete(nextFile)
+        this.currentSweepController = new AbortController()
+      }
+
+      if (nextFile) {
+        const sweepFile = !isUrgent ? nextFile : undefined
+        try {
+          await this.analyzeFile(nextFile, this.currentSweepController?.signal)
+          if (sweepFile) {
+            this.sweepQueue.push(sweepFile)
+            this.sweepSet.add(sweepFile)
+          }
+        } catch (err: unknown) {
+          if (err instanceof Error && err.name === 'AbortError' && !isUrgent) {
+            this.sweepQueue.unshift(nextFile)
+            this.sweepSet.add(nextFile)
+          } else {
+            if (!this.sweepSet.has(nextFile)) {
+              this.sweepQueue.push(nextFile)
+              this.sweepSet.add(nextFile)
+            }
+          }
+        }
+      }
+    } finally {
+      this.isProcessing = false
+      this.currentSweepController = null
+      if (this.loopTimer) clearTimeout(this.loopTimer)
+      if (this.urgentQueue.length > 0 || this.isContinuous) {
+        this.loopTimer = setTimeout(
+          () => {
+            void this.processNext()
+          },
+          this.urgentQueue.length > 0 ? 100 : 3000
+        )
+      }
+    }
+  }
+
+  private async analyzeFile(filePath: string, signal?: AbortSignal): Promise<void> {
+    console.log(theme.dim(`\n  Scanning ${filePath}...`))
+
+    try {
+      const scope = { projectRoot: this.projectRoot, files: [filePath] }
+      const manifests = await walkProject(this.projectRoot, scope)
+      if (manifests.length === 0) return
+
+      const chunks = await chunkFiles(manifests)
+      if (chunks.length === 0) return
+
+      const context: AgentContext = {
+        projectLanguages: [manifests[0].language],
+        totalFiles: 1,
+        totalChunks: chunks.length,
+        mode: 'standard',
+        includeSkills: this.config.swarm.includeSkills,
+      }
+
+      const allFindings: AgentFinding[] = []
+      let hasErrors = false
+      const { softTokenLimit, hardChunkLimit } = applyEconomyLimits(
+        !!this.config.swarm.economyMode,
+        this.config.swarm.softTokenLimit,
+        this.config.swarm.hardChunkLimit
+      )
+      const batches = scheduleBatches(chunks, softTokenLimit, hardChunkLimit)
+
+      for (const agent of this.watchAgents) {
+        for (const batch of batches) {
+          const timeoutMs = this.config.swarm.timeoutMs ?? DEFAULT_CONFIG.swarm!.timeoutMs
+          const ac = new AbortController()
+          const timer = setTimeout(() => ac.abort(), timeoutMs)
+
+          const onParentAbort = () => {
+            ac.abort()
+            clearTimeout(timer)
+          }
+          if (signal) signal.addEventListener('abort', onParentAbort)
+
+          try {
+            const findings = await agent.analyze(batch, context, ac.signal)
+            allFindings.push(...findings)
+          } catch (err: unknown) {
+            hasErrors = true
+            if (err instanceof Error && err.name === 'AbortError') {
+              if (signal?.aborted) throw err 
+              console.log(theme.dim(`    ⚠ ${agent.name} timed out.`))
+            } else {
+              console.log(theme.dim(`    ⚠ ${agent.name} failed: ${err instanceof Error ? err.message : String(err)}`))
+            }
+          } finally {
+            clearTimeout(timer)
+            if (signal) signal.removeEventListener('abort', onParentAbort)
+          }
+        }
+      }
+
+      let finalFindings = allFindings
+      if (allFindings.length > 0) {
+        finalFindings = mergeFindings(allFindings)
+      }
+
+      if (finalFindings.length > 0) {
+        this.accumulatedFindings.delete(filePath)
+        this.accumulatedFindings.set(filePath, finalFindings)
+        if (this.accumulatedFindings.size > this.MAX_ACCUMULATED_FILES) {
+          const keysToDelete = [...this.accumulatedFindings.keys()].slice(
+            0,
+            this.accumulatedFindings.size - this.MAX_ACCUMULATED_FILES
+          )
+          for (const key of keysToDelete) this.accumulatedFindings.delete(key)
+        }
+        console.log('\n' + formatDriftAlert(filePath, finalFindings))
+      } else if (!hasErrors) {
+        this.accumulatedFindings.delete(filePath)
+        console.log(theme.success(`  ✓ Clean: ${filePath}\n`))
+      } else {
+        console.log(theme.dim(`  ⚠ Scan incomplete due to errors, keeping previous findings for: ${filePath}\n`))
+        throw new Error('Scan incomplete due to errors')
+      }
+
+      void this.updateWatchReport()
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log(theme.dim(`  ⚠ Aborted scan of ${filePath} for higher priority task.`))
+        throw err
+      }
+      console.warn(theme.error(`  ⚠ Error scanning ${filePath}: ${err instanceof Error ? err.message : String(err)}`))
+      throw err
+    }
+  }
+
+  private async updateWatchReport(): Promise<void> {
+    try {
+      const paladeDir = join(this.projectRoot, '.palade')
+      await mkdir(paladeDir, { recursive: true })
+      const mdPath = join(paladeDir, 'watch-bugs.md')
+
+      const lines = [
+        '# Watch Mode Findings',
+        '',
+        `*Last updated: ${new Date().toLocaleTimeString()}*`,
+        '',
+      ]
+
+      if (this.accumulatedFindings.size === 0) {
+        lines.push('No issues detected in actively watched files.')
+      } else {
+        for (const [file, findings] of this.accumulatedFindings.entries()) {
+          lines.push(`## \`${file}\``, '')
+          for (const f of findings) {
+            const loc = f.lineStart ? ` (Line ${f.lineStart})` : ''
+            lines.push(`- **[${f.severity.toUpperCase()}]** ${f.title}${loc}`)
+            lines.push(`  - *${f.agentName}*: ${f.description}`)
+          }
+          lines.push('')
+        }
+      }
+
+      await writeFile(mdPath, lines.join('\n'), 'utf-8')
+    } catch {
+      // Ignore write errors in watch mode
+    }
+  }
 }
 
 export async function watchCommand(opts: {
@@ -56,9 +394,6 @@ export async function watchCommand(opts: {
     throw new CliExitError(1)
   }
 
-  // Mirror swarm.ts's economy-mode routing: replace the N parallel built-in
-  // agents with a single combined multi-domain analyzer per batch. Custom
-  // agents still run as separate per-domain calls, same as review/diff.
   const modeAgents = getAgentsForMode('standard', undefined, customAgentDefs)
   const watchAgents = applyEconomyRouting(modeAgents, !!config.swarm.economyMode)
 
@@ -71,329 +406,13 @@ export async function watchCommand(opts: {
   }
   console.log()
 
-  // Debounce per file — a single shared timer would let a change to file B
-  // cancel file A's pending enqueue, silently dropping A from the scan queue.
-  const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  let isProcessing = false
-  const accumulatedFindings = new Map<string, AgentFinding[]>()
-  const MAX_ACCUMULATED_FILES = 200
-  let sweepQueue: string[] = []
-  const urgentQueue: string[] = []
-  const urgentSet = new Set<string>()
-  const sweepSet = new Set<string>()
-  let loopTimer: ReturnType<typeof setTimeout> | null = null
-  let currentSweepController: AbortController | null = null
+  const controller = new WatchController(
+    projectRoot,
+    debounceMs,
+    isContinuous,
+    config,
+    watchAgents
+  )
 
-  if (isContinuous) {
-    console.log(
-      theme.dim(`  Continuous background sweep enabled. Resolving initial file list...`)
-    )
-    try {
-      const manifests = await walkProject(projectRoot, { projectRoot })
-      sweepQueue = manifests.map((m) => m.path)
-      manifests.forEach(m => sweepSet.add(m.path))
-      // Shuffle the queue so sweeps don't always start deterministically
-      for (let i = sweepQueue.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        const temp = sweepQueue[i]
-        sweepQueue[i] = sweepQueue[j]
-        sweepQueue[j] = temp
-      }
-    } catch (err) {
-      console.warn(theme.error(`⚠ Failed to initialize background sweep queue: ${err instanceof Error ? err.message : String(err)}`))
-    }
-  }
-
-  const updateWatchReport = async () => {
-    try {
-      const paladeDir = join(projectRoot, '.palade')
-      await mkdir(paladeDir, { recursive: true })
-      const mdPath = join(paladeDir, 'watch-bugs.md')
-
-      const lines = [
-        '# Watch Mode Findings',
-        '',
-        `*Last updated: ${new Date().toLocaleTimeString()}*`,
-        '',
-      ]
-
-      if (accumulatedFindings.size === 0) {
-        lines.push('No issues detected in actively watched files.')
-      } else {
-        for (const [file, findings] of accumulatedFindings.entries()) {
-          lines.push(`## \`${file}\``, '')
-          for (const f of findings) {
-            const loc = f.lineStart ? ` (Line ${f.lineStart})` : ''
-            lines.push(`- **[${f.severity.toUpperCase()}]** ${f.title}${loc}`)
-            lines.push(`  - *${f.agentName}*: ${f.description}`)
-          }
-          lines.push('')
-        }
-      }
-
-      await writeFile(mdPath, lines.join('\n'), 'utf-8')
-    } catch {
-      // Ignore write errors in watch mode
-    }
-  }
-
-  // Initial empty report
-  void updateWatchReport()
-
-  const analyzeFile = async (filePath: string, signal?: AbortSignal): Promise<void> => {
-    // isProcessing is now managed by processNext
-    console.log(theme.dim(`\n  Scanning ${filePath}...`))
-
-    try {
-      const scope = { projectRoot, files: [filePath] }
-      const manifests = await walkProject(projectRoot, scope)
-      if (manifests.length === 0) {
-        return
-      }
-
-      const chunks = await chunkFiles(manifests)
-      if (chunks.length === 0) {
-        return
-      }
-
-      const context: AgentContext = {
-        projectLanguages: [manifests[0].language],
-        totalFiles: 1,
-        totalChunks: chunks.length,
-        mode: 'standard',
-        includeSkills: config.swarm.includeSkills,
-      }
-
-      // Run the full agent set for the current mode/config, mirroring review
-      // (including custom agents and economy-mode combined-analyzer routing,
-      // both resolved once above into `watchAgents`).
-      const agents = watchAgents
-      const allFindings: AgentFinding[] = []
-      let hasErrors = false
-      const { softTokenLimit, hardChunkLimit } = applyEconomyLimits(
-        !!config.swarm.economyMode,
-        config.swarm.softTokenLimit,
-        config.swarm.hardChunkLimit
-      )
-      const batches = scheduleBatches(chunks, softTokenLimit, hardChunkLimit)
-
-      for (const agent of agents) {
-        for (const batch of batches) {
-          const timeoutMs = config.swarm.timeoutMs ?? DEFAULT_CONFIG.swarm!.timeoutMs
-          const ac = new AbortController()
-          const timer = setTimeout(() => ac.abort(), timeoutMs)
-
-          const onParentAbort = () => {
-            ac.abort()
-            clearTimeout(timer)
-          }
-          if (signal) signal.addEventListener('abort', onParentAbort)
-
-          try {
-            const findings = await agent.analyze(batch, context, ac.signal)
-            allFindings.push(...findings)
-          } catch (err: unknown) {
-            hasErrors = true
-            if (err instanceof Error && err.name === 'AbortError') {
-              if (signal?.aborted) throw err // pass parent aborts up
-              console.log(theme.dim(`    ⚠ ${agent.name} timed out.`))
-            } else {
-              console.log(theme.dim(`    ⚠ ${agent.name} failed: ${err instanceof Error ? err.message : String(err)}`))
-            }
-          } finally {
-            clearTimeout(timer)
-            if (signal) signal.removeEventListener('abort', onParentAbort)
-          }
-        }
-      }
-
-      let finalFindings = allFindings
-      if (allFindings.length > 0) {
-        finalFindings = mergeFindings(allFindings)
-      }
-
-      if (finalFindings.length > 0) {
-        // Delete before set so a re-scan of a long-tracked file moves it to
-        // the end of Map iteration order — Map.set() on an EXISTING key does
-        // NOT move it to the end, so without this a re-scanned file stays at
-        // its original insertion position and isn't protected from the
-        // oldest-first eviction below (cli-004).
-        accumulatedFindings.delete(filePath)
-        accumulatedFindings.set(filePath, finalFindings)
-        // Evict oldest entries when the map grows unbounded
-        if (accumulatedFindings.size > MAX_ACCUMULATED_FILES) {
-          const keysToDelete = [...accumulatedFindings.keys()].slice(
-            0,
-            accumulatedFindings.size - MAX_ACCUMULATED_FILES
-          )
-          for (const key of keysToDelete) accumulatedFindings.delete(key)
-        }
-        console.log('\n' + formatDriftAlert(filePath, finalFindings))
-      } else if (!hasErrors) {
-        accumulatedFindings.delete(filePath)
-        console.log(theme.success(`  ✓ Clean: ${filePath}\n`))
-      } else {
-        console.log(theme.dim(`  ⚠ Scan incomplete due to errors, keeping previous findings for: ${filePath}\n`))
-        throw new Error('Scan incomplete due to errors')
-      }
-
-      void updateWatchReport()
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        console.log(theme.dim(`  ⚠ Aborted scan of ${filePath} for higher priority task.`))
-        throw err
-      }
-      console.warn(theme.error(`  ⚠ Error scanning ${filePath}: ${err instanceof Error ? err.message : String(err)}`))
-      throw err
-    }
-  }
-
-  const processNext = async () => {
-    if (isProcessing) return
-    isProcessing = true
-    currentSweepController = null
-
-    try {
-      let nextFile: string | undefined
-      const isUrgent = urgentQueue.length > 0
-
-      if (isUrgent) {
-        nextFile = urgentQueue.shift()
-        if (nextFile) urgentSet.delete(nextFile)
-        // Deduplicate from sweep queue and push to back
-        if (isContinuous && nextFile) {
-          sweepQueue = sweepQueue.filter((f) => f !== nextFile)
-          sweepQueue.push(nextFile)
-          sweepSet.add(nextFile)
-        }
-      } else if (isContinuous && sweepQueue.length > 0) {
-        nextFile = sweepQueue.shift()
-        if (nextFile) sweepSet.delete(nextFile)
-        currentSweepController = new AbortController()
-      }
-
-      if (nextFile) {
-        const sweepFile = !isUrgent ? nextFile : undefined
-        try {
-          await analyzeFile(nextFile, currentSweepController?.signal)
-          if (sweepFile) {
-            sweepQueue.push(sweepFile) // rotate to back after successful scan
-            sweepSet.add(sweepFile)
-          }
-        } catch (err: unknown) {
-          if (err instanceof Error && err.name === 'AbortError' && !isUrgent) {
-            // If background sweep was aborted, it means an urgent task came in.
-            // Push the aborted file back to the front of the sweep queue so we try again later.
-            sweepQueue.unshift(nextFile)
-            sweepSet.add(nextFile)
-          } else {
-            if (!sweepSet.has(nextFile)) {
-              sweepQueue.push(nextFile)
-              sweepSet.add(nextFile)
-            }
-          }
-        }
-      }
-    } finally {
-      isProcessing = false
-      currentSweepController = null
-      if (loopTimer) clearTimeout(loopTimer)
-      if (urgentQueue.length > 0 || isContinuous) {
-        loopTimer = setTimeout(
-          () => {
-            void processNext()
-          },
-          urgentQueue.length > 0 ? 100 : 3000
-        )
-      }
-    }
-  }
-
-  // Kick off the background sweep if continuous is enabled
-  if (isContinuous) {
-    void processNext()
-  }
-
-  const ignoreFilter = await buildIgnoreFilter(projectRoot)
-
-  const watcher = chokidar.watch('.', {
-    ignored: (path: string) => {
-      const rel = path.replace(/\\/g, '/')
-      if (rel === '.' || rel === '') return false
-      return ignoreFilter.ignores(rel)
-    },
-    persistent: true,
-    ignoreInitial: true,
-    awaitWriteFinish: { stabilityThreshold: 300 },
-  })
-
-  watcher.on('unlink', (path: string) => {
-    const timer = debounceTimers.get(path)
-    if (timer) {
-      clearTimeout(timer)
-      debounceTimers.delete(path)
-    }
-  })
-
-  // Enqueue a changed or newly-created file for review, debounced the same
-  // way for both — a brand-new file created while `palade watch` is running
-  // must be scanned just like a modified one, not silently skipped.
-  const enqueueFileEvent = (path: string) => {
-    const existing = debounceTimers.get(path)
-    if (existing) clearTimeout(existing)
-    debounceTimers.set(
-      path,
-      setTimeout(() => {
-        debounceTimers.delete(path)
-        // chokidar emits OS-native separators (backslash on Windows). walkProject
-        // produces forward-slash paths, so normalise before passing as scope.
-        const normalizedPath = path.split('\\').join('/')
-
-        if (!urgentSet.has(normalizedPath)) {
-          urgentSet.add(normalizedPath)
-          urgentQueue.push(normalizedPath)
-        }
-
-        // A file created/changed after the watcher started must also join
-        // the periodic background sweep in continuous mode — otherwise it's
-        // scanned once via the urgent queue and then permanently excluded
-        // from every future sweep for the rest of the session (cli-003).
-        if (isContinuous && !sweepSet.has(normalizedPath)) {
-          sweepQueue.push(normalizedPath)
-          sweepSet.add(normalizedPath)
-        }
-
-        if (currentSweepController) {
-          currentSweepController.abort()
-        }
-
-        void processNext()
-      }, debounceMs)
-    )
-  }
-
-  watcher.on('change', enqueueFileEvent)
-  watcher.on('add', enqueueFileEvent)
-
-  let resolveDone: () => void
-  const donePromise = new Promise<void>((r) => { resolveDone = r })
-
-  const onExit = () => {
-    try { watcher.close() } catch {}
-  }
-  const onSigint = () => resolveDone()
-
-  process.on('exit', onExit)
-  process.on('SIGINT', onSigint)
-
-  try {
-    await donePromise
-  } finally {
-    process.removeListener('exit', onExit)
-    process.removeListener('SIGINT', onSigint)
-    for (const timer of debounceTimers.values()) clearTimeout(timer)
-    debounceTimers.clear()
-    if (loopTimer) clearTimeout(loopTimer)
-    try { watcher.close() } catch {}
-  }
+  await controller.start()
 }
