@@ -306,19 +306,6 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
     // .env file may not exist — that's fine, just skip it
   }
 
-  const configPath = resolveConfigPath(projectRoot)
-  if (!existsSync(configPath)) return result
-  try {
-    const content = await readFile(configPath, 'utf-8')
-    for (const p of PROVIDERS) {
-      if (result[p.id]) continue
-      const re = new RegExp(`['"]?${p.id}['"]?:\\s*\\{[^{}]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
-      const m = content.match(re)
-      if (m) result[p.id] = m[1]
-    }
-  } catch {
-    /* ignore */
-  }
   return result
 }
 

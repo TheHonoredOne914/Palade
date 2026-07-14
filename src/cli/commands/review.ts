@@ -24,7 +24,7 @@ import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import { detectLanguages } from '../../ingestion/walker.js'
 import chalk from 'chalk'
-import { mkdirSync, existsSync, statSync } from 'node:fs'
+import { mkdirSync, existsSync, statSync, writeFileSync } from 'node:fs'
 import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'node:path'
 
 // Local execution (no API keys required):
@@ -475,11 +475,13 @@ export async function reviewCommand(
     swarmResult.agentsRun?.filter((a) => !swarmResult.failedCategories?.includes(a))
   )
 
+  const runTimestamp = new Date().toISOString()
+  
   // 10. Append to history
   await appendEntry(
     historyPath,
     {
-      timestamp: new Date().toISOString(),
+      timestamp: runTimestamp,
       runId: swarmResult.runId,
       score: scoreResult.score,
       breakdown: scoreResult.breakdown,
@@ -495,7 +497,6 @@ export async function reviewCommand(
     const badgePath = join(projectRoot, config.score.badgePath)
     const badgeDir = dirname(badgePath)
     if (!existsSync(badgeDir)) mkdirSync(badgeDir, { recursive: true })
-    const { writeFileSync } = await import('node:fs')
     writeFileSync(badgePath, badgeSvg, 'utf-8')
   }
 
@@ -503,9 +504,9 @@ export async function reviewCommand(
   const outputDir = join(projectRoot, config.output.dir)
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true })
 
-  const dateStr = new Date().toISOString().slice(0, 10)
-  const runId = crypto.randomBytes(3).toString('hex') // 6-char hex, avoids same-day collisions
-  const reportName = `${dateStr}-${scoreResult.score}-${runId}`
+  const dateStr = runTimestamp.slice(0, 10)
+  const reportRunId = swarmResult.runId.substring(0, 6)
+  const reportName = `${dateStr}-${scoreResult.score}-${reportRunId}`
   const formats = (opts.format ?? config.output.formats.join(',')).split(',').map((f) => f.trim())
 
   const reporterCtx = {
@@ -517,7 +518,7 @@ export async function reviewCommand(
     history: readHistory(historyPath),
     config: {
       projectName: basename(projectRoot),
-      runTimestamp: new Date().toISOString(),
+      runTimestamp,
     },
   }
 
