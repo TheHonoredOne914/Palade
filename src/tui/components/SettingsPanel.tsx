@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
-import { saveApiKey, saveConfigValue, PROVIDERS } from '../../config/apiKey.js'
+import { saveApiKey, saveConfigValue, saveConfigValues, PROVIDERS } from '../../config/apiKey.js'
 import type { ProviderId } from '../../config/apiKey.js'
 import { fetchModels } from '../../config/models.js'
 import { BUILTIN_NAMES } from '../../agents/registry.js'
@@ -187,10 +187,11 @@ export function SettingsPanel({
         // excess based on object key order with no warning shown.
         const total = Object.values(shares).reduce((sum, v) => sum + (v ?? 0), 0)
         let trimmed = false
+        const next: Record<string, number> = { ...shares }
+        
         if (total > count) {
           trimmed = true
           let excess = total - count
-          const next: Record<string, number> = { ...shares }
           for (const id of Object.keys(next)) {
             if (excess <= 0) break
             const val = next[id] ?? 0
@@ -198,15 +199,19 @@ export function SettingsPanel({
             next[id] = val - reduceBy
             excess -= reduceBy
           }
-          for (const [id, val] of Object.entries(next)) {
-            if (val !== savedShares[id]) {
-              await saveConfigValue(projectRoot, `swarm.providerShares.${id}`, val)
-            }
-          }
-          setShares(next)
-          setSavedShares(next)
         }
-        await saveConfigValue(projectRoot, 'swarm.agentCount', count)
+        
+        const updates: Record<string, unknown> = { 'swarm.agentCount': count }
+        for (const [id, val] of Object.entries(next)) {
+          if (val !== savedShares[id]) {
+            updates[`swarm.providerShares.${id}`] = val
+          }
+        }
+        
+        await saveConfigValues(projectRoot, updates)
+        
+        setShares(next)
+        setSavedShares(next)
         setSavedAgentCount(count)
         setMessage(
           trimmed
@@ -217,7 +222,7 @@ export function SettingsPanel({
         setMessage(`✗ Error: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
-    [projectRoot, shares]
+    [projectRoot, shares, savedShares]
   )
 
   const saveShare = useCallback(

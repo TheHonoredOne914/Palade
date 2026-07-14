@@ -255,6 +255,27 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
  * settings panel's swarm/synthesis/model selectors — same underlying writer
  * as `palade settings --set`.
  */
+export async function saveConfigValues(
+  projectRoot: string,
+  updates: Record<string, unknown>
+): Promise<void> {
+  const configPath = resolveConfigPath(projectRoot)
+  const paladeDir = join(projectRoot, '.palade')
+  if (!existsSync(paladeDir)) await mkdir(paladeDir, { recursive: true })
+
+  let content: string
+  try {
+    content = await readFile(configPath, 'utf-8')
+  } catch {
+    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: {\n    primary: 'opencode-zen',\n    synthesis: 'nvidia',\n    agentCount: 8\n  },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
+  }
+
+  for (const [dotPath, value] of Object.entries(updates)) {
+    content = setNestedValue(content, dotPath, value)
+  }
+  await writeFile(configPath, content, 'utf-8')
+}
+
 export async function saveConfigValue(
   projectRoot: string,
   dotPath: string,

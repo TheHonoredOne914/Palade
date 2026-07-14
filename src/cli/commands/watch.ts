@@ -248,6 +248,7 @@ export async function watchCommand(opts: {
         console.log(theme.success(`  ✓ Clean: ${filePath}\n`))
       } else {
         console.log(theme.dim(`  ⚠ Scan incomplete due to errors, keeping previous findings for: ${filePath}\n`))
+        throw new Error('Scan incomplete due to errors')
       }
 
       updateWatchReport()
@@ -257,6 +258,7 @@ export async function watchCommand(opts: {
         throw err
       }
       console.warn(theme.error(`  ⚠ Error scanning ${filePath}: ${err instanceof Error ? err.message : String(err)}`))
+      throw err
     }
   }
 
@@ -292,8 +294,10 @@ export async function watchCommand(opts: {
             // If background sweep was aborted, it means an urgent task came in.
             // Push the aborted file back to the front of the sweep queue so we try again later.
             sweepQueue.unshift(nextFile)
-          } else if (sweepFile) {
-            sweepQueue.push(sweepFile) // non-abort failure: still rotate, don't lose the file
+          } else {
+            if (!sweepQueue.includes(nextFile)) {
+              sweepQueue.push(nextFile)
+            }
           }
         }
       }
@@ -376,23 +380,25 @@ export async function watchCommand(opts: {
   watcher.on('change', enqueueFileEvent)
   watcher.on('add', enqueueFileEvent)
 
-  process.on('exit', () => {
-    watcher.close()
-  })
+  let resolveDone: () => void
+  const donePromise = new Promise<void>((r) => { resolveDone = r })
 
-  process.on('SIGINT', () => {
+  const onExit = () => {
+    try { watcher.close() } catch {}
+  }
+  const onSigint = () => resolveDone()
+
+  process.on('exit', onExit)
+  process.on('SIGINT', onSigint)
+
+  try {
+    await donePromise
+  } finally {
+    process.removeListener('exit', onExit)
+    process.removeListener('SIGINT', onSigint)
     for (const timer of debounceTimers.values()) clearTimeout(timer)
     debounceTimers.clear()
     if (loopTimer) clearTimeout(loopTimer)
-    try {
-      watcher.close()
-    } catch {
-      /* watcher may already be closed */
-    }
-    process.exitCode = 0
-    process.exit(0)
-  })
-
-  // Keep process alive
-  await new Promise(() => {})
+    try { watcher.close() } catch {}
+  }
 }
