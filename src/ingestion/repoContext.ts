@@ -15,6 +15,12 @@ export interface RepoContext {
 const TEST_FILE_RE = /\.(test|spec)\.[cm]?[jt]sx?$/
 const TEST_SEGMENT_RE = /(^|\/)(__tests__|tests|test|e2e)(\/|$)/
 
+const MAX_CYCLES = 10
+const MAX_PUBLIC_API_BFS = 60
+const MAX_PUBLIC_API_RENDER = 30
+const MAX_MODULE_GLOBALS = 15
+const MAX_TESTED_ENTRIES_RENDER = 40
+
 function isTestFile(path: string): boolean {
   return TEST_FILE_RE.test(path) || TEST_SEGMENT_RE.test(path)
 }
@@ -96,7 +102,7 @@ function findCycles(adjacency: Map<string, Set<string>>): string[][] {
         path.push(next)
         stack.push({ node: next, neighbors: [...(adjacency.get(next) ?? [])], idx: 0 })
       }
-      if (cycles.length >= 10) return cycles
+      if (cycles.length >= MAX_CYCLES) return cycles
     }
   }
 
@@ -122,7 +128,7 @@ function candidatesFor(raw: string): string[] {
   return candidates
 }
 
-const REEXPORT_RE = /export\s+(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g
+const REEXPORT_RE = /export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g
 
 /** Resolves a relative re-export specifier against the file that contains it, to a manifest path. */
 function resolveReexport(
@@ -144,15 +150,17 @@ function resolveReexport(
       if (manifestPaths.has(jsStripped + ext)) return jsStripped + ext
     }
   }
-  if (manifestPaths.has(resolved + '/index.ts')) return resolved + '/index.ts'
+  for (const ext of ['.ts', '.tsx', '.js', '.jsx']) {
+    if (manifestPaths.has(`${resolved}/index${ext}`)) return `${resolved}/index${ext}`
+  }
   return null
 }
 
-async function buildPublicApi(
+function buildPublicApi(
   pkg: Record<string, unknown> | undefined,
   manifestPaths: Set<string>,
   chunksByFile: Map<string, CodeChunk[]>
-): Promise<{ publicApiFiles: string[]; isLibrary: boolean }> {
+): { publicApiFiles: string[]; isLibrary: boolean } {
   if (!pkg) {
     return { publicApiFiles: [], isLibrary: false }
   }
@@ -171,27 +179,26 @@ async function buildPublicApi(
     }
   }
 
-  // BFS through re-export edges from each entry file. Collect up to 60 so the
+  // BFS through re-export edges from each entry file. Collect up to MAX_PUBLIC_API_BFS so the
   // renderer (which shows 30) can emit an honest "... and N more" instead of
   // silently pretending the public API ends at the cap.
   const reached = new Set<string>(entries)
   const queue = [...entries]
-  while (queue.length > 0 && reached.size < 60) {
+  while (queue.length > 0 && reached.size < MAX_PUBLIC_API_BFS) {
     const file = queue.shift()!
     for (const chunk of chunksByFile.get(file) ?? []) {
-      REEXPORT_RE.lastIndex = 0
       for (const m of chunk.content.matchAll(REEXPORT_RE)) {
         const target = resolveReexport(m[1], file, manifestPaths)
         if (target && !reached.has(target)) {
           reached.add(target)
           queue.push(target)
-          if (reached.size >= 60) break
+          if (reached.size >= MAX_PUBLIC_API_BFS) break
         }
       }
     }
   }
 
-  return { publicApiFiles: [...reached].slice(0, 60), isLibrary }
+  return { publicApiFiles: [...reached].slice(0, MAX_PUBLIC_API_BFS), isLibrary }
 }
 
 export async function buildRepoContext(
@@ -215,7 +222,7 @@ export async function buildRepoContext(
       adjacency.get(importer)!.add(m.path)
     }
   }
-  const dependencyCycles = findCycles(adjacency).slice(0, 10)
+  const dependencyCycles = findCycles(adjacency).slice(0, MAX_CYCLES)
 
   // testedBy
   const testedBy: Record<string, string[]> = {}
@@ -232,7 +239,7 @@ export async function buildRepoContext(
     if (!chunksByFile.has(c.filePath)) chunksByFile.set(c.filePath, [])
     chunksByFile.get(c.filePath)!.push(c)
   }
-  const { publicApiFiles, isLibrary } = await buildPublicApi(
+  const { publicApiFiles, isLibrary } = buildPublicApi(
     pkg,
     manifestPaths,
     chunksByFile
@@ -278,7 +285,7 @@ export async function buildRepoContext(
         }
       }
     }
-    if (moduleGlobals.length >= 15) break
+    if (moduleGlobals.length >= MAX_MODULE_GLOBALS) break
   }
 
   return {
@@ -288,7 +295,7 @@ export async function buildRepoContext(
     isLibrary,
     buildTimeFiles,
     validatorDeps,
-    moduleGlobals: moduleGlobals.slice(0, 15),
+    moduleGlobals: moduleGlobals.slice(0, MAX_MODULE_GLOBALS),
   }
 }
 
@@ -303,26 +310,21 @@ export function renderRepoContext(ctx: RepoContext): string {
   const sections: string[] = []
 
   if (ctx.dependencyCycles.length > 0) {
-    const lines = ctx.dependencyCycles
-      .slice(0, 10)
-      .map((cycle) => `  - ${[...cycle, cycle[0]].join(' -> ')}`)
-    sections.push(`DEPENDENCY CYCLES (defects — report under architecture):\n${lines.join('\n')}`)
+    const items = ctx.dependencyCycles.map((cycle) => [...cycle, cycle[0]].join(' -> '))
+    sections.push(`DEPENDENCY CYCLES (defects — report under architecture):\n${renderCappedList(items, MAX_CYCLES)}`)
   }
 
   const testedEntries = Object.entries(ctx.testedBy)
   if (testedEntries.length > 0) {
-    const lines = testedEntries
-      .slice(0, 40)
-      .map(([file, tests]) => `  - ${file} (tested by: ${tests.join(', ')})`)
-    if (testedEntries.length > 40) lines.push(`  ... and ${testedEntries.length - 40} more`)
+    const items = testedEntries.map(([file, tests]) => `${file} (tested by: ${tests.join(', ')})`)
     sections.push(
-      `FILES WITH TEST COVERAGE (do not report these as untested):\n${lines.join('\n')}`
+      `FILES WITH TEST COVERAGE (do not report these as untested):\n${renderCappedList(items, MAX_TESTED_ENTRIES_RENDER)}`
     )
   }
 
   if (ctx.publicApiFiles.length > 0) {
     sections.push(
-      `PUBLIC API FILES (exports here are consumed by library users — do not report as dead code):\n${renderCappedList(ctx.publicApiFiles, 30)}`
+      `PUBLIC API FILES (exports here are consumed by library users — do not report as dead code):\n${renderCappedList(ctx.publicApiFiles, MAX_PUBLIC_API_RENDER)}`
     )
   }
 
@@ -332,7 +334,7 @@ export function renderRepoContext(ctx: RepoContext): string {
 
   if (ctx.buildTimeFiles.length > 0) {
     sections.push(
-      `BUILD-TIME FILES (not runtime-reachable — deprioritize injection/XSS findings here):\n${renderCappedList(ctx.buildTimeFiles, ctx.buildTimeFiles.length)}`
+      `BUILD-TIME FILES (not runtime-reachable — deprioritize injection/XSS findings here):\n${ctx.buildTimeFiles.map((i) => `  - ${i}`).join('\n')}`
     )
   }
 
@@ -341,14 +343,12 @@ export function renderRepoContext(ctx: RepoContext): string {
   }
 
   if (ctx.moduleGlobals.length > 0) {
-    const lines = ctx.moduleGlobals
-      .slice(0, 15)
-      .map(
-        (g) =>
-          `  - ${g.file}: ${g.name} (${g.kind}, ${g.hasCleanup ? 'has delete/clear' : 'no delete/clear found'})`
-      )
+    const items = ctx.moduleGlobals.map(
+      (g) =>
+        `${g.file}: ${g.name} (${g.kind}, ${g.hasCleanup ? 'has delete/clear' : 'no delete/clear found'})`
+    )
     sections.push(
-      `MODULE-LEVEL COLLECTIONS (check for unbounded growth; entries without cleanup are leak candidates):\n${lines.join('\n')}`
+      `MODULE-LEVEL COLLECTIONS (check for unbounded growth; entries without cleanup are leak candidates):\n${renderCappedList(items, MAX_MODULE_GLOBALS)}`
     )
   }
 
