@@ -23,7 +23,6 @@ import type { ResolvedTarget, SwarmResult } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import { detectLanguages } from '../../ingestion/walker.js'
-import { ECONOMY_SOFT_TOKEN_CAP, ECONOMY_HARD_CHUNK_CAP } from '../../orchestrator/scheduler.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync, statSync } from 'node:fs'
 import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'node:path'
@@ -412,14 +411,8 @@ export async function reviewCommand(
         specPath: config.swarm.specPath,
         constitutionPath: config.swarm.constitutionPath,
         maxConcurrentBatches: config.swarm.maxConcurrentBatches,
-        softTokenLimit:
-          (opts.economy ?? config.swarm.economyMode)
-            ? Math.min(ECONOMY_SOFT_TOKEN_CAP, config.swarm.softTokenLimit)
-            : config.swarm.softTokenLimit,
-        hardChunkLimit:
-          (opts.economy ?? config.swarm.economyMode)
-            ? Math.min(ECONOMY_HARD_CHUNK_CAP, config.swarm.hardChunkLimit)
-            : config.swarm.hardChunkLimit,
+        softTokenLimit: config.swarm.softTokenLimit,
+        hardChunkLimit: config.swarm.hardChunkLimit,
         maxSynthesisFindings: config.swarm.maxSynthesisFindings,
         synthesisTimeoutMs: config.swarm.synthesisTimeoutMs,
         decisionsRetentionLimit: config.swarm.decisionsRetentionLimit,

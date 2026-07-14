@@ -13,7 +13,7 @@ import {
 import type { AgentFinding, AgentContext, AgentName, IAgent } from '../../agents/base.js'
 import { getAgentsForMode } from '../../agents/registry.js'
 import { loadCustomAgents } from '../../agents/custom/loader.js'
-import { CombinedAnalyzer, DEFAULT_DOMAINS } from '../../agents/combined.js'
+import { applyEconomyRouting, applyEconomyLimits } from '../../orchestrator/economy.js'
 import { CustomAgent } from '../../agents/custom/agent.js'
 import { theme } from '../../ui/theme.js'
 import { formatDriftAlert } from '../../ui/layout.js'
@@ -60,20 +60,7 @@ export async function watchCommand(opts: {
   // agents with a single combined multi-domain analyzer per batch. Custom
   // agents still run as separate per-domain calls, same as review/diff.
   const modeAgents = getAgentsForMode('standard', undefined, customAgentDefs)
-  let watchAgents: IAgent[] = modeAgents
-  if (config.swarm.economyMode) {
-    const builtInAgents = modeAgents.filter((a) => !(a instanceof CustomAgent))
-    const customAgents = modeAgents.filter((a) => a instanceof CustomAgent)
-    if (builtInAgents.length > 1) {
-      const activeDomains = builtInAgents.map((a) => {
-        const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
-        return (
-          defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
-        )
-      })
-      watchAgents = [new CombinedAnalyzer(activeDomains), ...customAgents]
-    }
-  }
+  const watchAgents = applyEconomyRouting(modeAgents, !!config.swarm.economyMode)
 
   console.log(
     theme.accent(`  palade watch started. Watching for changes... (${sensitivity} sensitivity)`)
@@ -178,17 +165,11 @@ export async function watchCommand(opts: {
       const agents = watchAgents
       const allFindings: AgentFinding[] = []
       let hasErrors = false
-      // In economy mode, cap batch sizes the same way review.ts/diff.ts do
-      // before passing options into runSwarm — otherwise this call falls
-      // back to scheduler.ts's un-capped defaults (16000/6000), letting a
-      // large watched file's economy-mode CombinedAnalyzer prompt run much
-      // larger than the same mode produces via review/diff.
-      const softTokenLimit = config.swarm.economyMode
-        ? Math.min(ECONOMY_SOFT_TOKEN_CAP, config.swarm.softTokenLimit ?? 16000)
-        : config.swarm.softTokenLimit
-      const hardChunkLimit = config.swarm.economyMode
-        ? Math.min(ECONOMY_HARD_CHUNK_CAP, config.swarm.hardChunkLimit ?? 6000)
-        : config.swarm.hardChunkLimit
+      const { softTokenLimit, hardChunkLimit } = applyEconomyLimits(
+        !!config.swarm.economyMode,
+        config.swarm.softTokenLimit,
+        config.swarm.hardChunkLimit
+      )
       const batches = scheduleBatches(chunks, softTokenLimit, hardChunkLimit)
 
       for (const agent of agents) {

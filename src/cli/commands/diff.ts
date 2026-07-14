@@ -4,11 +4,7 @@ import { walkProject, detectLanguages } from '../../ingestion/walker.js'
 import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../../ingestion/contextPacks.js'
-import {
-  estimateTotalTokens,
-  ECONOMY_SOFT_TOKEN_CAP,
-  ECONOMY_HARD_CHUNK_CAP,
-} from '../../orchestrator/scheduler.js'
+import { estimateTotalTokens } from '../../orchestrator/scheduler.js'
 import { mergeContexts } from '../../orchestrator/pipeline.js'
 import { runSwarm } from '../../orchestrator/swarm.js'
 import { calculateScore } from '../../scorer/calculator.js'
@@ -266,12 +262,8 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           strictTriage: opts.strictTriage ?? false,
           noVerdict: false,
           maxConcurrentBatches: config.swarm.maxConcurrentBatches,
-          softTokenLimit: config.swarm.economyMode
-            ? Math.min(ECONOMY_SOFT_TOKEN_CAP, config.swarm.softTokenLimit)
-            : config.swarm.softTokenLimit,
-          hardChunkLimit: config.swarm.economyMode
-            ? Math.min(ECONOMY_HARD_CHUNK_CAP, config.swarm.hardChunkLimit)
-            : config.swarm.hardChunkLimit,
+          softTokenLimit: config.swarm.softTokenLimit,
+          hardChunkLimit: config.swarm.hardChunkLimit,
           maxSynthesisFindings: config.swarm.maxSynthesisFindings,
           synthesisTimeoutMs: config.swarm.synthesisTimeoutMs,
           decisionsRetentionLimit: config.swarm.decisionsRetentionLimit,
@@ -416,12 +408,8 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                   economyMode: config.swarm.economyMode,
                   projectRoot: baseTempDir,
                   noSynthesis: true,
-                  softTokenLimit: config.swarm.economyMode
-                    ? Math.min(ECONOMY_SOFT_TOKEN_CAP, config.swarm.softTokenLimit)
-                    : config.swarm.softTokenLimit,
-                  hardChunkLimit: config.swarm.economyMode
-                    ? Math.min(ECONOMY_HARD_CHUNK_CAP, config.swarm.hardChunkLimit)
-                    : config.swarm.hardChunkLimit,
+                  softTokenLimit: config.swarm.softTokenLimit,
+                  hardChunkLimit: config.swarm.hardChunkLimit,
                   signal: opts.signal,
                   onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
                     console.log(theme.dim(`  [base] Conflict: ${sideA} vs ${sideB} in ${filePath}`))
