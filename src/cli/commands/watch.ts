@@ -6,16 +6,11 @@ import { DEFAULT_CONFIG } from '../../config/defaults.js'
 import { initRouter } from '../../providers/router.js'
 import { walkProject, buildIgnoreFilter } from '../../ingestion/walker.js'
 import { chunkFiles } from '../../ingestion/chunker.js'
-import {
-  scheduleBatches,
-  ECONOMY_SOFT_TOKEN_CAP,
-  ECONOMY_HARD_CHUNK_CAP,
-} from '../../orchestrator/scheduler.js'
-import type { AgentFinding, AgentContext, AgentName, IAgent } from '../../agents/base.js'
+import { scheduleBatches } from '../../orchestrator/scheduler.js'
+import type { AgentFinding, AgentContext, IAgent } from '../../agents/base.js'
 import { getAgentsForMode } from '../../agents/registry.js'
 import { loadCustomAgents } from '../../agents/custom/loader.js'
 import { applyEconomyRouting, applyEconomyLimits } from '../../orchestrator/economy.js'
-import { CustomAgent } from '../../agents/custom/agent.js'
 import { theme } from '../../ui/theme.js'
 import { formatDriftAlert } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
@@ -119,6 +114,7 @@ class WatchController {
     
     process.on('exit', this.boundOnExit)
     process.on('SIGINT', this.boundOnSigint)
+    process.on('SIGTERM', this.boundOnSigint)
 
     try {
       await this.donePromise
@@ -130,6 +126,7 @@ class WatchController {
   private stop(): void {
     process.removeListener('exit', this.boundOnExit)
     process.removeListener('SIGINT', this.boundOnSigint)
+    process.removeListener('SIGTERM', this.boundOnSigint)
     for (const timer of this.debounceTimers.values()) clearTimeout(timer)
     this.debounceTimers.clear()
     if (this.loopTimer) clearTimeout(this.loopTimer)
@@ -144,7 +141,8 @@ class WatchController {
     this.resolveDone()
   }
 
-  private enqueueFileEvent(path: string): void {
+  private enqueueFileEvent(rawPath: string): void {
+    const path = rawPath.split('\\').join('/')
     const existing = this.debounceTimers.get(path)
     if (existing) clearTimeout(existing)
     
@@ -152,7 +150,7 @@ class WatchController {
       path,
       setTimeout(() => {
         this.debounceTimers.delete(path)
-        const normalizedPath = path.split('\\').join('/')
+        const normalizedPath = path
 
         if (!this.urgentSet.has(normalizedPath)) {
           this.urgentSet.add(normalizedPath)
