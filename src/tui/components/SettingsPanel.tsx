@@ -110,14 +110,18 @@ export function SettingsPanel({
     const key = existingKeys[id]
     if (!key) return
     setModelState((prev) => ({ ...prev, [id]: { status: 'loading', models: [] } }))
-    fetchModels(id as ProviderId, key).then((models) => {
-      setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models } }))
-      if (models.length > 0) {
-        const current = localModels[id]
-        const idx = current ? models.indexOf(current) : -1
-        setModelIdx(idx >= 0 ? idx : 0)
-      }
-    })
+    fetchModels(id as ProviderId, key)
+      .then((models) => {
+        setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models } }))
+        if (models.length > 0) {
+          const current = localModels[id]
+          const idx = current ? models.indexOf(current) : -1
+          setModelIdx(idx >= 0 ? idx : 0)
+        }
+      })
+      .catch(() => {
+        setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models: [] } }))
+      })
   }, [focusField, selectedProviderIdx, existingKeys, modelState, localModels])
 
   const handleSubmit = useCallback(
@@ -195,7 +199,7 @@ export function SettingsPanel({
             excess -= reduceBy
           }
           for (const [id, val] of Object.entries(next)) {
-            if (val !== shares[id]) {
+            if (val !== savedShares[id]) {
               await saveConfigValue(projectRoot, `swarm.providerShares.${id}`, val)
             }
           }
