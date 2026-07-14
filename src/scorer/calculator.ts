@@ -117,11 +117,7 @@ export function calculateCategoryScore(
   let penalty = 0
   for (const f of findings) {
     if (f.agentName === agentName) {
-      let fPenalty = penaltyFor(f, severityWeights)
-      if (agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
-        fPenalty = applyComplexityMultiplier(f.complexity, fPenalty, complexityPenalties)
-      }
-      penalty += fPenalty
+      penalty += computeFindingPenalty(f, severityWeights, complexityPenalties)
     }
   }
 
@@ -140,6 +136,18 @@ export function calculateCategoryScore(
 
 export const MAINTAINABILITY_AGENT = 'maintainability'
 
+export function computeFindingPenalty(
+  f: AgentFinding,
+  severityWeights: SeverityWeights,
+  complexityPenalties: ComplexityPenalties
+): number {
+  let fPenalty = penaltyFor(f, severityWeights)
+  if (f.agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
+    fPenalty = applyComplexityMultiplier(f.complexity, fPenalty, complexityPenalties)
+  }
+  return fPenalty
+}
+
 export function calculateTotalPenalty(
   findings: AgentFinding[],
   severityWeights: SeverityWeights = SEVERITY_PENALTY,
@@ -147,11 +155,7 @@ export function calculateTotalPenalty(
 ): number {
   let penalty = 0
   for (const f of findings) {
-    let fPenalty = penaltyFor(f, severityWeights)
-    if (f.agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
-      fPenalty = applyComplexityMultiplier(f.complexity, fPenalty, complexityPenalties)
-    }
-    penalty += fPenalty
+    penalty += computeFindingPenalty(f, severityWeights, complexityPenalties)
   }
   return penalty
 }
@@ -202,18 +206,31 @@ export function calculateScore(
     ...SEVERITY_PENALTY,
     ...scoreConfig?.severityWeights,
   }
+  for (const k of Object.keys(severityWeights) as Array<keyof SeverityWeights>) {
+    severityWeights[k] = Math.max(0, Number.isFinite(severityWeights[k]) ? severityWeights[k] : SEVERITY_PENALTY[k])
+  }
+
   const crossAgentWeights: CrossAgentPenaltyWeights = {
     ...DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
     ...scoreConfig?.crossAgentPenalty,
   }
+
   const complexityPenalties: ComplexityPenalties = {
     ...DEFAULT_COMPLEXITY_PENALTIES,
     ...scoreConfig?.complexityPenalties,
   }
+  complexityPenalties.lowFactor = Math.max(0, Number.isFinite(complexityPenalties.lowFactor) ? complexityPenalties.lowFactor : DEFAULT_COMPLEXITY_PENALTIES.lowFactor)
+  complexityPenalties.highFactor = Math.max(0, Number.isFinite(complexityPenalties.highFactor) ? complexityPenalties.highFactor : DEFAULT_COMPLEXITY_PENALTIES.highFactor)
+  if (complexityPenalties.lowThreshold >= complexityPenalties.highThreshold) {
+    complexityPenalties.highThreshold = complexityPenalties.lowThreshold + 1
+  }
+
   const penaltyCaps: PenaltyCaps = {
     ...DEFAULT_PENALTY_CAPS,
     ...scoreConfig?.penaltyCaps,
   }
+  penaltyCaps.categoryPenaltyCap = Math.max(0, Number.isFinite(penaltyCaps.categoryPenaltyCap) ? penaltyCaps.categoryPenaltyCap : DEFAULT_PENALTY_CAPS.categoryPenaltyCap)
+  penaltyCaps.totalPenaltyCap = Math.max(0, Number.isFinite(penaltyCaps.totalPenaltyCap) ? penaltyCaps.totalPenaltyCap : DEFAULT_PENALTY_CAPS.totalPenaltyCap)
 
   const allBaseCategories: ScoreCategory[] = [
     'security',
