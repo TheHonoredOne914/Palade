@@ -172,12 +172,11 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
       if (!trimmed || trimmed.startsWith('//')) continue
 
       if (trimmed.startsWith('}')) {
-        const indent = line.length - trimmed.length
-        while (openIndents2.length > 0 && openIndents2[openIndents2.length - 1] >= indent) {
-          // If the section we are closing IS the target, insert here.
-          if (pathStack2.length === path.length && path.every((p, idx) => pathStack2[idx] === p)) {
-            return [i, indent + 2]
-          }
+        // If the section we are closing IS the target, insert here.
+        if (pathStack2.length === path.length && path.every((p, idx) => pathStack2[idx] === p)) {
+          return [i, openIndents2[openIndents2.length - 1] + 2]
+        }
+        if (openIndents2.length > 0) {
           pathStack2.pop()
           openIndents2.pop()
         }
@@ -281,19 +280,7 @@ export async function saveConfigValue(
   dotPath: string,
   value: unknown
 ): Promise<void> {
-  const configPath = resolveConfigPath(projectRoot)
-  const paladeDir = join(projectRoot, '.palade')
-  if (!existsSync(paladeDir)) await mkdir(paladeDir, { recursive: true })
-
-  let content: string
-  try {
-    content = await readFile(configPath, 'utf-8')
-  } catch {
-    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: {\n    primary: 'opencode-zen',\n    synthesis: 'nvidia',\n    agentCount: 8\n  },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
-  }
-
-  content = setNestedValue(content, dotPath, value)
-  await writeFile(configPath, content, 'utf-8')
+  return saveConfigValues(projectRoot, { [dotPath]: value })
 }
 
 export async function readCurrentKeys(projectRoot: string): Promise<Record<string, string>> {
@@ -325,7 +312,7 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
     const content = await readFile(configPath, 'utf-8')
     for (const p of PROVIDERS) {
       if (result[p.id]) continue
-      const re = new RegExp(`${p.id}:\\s*\\{[^{}]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
+      const re = new RegExp(`['"]?${p.id}['"]?:\\s*\\{[^{}]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
       const m = content.match(re)
       if (m) result[p.id] = m[1]
     }
