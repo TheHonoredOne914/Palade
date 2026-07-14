@@ -81,9 +81,21 @@ export function SettingsPanel({
   const [localSwarmPrimary, setLocalSwarmPrimary] = useState(swarmPrimary)
   const [localSwarmSynthesis, setLocalSwarmSynthesis] = useState(swarmSynthesis)
   const [agentCount, setAgentCount] = useState(Math.min(swarmAgentCount, MAX_AGENTS))
-  const [savedAgentCount, setSavedAgentCount] = useState(swarmAgentCount)
+  const [savedAgentCount, setSavedAgentCount] = useState(Math.min(swarmAgentCount, MAX_AGENTS))
   const [shares, setShares] = useState<Record<string, number>>(providerShares)
   const [savedShares, setSavedShares] = useState<Record<string, number>>(providerShares)
+
+  useEffect(() => setLocalModels(currentModels), [currentModels])
+  useEffect(() => setLocalSwarmPrimary(swarmPrimary), [swarmPrimary])
+  useEffect(() => setLocalSwarmSynthesis(swarmSynthesis), [swarmSynthesis])
+
+  useEffect(() => {
+    if (focusField === 'swarm') {
+      setSwarmIdx(Math.max(0, PROVIDERS.findIndex((p) => p.id === localSwarmPrimary)))
+    } else if (focusField === 'synthesis') {
+      setSynthesisIdx(Math.max(0, PROVIDERS.findIndex((p) => p.id === localSwarmSynthesis)))
+    }
+  }, [focusField, localSwarmPrimary, localSwarmSynthesis])
 
   const selectedProvider = PROVIDERS[selectedProviderIdx]
   const modelEntry = modelState[selectedProvider.id]
@@ -280,17 +292,14 @@ export function SettingsPanel({
         return
       }
       if (key.rightArrow) {
-        // Clamp to the remaining unallocated capacity across ALL providers,
-        // not just agentCount alone — otherwise several providers can each
-        // be pushed up to agentCount, silently producing a total that
-        // exceeds agentCount (expandProviderShares then truncates it based
-        // on object key order with no warning shown) (tui-001).
-        const othersTotal = Object.entries(shares).reduce(
-          (sum, [pid, val]) => (pid === id ? sum : sum + (val ?? 0)),
-          0
-        )
-        const maxForThis = Math.max(0, agentCount - othersTotal)
-        setShares((prev) => ({ ...prev, [id]: Math.min(maxForThis, current + 1) }))
+        setShares((prev) => {
+          const othersTotal = Object.entries(prev).reduce(
+            (sum, [pid, val]) => (pid === id ? sum : sum + (val ?? 0)),
+            0
+          )
+          const maxForThis = Math.max(0, agentCount - othersTotal)
+          return { ...prev, [id]: Math.min(maxForThis, (prev[id] ?? 0) + 1) }
+        })
         return
       }
       if (key.return) {
@@ -343,7 +352,7 @@ export function SettingsPanel({
   })
 
   const modelDisplay = hasFetchedModels
-    ? modelEntry!.models[modelIdx]
+    ? (modelEntry!.models[modelIdx] ?? '')
     : modelEntry?.status === 'loading'
       ? 'loading models…'
       : (localModels[selectedProvider.id] ?? '(type a model id below)')
