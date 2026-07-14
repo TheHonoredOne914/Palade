@@ -77,13 +77,6 @@ class WatchController {
         const manifests = await walkProject(this.projectRoot, { projectRoot: this.projectRoot })
         this.sweepQueue = manifests.map((m) => m.path)
         manifests.forEach(m => this.sweepSet.add(m.path))
-        // Shuffle the queue so sweeps don't always start deterministically
-        for (let i = this.sweepQueue.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1))
-          const temp = this.sweepQueue[i]
-          this.sweepQueue[i] = this.sweepQueue[j]
-          this.sweepQueue[j] = temp
-        }
       } catch (err) {
         console.warn(theme.error(`⚠ Failed to initialize background sweep queue: ${err instanceof Error ? err.message : String(err)}`))
       }
@@ -205,23 +198,23 @@ class WatchController {
       }
 
       if (nextFile) {
-        const sweepFile = !isUrgent ? nextFile : undefined
         try {
           await this.analyzeFile(nextFile, this.currentSweepController?.signal)
-          if (sweepFile) {
-            this.sweepQueue.push(sweepFile)
-            this.sweepSet.add(sweepFile)
+          if (!isUrgent && !this.sweepSet.has(nextFile)) {
+            this.sweepQueue.push(nextFile)
+            this.sweepSet.add(nextFile)
           }
         } catch (err: unknown) {
           if (err instanceof Error && err.name === 'AbortError' && !isUrgent) {
-            this.sweepQueue.unshift(nextFile)
-            this.sweepSet.add(nextFile)
-          } else {
             if (!this.sweepSet.has(nextFile)) {
-              this.sweepQueue.push(nextFile)
+              this.sweepQueue.unshift(nextFile)
               this.sweepSet.add(nextFile)
             }
           }
+          // Non-abort errors: don't re-queue. Persistent failures (permission
+          // denied, corrupt file) would cause infinite retries otherwise.
+          // ponytail: no backoff; the file re-enters via enqueueFileEvent if it
+          // changes again.
         }
       }
     } finally {
@@ -266,10 +259,10 @@ class WatchController {
         this.config.swarm.hardChunkLimit
       )
       const batches = scheduleBatches(chunks, softTokenLimit, hardChunkLimit)
+      const timeoutMs = this.config.swarm.timeoutMs ?? DEFAULT_CONFIG.swarm!.timeoutMs
 
       for (const agent of this.watchAgents) {
         for (const batch of batches) {
-          const timeoutMs = this.config.swarm.timeoutMs ?? DEFAULT_CONFIG.swarm!.timeoutMs
           const ac = new AbortController()
           const timer = setTimeout(() => ac.abort(), timeoutMs)
 
@@ -303,7 +296,6 @@ class WatchController {
       }
 
       if (finalFindings.length > 0) {
-        this.accumulatedFindings.delete(filePath)
         this.accumulatedFindings.set(filePath, finalFindings)
         if (this.accumulatedFindings.size > this.MAX_ACCUMULATED_FILES) {
           const keysToDelete = [...this.accumulatedFindings.keys()].slice(

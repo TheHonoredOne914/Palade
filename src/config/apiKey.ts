@@ -333,7 +333,9 @@ export async function saveApiKey(
 ): Promise<void> {
   const prov = PROVIDERS.find((p) => p.id === providerId)!
   const envKey = prov.env
-  process.env[envKey] = apiKey
+  // Strip newlines — a key containing \n would inject extra .env lines.
+  const safeKey = apiKey.replace(/[\r\n]/g, '')
+  process.env[envKey] = safeKey
 
   const envPath = join(projectRoot, '.env')
   let envContent = ''
@@ -343,7 +345,7 @@ export async function saveApiKey(
     // file doesn't exist yet, start fresh
   }
   const envLineRe = new RegExp(`^${envKey}=.*$`, 'm')
-  const newLine = `${envKey}=${apiKey}`
+  const newLine = `${envKey}=${safeKey}`
   if (envLineRe.test(envContent)) {
     envContent = envContent.replace(envLineRe, newLine)
   } else {
