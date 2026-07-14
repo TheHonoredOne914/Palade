@@ -30,7 +30,11 @@ export const DEFAULT_COMPLEXITY_PENALTIES = {
   highFactor: 1.5,
 } as const
 
-export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
+type DefaultConfigType = Omit<Partial<PaladeConfig>, 'swarm'> & {
+  swarm: Omit<PaladeConfig['swarm'], 'primary' | 'synthesis'>
+}
+
+export const DEFAULT_CONFIG: DefaultConfigType = {
   swarm: {
     agentCount: 8,
     timeoutMs: 600000,
@@ -45,7 +49,7 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     maxSynthesisFindings: 50,
     synthesisTimeoutMs: 180_000,
     decisionsRetentionLimit: 100,
-  } as unknown as PaladeConfig['swarm'],
+  },
   output: {
     dir: '.palade/reports',
     formats: ['html', 'json'],
