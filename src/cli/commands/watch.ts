@@ -18,7 +18,7 @@ import { CustomAgent } from '../../agents/custom/agent.js'
 import { theme } from '../../ui/theme.js'
 import { formatDriftAlert } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { mergeFindings } from '../../orchestrator/merger.js'
 
@@ -80,13 +80,18 @@ export async function watchCommand(opts: {
   let sweepQueue: string[] = []
   const urgentQueue: string[] = []
   const urgentSet = new Set<string>()
+  const sweepSet = new Set<string>()
   let loopTimer: ReturnType<typeof setTimeout> | null = null
   let currentSweepController: AbortController | null = null
 
   if (isContinuous) {
+    console.log(
+      theme.dim(`  Continuous background sweep enabled. Resolving initial file list...`)
+    )
     try {
       const manifests = await walkProject(projectRoot, { projectRoot })
       sweepQueue = manifests.map((m) => m.path)
+      manifests.forEach(m => sweepSet.add(m.path))
       // Shuffle the queue so sweeps don't always start deterministically
       for (let i = sweepQueue.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
@@ -99,10 +104,10 @@ export async function watchCommand(opts: {
     }
   }
 
-  const updateWatchReport = () => {
+  const updateWatchReport = async () => {
     try {
       const paladeDir = join(projectRoot, '.palade')
-      mkdirSync(paladeDir, { recursive: true })
+      await mkdir(paladeDir, { recursive: true })
       const mdPath = join(paladeDir, 'watch-bugs.md')
 
       const lines = [
@@ -126,14 +131,14 @@ export async function watchCommand(opts: {
         }
       }
 
-      writeFileSync(mdPath, lines.join('\n'), 'utf-8')
+      await writeFile(mdPath, lines.join('\n'), 'utf-8')
     } catch {
       // Ignore write errors in watch mode
     }
   }
 
   // Initial empty report
-  updateWatchReport()
+  void updateWatchReport()
 
   const analyzeFile = async (filePath: string, signal?: AbortSignal): Promise<void> => {
     // isProcessing is now managed by processNext
@@ -232,7 +237,7 @@ export async function watchCommand(opts: {
         throw new Error('Scan incomplete due to errors')
       }
 
-      updateWatchReport()
+      void updateWatchReport()
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
         console.log(theme.dim(`  ⚠ Aborted scan of ${filePath} for higher priority task.`))
@@ -259,9 +264,11 @@ export async function watchCommand(opts: {
         if (isContinuous && nextFile) {
           sweepQueue = sweepQueue.filter((f) => f !== nextFile)
           sweepQueue.push(nextFile)
+          sweepSet.add(nextFile)
         }
       } else if (isContinuous && sweepQueue.length > 0) {
         nextFile = sweepQueue.shift()
+        if (nextFile) sweepSet.delete(nextFile)
         currentSweepController = new AbortController()
       }
 
@@ -269,15 +276,20 @@ export async function watchCommand(opts: {
         const sweepFile = !isUrgent ? nextFile : undefined
         try {
           await analyzeFile(nextFile, currentSweepController?.signal)
-          if (sweepFile) sweepQueue.push(sweepFile) // rotate to back after successful scan
+          if (sweepFile) {
+            sweepQueue.push(sweepFile) // rotate to back after successful scan
+            sweepSet.add(sweepFile)
+          }
         } catch (err: unknown) {
           if (err instanceof Error && err.name === 'AbortError' && !isUrgent) {
             // If background sweep was aborted, it means an urgent task came in.
             // Push the aborted file back to the front of the sweep queue so we try again later.
             sweepQueue.unshift(nextFile)
+            sweepSet.add(nextFile)
           } else {
-            if (!sweepQueue.includes(nextFile)) {
+            if (!sweepSet.has(nextFile)) {
               sweepQueue.push(nextFile)
+              sweepSet.add(nextFile)
             }
           }
         }
@@ -285,6 +297,7 @@ export async function watchCommand(opts: {
     } finally {
       isProcessing = false
       currentSweepController = null
+      if (loopTimer) clearTimeout(loopTimer)
       if (urgentQueue.length > 0 || isContinuous) {
         loopTimer = setTimeout(
           () => {
@@ -345,8 +358,9 @@ export async function watchCommand(opts: {
         // the periodic background sweep in continuous mode — otherwise it's
         // scanned once via the urgent queue and then permanently excluded
         // from every future sweep for the rest of the session (cli-003).
-        if (isContinuous && !sweepQueue.includes(normalizedPath)) {
+        if (isContinuous && !sweepSet.has(normalizedPath)) {
           sweepQueue.push(normalizedPath)
+          sweepSet.add(normalizedPath)
         }
 
         if (currentSweepController) {
