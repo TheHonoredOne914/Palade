@@ -94,6 +94,7 @@ export function SettingsPanel({
   // call would just fail, so go straight to the manual-entry fallback.
   useEffect(() => {
     if (focusField !== 'model') return
+    let active = true
     const id = selectedProvider.id
     const cached = modelState[id]
     if (cached) {
@@ -112,6 +113,7 @@ export function SettingsPanel({
     setModelState((prev) => ({ ...prev, [id]: { status: 'loading', models: [] } }))
     fetchModels(id as ProviderId, key)
       .then((models) => {
+        if (!active) return
         setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models } }))
         if (models.length > 0) {
           const current = localModels[id]
@@ -119,10 +121,16 @@ export function SettingsPanel({
           setModelIdx(idx >= 0 ? idx : 0)
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        if (!active) return
         setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models: [] } }))
+        setMessage(`⚠ Could not fetch models for ${selectedProvider.label}: ${err instanceof Error ? err.message : String(err)}`)
       })
-  }, [focusField, selectedProviderIdx, existingKeys, modelState, localModels])
+      
+    return () => {
+      active = false
+    }
+  }, [focusField, selectedProviderIdx, existingKeys, modelState, localModels, selectedProvider.label])
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -292,7 +300,7 @@ export function SettingsPanel({
     }
     if (focusField === 'agents') {
       if (key.leftArrow) {
-        setAgentCount((c) => Math.max(1, c - 1))
+        setAgentCount((c) => (c <= 1 ? c : c - 1))
         return
       }
       if (key.rightArrow) {
