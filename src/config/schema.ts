@@ -8,8 +8,16 @@ import {
 import { SEVERITY_PENALTY } from '../agents/base.js'
 import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS, DEFAULT_PENALTY_CAPS } from '../scorer/calculator.js'
 import { BUILTIN_NAMES } from '../agents/registry.js'
+// router.ts's PROVIDER_NAMES is the single source of truth for supported
+// provider names — every z.enum(['groq', 'cerebras', ...]) below used to be a
+// separately hand-typed literal tuple that could (and did) drift from it and
+// from each other (providers-005). router.ts only imports schema.ts's
+// PaladeConfig as a type (`import type`), which tsc erases entirely from the
+// compiled output, so this doesn't create a real runtime circular import.
+import { PROVIDER_NAMES } from '../providers/router.js'
 
 export const ReportFormatSchema = z.enum(['html', 'json', 'md'])
+const ProviderNameSchema = z.enum(PROVIDER_NAMES)
 
 const ProviderConfigSchema = z.object({
   apiKey: z.string().default(''),
@@ -41,33 +49,17 @@ export const PaladeConfigSchema = z
     }),
     swarm: z
       .object({
-        primary: z
-          .enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
-          .default('opencode-zen'),
-        synthesis: z
-          .enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
-          .default('nvidia'),
-        triage: z
-          .enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
-          .optional(),
-        agentProviders: z
-          .record(
-            z.string(),
-            z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama'])
-          )
-          .optional(),
+        primary: ProviderNameSchema.default('opencode-zen'),
+        synthesis: ProviderNameSchema.default('nvidia'),
+        triage: ProviderNameSchema.optional(),
+        agentProviders: z.record(z.string(), ProviderNameSchema).optional(),
         // Declarative provider distribution: how many of the active agents run
         // on each provider (e.g. { 'opencode-zen': 5, openrouter: 3 }).
         // Expanded into per-agent agentProviders entries at load time
         // (see loader.ts expandProviderShares); explicit agentProviders
         // entries win over expanded ones. Agents not covered by any share
         // fall through to swarm.primary.
-        providerShares: z
-          .record(
-            z.enum(['groq', 'cerebras', 'nvidia', 'openrouter', 'opencode-zen', 'ollama']),
-            z.number().int().min(0)
-          )
-          .optional(),
+        providerShares: z.record(ProviderNameSchema, z.number().int().min(0)).optional(),
         // Max is BUILTIN_NAMES.length — only that many built-in specialist
         // agents exist. A higher configured value had no effect on the
         // actual swarm but still inflated ingestion/estimator.ts's cost math

@@ -2,12 +2,25 @@ import { readFile } from 'node:fs/promises'
 import type { Annotation, FileManifest, CodeChunk } from './types.js'
 import type { AnnotationSummary, AgentFinding } from '../agents/base.js'
 
-const REVIEW_RE = /\/\/\s*@palade\s+review\s*:\s*(.+)/i
-const FOCUS_RE = /\/\/\s*@palade\s+focus\s*:\s*(.+)/i
+// Directive prefix shared by every non-hash regex below: a `//` line
+// comment, a `/*`/`/**` block-comment opener, or a `*`-led block-comment
+// continuation line (the common JSDoc style — the opener is on a previous
+// line, e.g. `/**\n * @palade review: ...\n */`). Previously only `//` was
+// recognized, silently dropping `/* @palade ... */`-style annotations even
+// though the same directive in a `//` comment worked fine (ing-004).
+const COMMENT_PREFIX = /(?:\/\/|\/\*+|^\s*\*)/.source
+const REVIEW_RE = new RegExp(
+  `${COMMENT_PREFIX}\\s*@palade\\s+review\\s*:\\s*(.+?)(?:\\*\\/)?\\s*$`,
+  'i'
+)
+const FOCUS_RE = new RegExp(
+  `${COMMENT_PREFIX}\\s*@palade\\s+focus\\s*:\\s*(.+?)(?:\\*\\/)?\\s*$`,
+  'i'
+)
 // Explicit whole-file directive. Must be checked before IGNORE_RE, since
 // `// @palade ignore-file` also matches the looser line-level IGNORE_RE.
-const FILE_IGNORE_RE = /\/\/\s*@palade\s+ignore-file\b/i
-const IGNORE_RE = /\/\/\s*@palade\s+ignore\b/i
+const FILE_IGNORE_RE = new RegExp(`${COMMENT_PREFIX}\\s*@palade\\s+ignore-file\\b`, 'i')
+const IGNORE_RE = new RegExp(`${COMMENT_PREFIX}\\s*@palade\\s+ignore\\b`, 'i')
 const HASH_REVIEW_RE = /#\s*@palade\s+review\s*:\s*(.+)/i
 const HASH_FOCUS_RE = /#\s*@palade\s+focus\s*:\s*(.+)/i
 const HASH_FILE_IGNORE_RE = /#\s*@palade\s+ignore-file\b/i

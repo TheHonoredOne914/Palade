@@ -44,8 +44,10 @@ describe('scheduler', () => {
     })
 
     it('puts chunks in a single batch if total <= 16000', () => {
-      // 5000 + 6000 = 11000 <= 16000
-      const chunks = [makeChunk('1', 5000), makeChunk('2', 6000)]
+      // 5000 + 4900 = 9900 <= 16000. Both individual chunks also stay under
+      // the ing-003 safety-margined hard-split budget (85% of the 6000
+      // default hardChunkLimit = 5100), so neither gets split first.
+      const chunks = [makeChunk('1', 5000), makeChunk('2', 4900)]
       const batches = scheduleBatches(chunks)
       expect(batches).toHaveLength(1)
       expect(batches[0]).toHaveLength(2)
@@ -82,8 +84,11 @@ describe('scheduler', () => {
     })
 
     it('caps proportional overlap at 50 for very large chunks', () => {
-      // 10000 tokens over 2000 lines
-      const chunk = makeChunk('huge2', 10000, 2000)
+      // 8500 tokens over 2000 lines — sized so each half lands comfortably
+      // under the ing-003 safety-margined hard-split budget (85% of the
+      // 6000 default hardChunkLimit = 5100) and only splits once, matching
+      // this test's assumption that allChunks[0]/[1] are the immediate halves.
+      const chunk = makeChunk('huge2', 8500, 2000)
       const batches = scheduleBatches([chunk])
 
       const allChunks = batches.flat()

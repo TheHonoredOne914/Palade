@@ -1,192 +1,59 @@
-import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
-import {
-  fetchWithRetry,
-  createLimiter,
-  isDailyLimitError,
-  shouldRetryEmptyContent,
-  nextRetryMaxTokens,
-  DEFAULT_DEADLINE_MS,
-  tagQuotaError,
-  rateLimitedMessage,
-} from './base.js'
-import { AuthError } from '../errors/types.js'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import { DEFAULT_DEADLINE_MS } from './base.js'
+import { OpenAICompatibleProvider, type OpenAICompatibleConfig } from './openaiCompatible.js'
 
-const DEFAULT_REFERER = 'https://github.com/TheHonoredOne914/Palade'
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// The canonical project repo, used as a last-resort fallback if package.json
+// can't be read/parsed (e.g. an unusual install layout). Kept as a plain
+// string constant — NOT the source of truth — because that role now belongs
+// to package.json's own "repository" field (providers-002): a
+// separately-hand-maintained literal here previously drifted to point at a
+// personal fork instead of the project's actual repo.
+const FALLBACK_REFERER = 'https://github.com/TheHonoredOne914/Palade'
+
+function resolveDefaultReferer(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf-8')) as {
+      repository?: { url?: string } | string
+    }
+    const raw = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url
+    if (!raw) return FALLBACK_REFERER
+    // package.json convention wraps git URLs as "git+https://...git" —
+    // OpenRouter's HTTP-Referer header wants a plain browsable URL.
+    return raw.replace(/^git\+/, '').replace(/\.git$/, '')
+  } catch {
+    return FALLBACK_REFERER
+  }
+}
+
+const DEFAULT_REFERER = resolveDefaultReferer()
 const DEFAULT_TITLE = 'Palade'
 
-export class OpenRouterProvider implements IProvider {
-  readonly name = 'openrouter'
-  readonly model: string
-  private readonly apiKey: string
-  private readonly baseUrl: string
-  private readonly deadlineMs: number
-  private readonly limiter: ReturnType<typeof createLimiter>
-  private readonly referer: string
-  private readonly title: string
-  private dailyLimitExhausted = false
-  // Set by markDead() for a fatal reason OTHER than a confirmed daily-limit
-  // response (e.g. an auth failure on this key) — kept distinct from
-  // dailyLimitExhausted so complete()'s guard doesn't keep reporting "daily
-  // limit exceeded" forever for a provider that was actually killed for an
-  // unrelated reason (providers-001).
-  private deadGeneric = false
-
+// Thin subclass of the shared OpenAI-compatible adapter (providers-003) —
+// OpenRouter's only quirk beyond the shared defaults is the extra
+// HTTP-Referer/X-Title attribution headers it recommends sending.
+export class OpenRouterProvider extends OpenAICompatibleProvider {
   constructor(
     apiKey: string,
-    model = 'openrouter/free',
-    maxConcurrency = 8,
-    baseUrl = 'https://openrouter.ai/api/v1',
+    model?: string,
+    maxConcurrency?: number,
+    baseUrl?: string,
     deadlineMs: number = DEFAULT_DEADLINE_MS,
     referer: string = DEFAULT_REFERER,
     title: string = DEFAULT_TITLE
   ) {
-    this.apiKey = apiKey
-    this.model = model
-    this.limiter = createLimiter(maxConcurrency)
-    this.baseUrl = baseUrl
-    this.deadlineMs = deadlineMs
-    this.referer = referer
-    this.title = title
-  }
-
-  async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    if (this.dailyLimitExhausted) {
-      throw new Error('OpenRouter daily limit exhausted for this session')
+    const config: OpenAICompatibleConfig = {
+      name: 'openrouter',
+      label: 'OpenRouter',
+      defaultModel: 'openrouter/free',
+      defaultBaseUrl: 'https://openrouter.ai/api/v1',
+      defaultMaxConcurrency: 8,
+      defaultMaxTokens: 4096,
+      extraHeaders: () => ({ 'HTTP-Referer': referer, 'X-Title': title }),
     }
-    if (this.deadGeneric) {
-      throw new Error('OpenRouter provider marked dead for this session (see earlier fatal error)')
-    }
-    return this.limiter(() =>
-      this.doComplete(req, req.maxTokens ?? 4096, 0, Date.now() + this.deadlineMs)
-    )
-  }
-
-  private async doComplete(
-    req: CompletionRequest,
-    maxTokens: number,
-    attempt: number,
-    deadline: number
-  ): Promise<CompletionResponse> {
-    const start = Date.now()
-    // Combine the caller's cancellation signal with this provider's own hard
-    // ceiling, so a swarm-level abort still cancels the in-flight request
-    // without losing the provider timeout.
-    const timeoutSignal = AbortSignal.timeout(Math.max(deadline - Date.now(), 1))
-    const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal
-
-    let res: Response
-    try {
-      res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': this.referer,
-          'X-Title': this.title,
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            { role: 'system', content: req.systemPrompt },
-            { role: 'user', content: req.userPrompt },
-          ],
-          max_tokens: maxTokens,
-          temperature: req.temperature ?? 0.1,
-        }),
-        signal,
-      })
-    } catch (err) {
-      // Our own deadline firing surfaces as a generic AbortError with no
-      // 'timeout' text, which router.ts's keyword classification can't
-      // recognize as retryable — rethrow with a matching keyword, but only
-      // when the deadline (not the caller's own signal) is what fired.
-      if (
-        err instanceof Error &&
-        err.name === 'AbortError' &&
-        timeoutSignal.aborted &&
-        !req.signal?.aborted
-      ) {
-        throw new Error('OpenRouter provider timeout — request exceeded deadline')
-      }
-      throw err
-    }
-
-    if (res.status === 429) {
-      // fetchWithRetry already retried this request internally using the
-      // server's Retry-After header — layering another manual wait-and-retry
-      // loop on top just doubles the delay for no benefit. By the time we get
-      // here the retry budget is spent, so classify and surface the error.
-      const body = await res.text()
-      if (isDailyLimitError(body)) {
-        this.dailyLimitExhausted = true
-        throw tagQuotaError(new Error(`OpenRouter daily limit exceeded. ${body.slice(0, 200)}`))
-      }
-      throw new Error(rateLimitedMessage('OpenRouter', body))
-    }
-
-    if (!res.ok) {
-      const body = await res.text()
-      if (res.status === 401 || res.status === 403) {
-        throw new AuthError(
-          `OpenRouter error ${res.status}: ${body.slice(0, 200)}`,
-          res.status,
-          this.name
-        )
-      }
-      throw new Error(`OpenRouter error ${res.status}: ${body.slice(0, 200)}`)
-    }
-
-    const data = (await res.json()) as Record<string, unknown>
-    const durationMs = Date.now() - start
-    const choices = data.choices as Array<{ message?: { content?: string } }> | undefined
-    const content = choices?.[0]?.message?.content ?? ''
-    const usage = data.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
-    const outputTokens = usage?.completion_tokens ?? 0
-
-    // If content is empty but tokens were used, the model consumed its whole
-    // budget thinking — retry with more tokens (cap at 32768), same pattern as
-    // Groq/Cerebras/NVIDIA/OpenCode Zen.
-    if (shouldRetryEmptyContent(content, outputTokens, attempt)) {
-      const newMax = nextRetryMaxTokens(maxTokens)
-      if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1, deadline)
-    }
-
-    return {
-      content,
-      inputTokens: usage?.prompt_tokens ?? 0,
-      outputTokens,
-      durationMs,
-      provider: this.name,
-      model: this.model,
-    }
-  }
-
-  // Shared dead/exhausted state: lets multiple FallbackProvider chains
-  // wrapping this same instance (e.g. router.ts's primary and synthesis
-  // chains) agree on whether this provider is dead, instead of each chain
-  // keeping its own separate dead-tracking Set. Called by router.ts for BOTH
-  // a confirmed quota exhaustion AND an unrelated fatal error (e.g. an auth
-  // failure) — only set dailyLimitExhausted for the former (which this
-  // instance itself already does directly, above, when it observes a real
-  // daily-limit response); a generic dead flag covers the rest so complete()
-  // reports the right reason instead of always claiming "daily limit"
-  // (providers-001).
-  markDead(): void {
-    this.deadGeneric = true
-  }
-
-  isDead(): boolean {
-    return this.dailyLimitExhausted || this.deadGeneric
-  }
-
-  isDeadFromAuth(): boolean {
-    return this.deadGeneric
-  }
-
-  // Reflects locally observed exhaustion/dead-marking, not a live
-  // connectivity/auth probe — an invalid API key that hasn't yet been tried
-  // (so markDead() was never called) still reports available=true here.
-  async isAvailable(): Promise<boolean> {
-    return !this.dailyLimitExhausted && !this.deadGeneric
+    super(config, apiKey, model, maxConcurrency, baseUrl, deadlineMs)
   }
 }

@@ -348,6 +348,12 @@ function getFallbackChain(excludeName: string): IProvider[] {
 export async function initRouter(config: PaladeConfig): Promise<ProviderAssignment> {
   activeConfig = config
   allProviders = instantiateProviders(config.providers)
+  // Per-agent FallbackProvider cache keyed off the previous call's provider
+  // instances (see getProvider()'s cacheKey lookup below) — a second
+  // initRouter() call rebuilds allProviders from scratch, so stale cache
+  // entries here would keep wrapping now-dead/replaced provider instances
+  // instead of the freshly instantiated ones (providers-001).
+  agentAssignments.clear()
 
   const names = Array.from(allProviders.keys())
   const availability = await Promise.all(names.map((n) => allProviders.get(n)!.isAvailable()))

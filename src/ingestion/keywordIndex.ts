@@ -1,4 +1,5 @@
 import type { CodeChunk } from './types.js'
+import { CODE_STOP_WORDS } from './stopWords.js'
 
 type IndexedChunk = CodeChunk & { _words: string[] }
 
@@ -32,19 +33,7 @@ export function getKeywordContext(
   // Extract words longer than 3 characters to use as search terms
   let searchTerms = Array.from(new Set(searchString.match(/\b[a-z]{4,}\b/g) || []))
 
-  const stopWords = new Set([
-    'export',
-    'import',
-    'return',
-    'const',
-    'function',
-    'class',
-    'interface',
-    'type',
-    'async',
-    'await',
-  ])
-  searchTerms = searchTerms.filter((t) => !stopWords.has(t))
+  searchTerms = searchTerms.filter((t) => !CODE_STOP_WORDS.has(t))
 
   if (searchTerms.length === 0) return ''
 

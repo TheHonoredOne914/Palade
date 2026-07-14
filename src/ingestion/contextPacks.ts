@@ -1,6 +1,7 @@
 import { dirname, join, normalize } from 'node:path'
 import type { CodeChunk } from './types.js'
 import { extractImportSpecifiers } from './importExtractor.js'
+import { CODE_STOP_WORDS } from './stopWords.js'
 
 const MAX_RESULTS = 4
 const MAX_CHARS_PER_RESULT = 900
@@ -23,20 +24,10 @@ function resolveRelativeImport(fromFile: string, specifier: string): string | nu
 }
 
 function identifierTerms(content: string): Set<string> {
-  const stop = new Set([
-    'const',
-    'export',
-    'from',
-    'function',
-    'import',
-    'interface',
-    'return',
-    'type',
-  ])
   const terms = new Set<string>()
   for (const term of content.match(/\b[A-Za-z_][A-Za-z0-9_]{3,}\b/g) ?? []) {
     const lower = term.toLowerCase()
-    if (!stop.has(lower)) terms.add(lower)
+    if (!CODE_STOP_WORDS.has(lower)) terms.add(lower)
   }
   return terms
 }

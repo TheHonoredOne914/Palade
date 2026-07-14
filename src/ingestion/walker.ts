@@ -172,7 +172,12 @@ async function walkDir(
     }
 
     if (fileStat.size > 2 * 1024 * 1024) {
-      // Skip files > 2MB to prevent memory exhaustion
+      // Skip files > 2MB to prevent memory exhaustion. Previously silent —
+      // log it so a large file's total loss of review coverage is visible,
+      // mirroring chunker.ts's TRUNCATED coverage-loss log (ing-002).
+      console.warn(
+        `[walker] Skipping ${relPath} (${fileStat.size} bytes) — exceeds the 2MB size guard. This file will NOT be reviewed.`
+      )
       continue
     }
 

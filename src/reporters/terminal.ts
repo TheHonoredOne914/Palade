@@ -6,6 +6,7 @@ import type { FindingDiff, ChangedFile } from '../diff/types.js'
 import { CATEGORY_LABELS } from '../scorer/types.js'
 import { scoreTheme } from '../ui/theme.js'
 import { scoreGrade } from '../ui/layout.js'
+import { groupBySeverity } from '../orchestrator/merger.js'
 
 const SEVERITY_COLORS: Record<Severity, (text: string) => string> = {
   critical: chalk.red.bold,
@@ -73,8 +74,9 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
   }
   lines.push('')
 
-  const criticalFindings = ctx.findings.filter((f) => f.severity === 'critical')
-  const highFindings = ctx.findings.filter((f) => f.severity === 'high')
+  const severityGroups = groupBySeverity(ctx.findings)
+  const criticalFindings = severityGroups.critical
+  const highFindings = severityGroups.high
 
   if (criticalFindings.length > 0) {
     lines.push(chalk.red.bold(`⚠ ${criticalFindings.length} Critical Finding(s):`))
@@ -133,14 +135,13 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
 
   lines.push(chalk.bold.underline('Debt Estimate:'))
   const debt = ctx.synthesis.debtEstimate
-  const debtCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 }
-  for (const f of ctx.findings) {
-    if (f.severity === 'critical') debtCounts.critical++
-    if (f.severity === 'high') debtCounts.high++
-    if (f.severity === 'medium') debtCounts.medium++
-    if (f.severity === 'low') debtCounts.low++
-    if (f.severity === 'info') debtCounts.info++
-    debtCounts.total++
+  const debtCounts = {
+    critical: severityGroups.critical.length,
+    high: severityGroups.high.length,
+    medium: severityGroups.medium.length,
+    low: severityGroups.low.length,
+    info: severityGroups.info.length,
+    total: ctx.findings.length,
   }
 
   lines.push(
@@ -223,9 +224,10 @@ export function printDiffSummary(ctx: {
     `  Findings in changed files: ${chalk.bold(String(findingDiff.introduced.length))} total`
   )
 
-  const critical = findingDiff.introduced.filter((f) => f.severity === 'critical')
-  const high = findingDiff.introduced.filter((f) => f.severity === 'high')
-  const medium = findingDiff.introduced.filter((f) => f.severity === 'medium')
+  const introducedSeverityGroups = groupBySeverity(findingDiff.introduced)
+  const critical = introducedSeverityGroups.critical
+  const high = introducedSeverityGroups.high
+  const medium = introducedSeverityGroups.medium
 
   if (critical.length > 0) {
     lines.push(`    ${SEVERITY_COLORS.critical('Critical introduced:')} ${critical.length}`)
