@@ -5,6 +5,14 @@ import type { ModeConfig } from '../modes/index.js'
 import { validateAndFingerprintFindings } from '../orchestrator/findingValidation.js'
 import { SEVERITY_PENALTY } from '../config/defaults.js'
 
+/** Strip chain-of-thought reasoning blocks emitted by some models. */
+function stripCoT(text: string): string {
+  return text
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+    .trim()
+}
+
 export type ReviewMode = 'standard' | 'security' | 'onboard' | 'debt' | 'ghost'
 
 /** Built-in agent names. Custom agents use arbitrary strings. */
@@ -252,8 +260,7 @@ export function parseFindingsResponse(
   let cleaned = raw.trim()
 
   // Safely strip CoT reasoning blocks
-  cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
-  cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
+  cleaned = stripCoT(cleaned)
 
   // Strip outer markdown code blocks — when multiple blocks exist, prefer the
   // one that looks like a JSON array (starts with '['). A simple non-greedy match
@@ -574,9 +581,7 @@ Reply strictly YES or NO.`,
         temperature: 0,
         signal,
       })
-      let cleaned = verifyResponse.content.trim()
-      cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
-      cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
+      let cleaned = stripCoT(verifyResponse.content)
       const match = cleaned.match(/\b(YES|NO)\b/i)
       // Fail closed: only a standalone YES/NO word confirms or drops a
       // finding. A substring scan for "yes" anywhere in the reply (e.g.

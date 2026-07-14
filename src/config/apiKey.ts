@@ -71,9 +71,9 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
   const parts = dotPath.split('.')
   const valueStr =
     typeof value === 'string'
-      ? `'${value.replace(/'/g, "\\'")}'`
+      ? `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
       : Array.isArray(value)
-        ? `[${value.map((v) => `'${String(v).replace(/'/g, "\\'")}'`).join(', ')}]`
+        ? `[${value.map((v) => `'${String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ')}]`
         : String(value)
   const lines = content.split('\n')
 
