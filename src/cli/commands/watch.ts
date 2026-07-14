@@ -20,6 +20,9 @@ import { formatDriftAlert } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { mergeFindings } from '../../orchestrator/merger.js'
+import { validateFindings } from '../../orchestrator/findingValidation.js'
+import { triageFindings } from '../../orchestrator/triage.js'
 
 const DEBOUNCE_MS: Record<string, number> = {
   low: 5000,
@@ -216,14 +219,21 @@ export async function watchCommand(opts: {
         }
       }
 
+      let finalFindings = allFindings
       if (allFindings.length > 0) {
+        const deduped = mergeFindings(allFindings)
+        const validated = validateFindings(deduped, manifests)
+        finalFindings = await triageFindings(validated)
+      }
+
+      if (finalFindings.length > 0) {
         // Delete before set so a re-scan of a long-tracked file moves it to
         // the end of Map iteration order — Map.set() on an EXISTING key does
         // NOT move it to the end, so without this a re-scanned file stays at
         // its original insertion position and isn't protected from the
         // oldest-first eviction below (cli-004).
         accumulatedFindings.delete(filePath)
-        accumulatedFindings.set(filePath, allFindings)
+        accumulatedFindings.set(filePath, finalFindings)
         // Evict oldest entries when the map grows unbounded
         if (accumulatedFindings.size > MAX_ACCUMULATED_FILES) {
           const keysToDelete = [...accumulatedFindings.keys()].slice(
@@ -232,7 +242,7 @@ export async function watchCommand(opts: {
           )
           for (const key of keysToDelete) accumulatedFindings.delete(key)
         }
-        console.log('\n' + formatDriftAlert(filePath, allFindings))
+        console.log('\n' + formatDriftAlert(filePath, finalFindings))
       } else {
         accumulatedFindings.delete(filePath)
         console.log(theme.success(`  ✓ Clean: ${filePath}\n`))
