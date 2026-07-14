@@ -24,7 +24,6 @@ import {
 const CATEGORY_SCORE_FLOOR = 10
 const DEFAULT_CATEGORY_PENALTY_CAP = 90
 const TOTAL_SCORE_FLOOR = 5
-const DEFAULT_TOTAL_PENALTY_CAP = 95
 
 /** Category/total penalty caps, overridable via `config.score.penaltyCaps`. */
 export interface PenaltyCaps {
@@ -170,7 +169,8 @@ export function calculateCrossAgentPenalty(
     // Scale by blast radius (files/scope affected) so a conflict touching many
     // files scores worse than one touching a single file, with diminishing
     // returns via log2 so a huge blast radius doesn't blow up the score.
-    const blastMultiplier = Math.min(1 + Math.log2(Math.max(1, cf.blastRadius)) * 0.2, 3)
+    const radius = Number.isFinite(cf.blastRadius) ? Math.max(1, cf.blastRadius) : 1
+    const blastMultiplier = Math.min(1 + Math.log2(radius) * 0.2, 3)
     penalty += base * blastMultiplier
   }
   return penalty
