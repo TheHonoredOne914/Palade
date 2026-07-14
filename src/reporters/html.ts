@@ -10,6 +10,7 @@ import type { Severity } from '../agents/base.js'
 
 import { CATEGORY_LABELS } from '../scorer/types.js'
 import { getScoreColor as getScoreColorTier } from '../scorer/badge.js'
+import { groupBySeverity } from '../orchestrator/merger.js'
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
   critical: 'severity-critical',
@@ -341,12 +342,12 @@ function replacePlaceholders(
   data: HtmlTemplateData,
   ctx: ReporterContext
 ): string {
-  const debtCounts = { critical: 0, high: 0, medium: 0, low: 0 }
-  for (const f of ctx.findings) {
-    if (f.severity === 'critical') debtCounts.critical++
-    if (f.severity === 'high') debtCounts.high++
-    if (f.severity === 'medium') debtCounts.medium++
-    if (f.severity === 'low') debtCounts.low++
+  const severityGroups = groupBySeverity(ctx.findings)
+  const debtCounts = {
+    critical: severityGroups.critical.length,
+    high: severityGroups.high.length,
+    medium: severityGroups.medium.length,
+    low: severityGroups.low.length,
   }
 
   const values: Record<string, string> = {

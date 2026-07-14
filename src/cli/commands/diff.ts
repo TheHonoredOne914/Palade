@@ -528,7 +528,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       throw new CliExitError(0)
     }
     console.error(theme.error(`\nDiff review failed: ${(err as Error).message}`))
-    if ((err as Error).stack && process.env.DEBUG) {
+    if ((err as Error).stack && process.env.DEBUG === 'palade') {
       console.error(chalk.gray((err as Error).stack))
     }
     throw new CliExitError(1)

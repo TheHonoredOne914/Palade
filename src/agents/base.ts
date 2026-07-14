@@ -560,8 +560,13 @@ export async function verifyCriticalHighFindings(
       if (knownFilePaths) {
         return knownFilePaths.has(f.filePath) ? f : null
       }
-      // No project-wide file list available — fall back to prior behavior.
-      return null
+      // No project-wide file list available (e.g. watch.ts's AgentContext
+      // doesn't thread one through, unlike swarm.ts) — we genuinely can't
+      // tell a real-but-out-of-batch file reference from a hallucinated one.
+      // Prefer keeping the finding over auto-dropping it: an unverifiable
+      // critical/high finding surfacing as a possible false positive is
+      // safer than a real one silently vanishing (agents-105).
+      return f
     }
     try {
       const verifyResponse = await provider.complete({
@@ -582,12 +587,18 @@ Reply strictly YES or NO.`,
       let cleaned = verifyResponse.content.trim()
       cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
       cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
-      const match = cleaned.match(/\b(YES|NO)\b/i)
+      // Use the LAST standalone YES/NO token, not the first — a rambling
+      // reply that reasons through the issue before landing on a verdict
+      // (e.g. "This looks concerning... NO, actually it's sanitized") would
+      // otherwise have its actual verdict overridden by an earlier
+      // in-passing YES/NO mentioned while thinking out loud (agents-101).
+      const matches = [...cleaned.matchAll(/\b(YES|NO)\b/gi)]
+      const lastMatch = matches[matches.length - 1]
       // Fail closed: only a standalone YES/NO word confirms or drops a
       // finding. A substring scan for "yes" anywhere in the reply (e.g.
       // "yesterday") could wrongly confirm a finding the model never
       // actually affirmed (agents-001).
-      if (match?.[1].toUpperCase() === 'YES') {
+      if (lastMatch?.[1].toUpperCase() === 'YES') {
         return f
       }
       console.log(
@@ -640,7 +651,20 @@ export function annotateComplexity(findings: AgentFinding[], chunks: CodeChunk[]
       const match = chunks.find(
         (c) => c.filePath === f.filePath && c.startLine <= f.lineStart! && c.endLine >= f.lineStart!
       )
-      if (match && match.complexity !== undefined) {
+      if (!match) continue
+      // Prefer the complexity of the SPECIFIC top-level node enclosing this
+      // finding's line over match.complexity (a chunk-wide sum across every
+      // top-level node bundled into that chunk to fill the token budget) —
+      // otherwise a finding inside a small, simple function inherits the
+      // inflated complexity of unrelated neighboring functions that happened
+      // to land in the same chunk (ing-001). Falls back to the chunk sum for
+      // chunks with no per-node breakdown (line/bracket-based chunking).
+      const enclosingNode = match.nodeComplexities?.find(
+        (n) => n.startLine <= f.lineStart! && n.endLine >= f.lineStart!
+      )
+      if (enclosingNode) {
+        f.complexity = enclosingNode.complexity
+      } else if (match.complexity !== undefined) {
         f.complexity = match.complexity
       }
     }

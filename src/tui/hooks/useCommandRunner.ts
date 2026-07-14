@@ -235,12 +235,41 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               })
               await runTargetsSearch(positional[1] ?? '', runSignal)
             } else if (sub === 'add') {
-              await runTargetsAdd(positional[1] ?? '', runSignal)
+              // CLI's `targets add <package>` requires the argument (commander
+              // errors out on a missing one) — mirror that here instead of
+              // silently calling runTargetsAdd('', ...), which just fails
+              // deeper inside with a confusing "package does not export a
+              // valid paladeTarget" message (cli-006).
+              const pkg = positional[1]
+              if (!pkg) {
+                opts.appendLine({
+                  type: 'error',
+                  text: '  Usage: /targets add <package>',
+                })
+              } else {
+                await runTargetsAdd(pkg, runSignal)
+              }
             } else if (sub === 'generate') {
               // The TUI tokenizer splits on whitespace, so re-join the query words
-              await runTargetsGenerate(positional.slice(1).join(' '), runSignal)
-            } else {
+              const query = positional.slice(1).join(' ')
+              if (!query) {
+                opts.appendLine({
+                  type: 'error',
+                  text: '  Usage: /targets generate <description>',
+                })
+              } else {
+                await runTargetsGenerate(query, runSignal)
+              }
+            } else if (sub === undefined || sub === 'list') {
               await runTargetsList(runSignal)
+            } else {
+              // An unrecognized subcommand used to silently fall through to
+              // `list`, which looks like the typo succeeded — surface it as
+              // an error instead (cli-010).
+              opts.appendLine({
+                type: 'error',
+                text: `  Unknown targets action "${sub}". Try: search, add, generate, list.`,
+              })
             }
             break
           }

@@ -38,9 +38,14 @@ export const COMMAND_REGISTRY: CommandDef[] = [
   {
     name: 'watch',
     args: '',
-    description: 'Start drift detection watcher',
-    usage: '/watch [--sensitivity low|medium|high]',
-    examples: ['/watch', '/watch --sensitivity high'],
+    // The TUI dispatcher rejects /watch outright (see useCommandRunner.ts's
+    // 'watch' case — it always prints "cannot be run inside the interactive
+    // TUI" and tells the user to run it in a separate terminal), so this
+    // entry used to falsely advertise a --sensitivity flag as something you
+    // could actually invoke from here (tui-002). CLI-only; no in-TUI usage.
+    description: 'Start drift detection watcher (CLI-only — run `palade watch` in a terminal)',
+    usage: '/watch (CLI-only, run `palade watch [--sensitivity low|medium|high]` in a terminal)',
+    examples: ['/watch'],
   },
   {
     name: 'targets',

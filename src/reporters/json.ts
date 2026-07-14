@@ -5,7 +5,7 @@ import type { Severity } from '../agents/base.js'
 
 interface AiConsumableBug {
   id: string
-  file: string
+  file: string | null
   lineStart?: number
   lineEnd?: number
   severity: Severity
@@ -33,10 +33,9 @@ export function buildJsonReport(ctx: ReporterContext): AiConsumableReport {
     project: ctx.config?.projectName ?? 'unknown-project',
     summary: ctx.synthesis.executiveSummary,
     bugs: ctx.findings
-      .filter((f) => f.filePath) // AI needs file paths to fix bugs
       .map((f) => ({
         id: f.id,
-        file: f.filePath!,
+        file: f.filePath ?? null,
         lineStart: f.lineStart,
         lineEnd: f.lineEnd,
         severity: f.severity,
