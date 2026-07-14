@@ -1,6 +1,11 @@
 import chalk from 'chalk'
 import type { CodeChunk } from '../ingestion/types.js'
-import { estimateTokens, MAX_TOKENS, CHARS_PER_TOKEN, hardSplitBudget } from '../ingestion/chunker.js'
+import {
+  estimateTokens,
+  MAX_TOKENS,
+  CHARS_PER_TOKEN,
+  hardSplitBudget,
+} from '../ingestion/chunker.js'
 
 const SOFT_TOKEN_LIMIT = 16_000
 const HARD_CHUNK_LIMIT = MAX_TOKENS

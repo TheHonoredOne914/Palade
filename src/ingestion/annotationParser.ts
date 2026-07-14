@@ -9,8 +9,14 @@ import type { AnnotationSummary, AgentFinding } from '../agents/base.js'
 // recognized, silently dropping `/* @palade ... */`-style annotations even
 // though the same directive in a `//` comment worked fine (ing-004).
 const COMMENT_PREFIX = /(?:\/\/|\/\*+|^\s*\*)/.source
-const REVIEW_RE = new RegExp(`${COMMENT_PREFIX}\\s*@palade\\s+review\\s*:\\s*(.+?)(?:\\*\\/)?\\s*$`, 'i')
-const FOCUS_RE = new RegExp(`${COMMENT_PREFIX}\\s*@palade\\s+focus\\s*:\\s*(.+?)(?:\\*\\/)?\\s*$`, 'i')
+const REVIEW_RE = new RegExp(
+  `${COMMENT_PREFIX}\\s*@palade\\s+review\\s*:\\s*(.+?)(?:\\*\\/)?\\s*$`,
+  'i'
+)
+const FOCUS_RE = new RegExp(
+  `${COMMENT_PREFIX}\\s*@palade\\s+focus\\s*:\\s*(.+?)(?:\\*\\/)?\\s*$`,
+  'i'
+)
 // Explicit whole-file directive. Must be checked before IGNORE_RE, since
 // `// @palade ignore-file` also matches the looser line-level IGNORE_RE.
 const FILE_IGNORE_RE = new RegExp(`${COMMENT_PREFIX}\\s*@palade\\s+ignore-file\\b`, 'i')

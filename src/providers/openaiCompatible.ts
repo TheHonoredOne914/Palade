@@ -104,7 +104,9 @@ export class OpenAICompatibleProvider implements IProvider {
       throw new Error(`${this.label} daily limit exhausted for this session`)
     }
     if (this.deadGeneric) {
-      throw new Error(`${this.label} provider marked dead for this session (see earlier fatal error)`)
+      throw new Error(
+        `${this.label} provider marked dead for this session (see earlier fatal error)`
+      )
     }
     // Compute the deadline (and the retry-token ceiling below) inside the
     // limiter callback, not before it, so time spent queued behind other
@@ -222,7 +224,8 @@ export class OpenAICompatibleProvider implements IProvider {
     // budget thinking — retry with more tokens, same pattern for every adapter.
     if (shouldRetryEmptyContent(content, outputTokens, attempt)) {
       const newMax = nextRetryMaxTokens(maxTokens, retryCeiling)
-      if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1, deadline, retryCeiling)
+      if (newMax > maxTokens)
+        return this.doComplete(req, newMax, attempt + 1, deadline, retryCeiling)
     }
 
     return {
