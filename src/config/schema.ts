@@ -65,7 +65,7 @@ export const PaladeConfigSchema = z
         // agents exist. A higher configured value had no effect on the
         // actual swarm but still inflated ingestion/estimator.ts's cost math
         // by up to 50% (cli-001).
-        agentCount: z.number().int().min(1).max(BUILTIN_NAMES.length).default(8),
+        agentCount: z.number().int().min(1).max(BUILTIN_NAMES.length).default(Math.min(8, BUILTIN_NAMES.length)),
         timeoutMs: z.number().int().default(600000),
         maxReviewTokens: z.number().int().min(10_000).default(200_000),
         // Economy mode sends each batch of code to ONE combined multi-domain call
