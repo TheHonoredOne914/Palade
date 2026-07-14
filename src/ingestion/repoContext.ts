@@ -149,15 +149,11 @@ function resolveReexport(
 }
 
 async function buildPublicApi(
-  projectRoot: string,
+  pkg: Record<string, unknown> | undefined,
   manifestPaths: Set<string>,
   chunksByFile: Map<string, CodeChunk[]>
 ): Promise<{ publicApiFiles: string[]; isLibrary: boolean }> {
-  let pkg: Record<string, unknown>
-  try {
-    const raw = await readFile(join(projectRoot, 'package.json'), 'utf-8')
-    pkg = JSON.parse(raw)
-  } catch {
+  if (!pkg) {
     return { publicApiFiles: [], isLibrary: false }
   }
 
@@ -203,6 +199,14 @@ export async function buildRepoContext(
   chunks: CodeChunk[],
   projectRoot: string
 ): Promise<RepoContext> {
+  let pkg: Record<string, unknown> | undefined
+  try {
+    const raw = await readFile(join(projectRoot, 'package.json'), 'utf-8')
+    pkg = JSON.parse(raw)
+  } catch {
+    pkg = undefined
+  }
+
   // dependencyCycles — edges: importer -> importee (importer depends on importee).
   const adjacency = new Map<string, Set<string>>()
   for (const m of manifests) {
@@ -229,7 +233,7 @@ export async function buildRepoContext(
     chunksByFile.get(c.filePath)!.push(c)
   }
   const { publicApiFiles, isLibrary } = await buildPublicApi(
-    projectRoot,
+    pkg,
     manifestPaths,
     chunksByFile
   )
@@ -241,27 +245,26 @@ export async function buildRepoContext(
 
   // validatorDeps
   let validatorDeps: string[] = []
-  try {
-    const raw = await readFile(join(projectRoot, 'package.json'), 'utf-8')
-    const pkg = JSON.parse(raw)
+  if (pkg) {
     const deps = new Set([
       ...Object.keys(pkg.dependencies ?? {}),
       ...Object.keys(pkg.devDependencies ?? {}),
     ])
     validatorDeps = VALIDATOR_LIBS.filter((lib) => deps.has(lib))
-  } catch {
-    // no package.json / unparsable — leave empty
   }
 
   // moduleGlobals
   const moduleGlobals: RepoContext['moduleGlobals'] = []
   for (const [file, fileChunks] of chunksByFile) {
     if (isTestFile(file)) continue
-    const fullContent = fileChunks.map((c) => c.content).join('\n')
+    let fullContent: string | undefined
     for (const chunk of fileChunks) {
       for (const line of chunk.content.split('\n')) {
         const match = line.match(MODULE_GLOBAL_RE)
         if (match) {
+          if (fullContent === undefined) {
+            fullContent = fileChunks.map((c) => c.content).join('\n')
+          }
           const name = match[1]
           moduleGlobals.push({
             file,

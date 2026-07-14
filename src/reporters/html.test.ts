@@ -97,20 +97,22 @@ function makeContext(
 }
 
 describe('reporters/html', () => {
-  let tmpPath: string
+  const tmpPaths: string[] = []
 
   afterEach(() => {
-    if (tmpPath) {
+    for (const path of tmpPaths) {
       try {
-        rmSync(tmpPath, { force: true })
+        rmSync(path, { force: true })
       } catch {
         // best-effort cleanup
       }
     }
+    tmpPaths.length = 0
   })
 
   it('escapes XSS payload in agentName', () => {
-    tmpPath = join(tmpdir(), `palade-report-${Date.now()}.html`)
+    const tmpPath = join(tmpdir(), `palade-report-${Date.now()}-${Math.random()}.html`)
+    tmpPaths.push(tmpPath)
     const ctx = makeContext({ agentName: '<script>alert("xss")</script>' })
     writeHtmlReport(ctx, tmpPath)
     const content = readFileSync(tmpPath, 'utf-8')
@@ -120,7 +122,8 @@ describe('reporters/html', () => {
   })
 
   it('escapes XSS payload in finding title and description', () => {
-    tmpPath = join(tmpdir(), `palade-report-${Date.now()}-2.html`)
+    const tmpPath = join(tmpdir(), `palade-report-${Date.now()}-${Math.random()}.html`)
+    tmpPaths.push(tmpPath)
     const ctx = makeContext({
       findingTitle: '<img onerror=alert(1)>',
       findingDescription: '<b>evil</b>',
@@ -135,7 +138,8 @@ describe('reporters/html', () => {
   })
 
   it('escapes XSS payload in severity', () => {
-    tmpPath = join(tmpdir(), `palade-report-${Date.now()}-3.html`)
+    const tmpPath = join(tmpdir(), `palade-report-${Date.now()}-${Math.random()}.html`)
+    tmpPaths.push(tmpPath)
     const ctx = makeContext({ severity: '<style>body{display:none}</style>' })
     writeHtmlReport(ctx, tmpPath)
     const content = readFileSync(tmpPath, 'utf-8')
