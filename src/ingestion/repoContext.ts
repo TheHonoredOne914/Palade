@@ -20,6 +20,7 @@ const MAX_PUBLIC_API_BFS = 60
 const MAX_PUBLIC_API_RENDER = 30
 const MAX_MODULE_GLOBALS = 15
 const MAX_TESTED_ENTRIES_RENDER = 40
+const MAX_BUILD_FILES = 40
 
 function isTestFile(path: string): boolean {
   return TEST_FILE_RE.test(path) || TEST_SEGMENT_RE.test(path)
@@ -249,6 +250,7 @@ export async function buildRepoContext(
   const buildTimeFiles = manifests
     .map((m) => m.path)
     .filter((p) => CONFIG_FILE_RE.test(p) || ESLINTRC_RE.test(p) || p.startsWith('scripts/'))
+    .slice(0, MAX_BUILD_FILES)
 
   // validatorDeps
   let validatorDeps: string[] = []
@@ -262,6 +264,7 @@ export async function buildRepoContext(
 
   // moduleGlobals
   const moduleGlobals: RepoContext['moduleGlobals'] = []
+  const seenGlobals = new Set<string>()
   for (const [file, fileChunks] of chunksByFile) {
     if (isTestFile(file)) continue
     let fullContent: string | undefined
@@ -269,10 +272,14 @@ export async function buildRepoContext(
       for (const line of chunk.content.split('\n')) {
         const match = line.match(MODULE_GLOBAL_RE)
         if (match) {
+          const name = match[1]
+          const key = `${file}:${name}`
+          if (seenGlobals.has(key)) continue
+          seenGlobals.add(key)
+          
           if (fullContent === undefined) {
             fullContent = fileChunks.map((c) => c.content).join('\n')
           }
-          const name = match[1]
           moduleGlobals.push({
             file,
             name,
