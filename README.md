@@ -73,7 +73,7 @@ Output quality is bounded by the model behind each agent — restricting the swa
 # Install globally
 npm install -g palade
 
-# Initialize in your project (creates palade.config.ts)
+# Initialize in your project (creates .palade/palade.config.ts)
 palade init
 
 # Launch the interactive TUI

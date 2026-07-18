@@ -4,9 +4,10 @@ import {
   DEFAULT_CONSTITUTION_PATH,
   DEFAULT_SPEC_PATH,
   DEFAULT_CONFIG,
+  SEVERITY_PENALTY,
+  DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
+  DEFAULT_PENALTY_CAPS,
 } from './defaults.js'
-import { SEVERITY_PENALTY } from '../agents/base.js'
-import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS, DEFAULT_PENALTY_CAPS } from '../scorer/calculator.js'
 import { BUILTIN_NAMES } from '../agents/registry.js'
 // router.ts's PROVIDER_NAMES is the single source of truth for supported
 // provider names — every z.enum(['groq', 'cerebras', ...]) below used to be a
@@ -64,7 +65,12 @@ export const PaladeConfigSchema = z
         // agents exist. A higher configured value had no effect on the
         // actual swarm but still inflated ingestion/estimator.ts's cost math
         // by up to 50% (cli-001).
-        agentCount: z.number().int().min(1).max(BUILTIN_NAMES.length).default(8),
+        agentCount: z
+          .number()
+          .int()
+          .min(1)
+          .max(BUILTIN_NAMES.length)
+          .default(Math.min(8, BUILTIN_NAMES.length)),
         timeoutMs: z.number().int().default(600000),
         maxReviewTokens: z.number().int().min(10_000).default(200_000),
         // Economy mode sends each batch of code to ONE combined multi-domain call
@@ -145,6 +151,9 @@ export const PaladeConfigSchema = z
             lowFactor: z.number().default(0.5),
             highThreshold: z.number().int().min(0).default(20),
             highFactor: z.number().default(1.5),
+          })
+          .refine((v) => v.lowThreshold < v.highThreshold, {
+            message: 'complexityPenalties.lowThreshold must be less than highThreshold',
           })
           .default({}),
         // Category/total penalty caps used when computing the final score.

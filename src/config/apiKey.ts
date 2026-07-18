@@ -71,9 +71,9 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
   const parts = dotPath.split('.')
   const valueStr =
     typeof value === 'string'
-      ? `'${value.replace(/'/g, "\\'")}'`
+      ? `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
       : Array.isArray(value)
-        ? `[${value.map((v) => `'${String(v).replace(/'/g, "\\'")}'`).join(', ')}]`
+        ? `[${value.map((v) => `'${String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ')}]`
         : String(value)
   const lines = content.split('\n')
 
@@ -172,12 +172,11 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
       if (!trimmed || trimmed.startsWith('//')) continue
 
       if (trimmed.startsWith('}')) {
-        const indent = line.length - trimmed.length
-        while (openIndents2.length > 0 && openIndents2[openIndents2.length - 1] >= indent) {
-          // If the section we are closing IS the target, insert here.
-          if (pathStack2.length === path.length && path.every((p, idx) => pathStack2[idx] === p)) {
-            return [i, indent + 2]
-          }
+        // If the section we are closing IS the target, insert here.
+        if (pathStack2.length === path.length && path.every((p, idx) => pathStack2[idx] === p)) {
+          return [i, openIndents2[openIndents2.length - 1] + 2]
+        }
+        if (openIndents2.length > 0) {
           pathStack2.pop()
           openIndents2.pop()
         }
@@ -255,10 +254,9 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
  * settings panel's swarm/synthesis/model selectors — same underlying writer
  * as `palade settings --set`.
  */
-export async function saveConfigValue(
+export async function saveConfigValues(
   projectRoot: string,
-  dotPath: string,
-  value: unknown
+  updates: Record<string, unknown>
 ): Promise<void> {
   const configPath = resolveConfigPath(projectRoot)
   const paladeDir = join(projectRoot, '.palade')
@@ -271,8 +269,18 @@ export async function saveConfigValue(
     content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: {\n    primary: 'opencode-zen',\n    synthesis: 'nvidia',\n    agentCount: 8\n  },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
   }
 
-  content = setNestedValue(content, dotPath, value)
+  for (const [dotPath, value] of Object.entries(updates)) {
+    content = setNestedValue(content, dotPath, value)
+  }
   await writeFile(configPath, content, 'utf-8')
+}
+
+export async function saveConfigValue(
+  projectRoot: string,
+  dotPath: string,
+  value: unknown
+): Promise<void> {
+  return saveConfigValues(projectRoot, { [dotPath]: value })
 }
 
 export async function readCurrentKeys(projectRoot: string): Promise<Record<string, string>> {
@@ -298,19 +306,6 @@ export async function readCurrentKeys(projectRoot: string): Promise<Record<strin
     // .env file may not exist — that's fine, just skip it
   }
 
-  const configPath = resolveConfigPath(projectRoot)
-  if (!existsSync(configPath)) return result
-  try {
-    const content = await readFile(configPath, 'utf-8')
-    for (const p of PROVIDERS) {
-      if (result[p.id]) continue
-      const re = new RegExp(`${p.id}:\\s*\\{[^{}]{0,200}?apiKey:\\s*['"]([^'"]+)['"]`)
-      const m = content.match(re)
-      if (m) result[p.id] = m[1]
-    }
-  } catch {
-    /* ignore */
-  }
   return result
 }
 
@@ -325,7 +320,9 @@ export async function saveApiKey(
 ): Promise<void> {
   const prov = PROVIDERS.find((p) => p.id === providerId)!
   const envKey = prov.env
-  process.env[envKey] = apiKey
+  // Strip newlines — a key containing \n would inject extra .env lines.
+  const safeKey = apiKey.replace(/[\r\n]/g, '')
+  process.env[envKey] = safeKey
 
   const envPath = join(projectRoot, '.env')
   let envContent = ''
@@ -335,7 +332,7 @@ export async function saveApiKey(
     // file doesn't exist yet, start fresh
   }
   const envLineRe = new RegExp(`^${envKey}=.*$`, 'm')
-  const newLine = `${envKey}=${apiKey}`
+  const newLine = `${envKey}=${safeKey}`
   if (envLineRe.test(envContent)) {
     envContent = envContent.replace(envLineRe, newLine)
   } else {

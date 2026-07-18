@@ -38,6 +38,59 @@ describe('orchestrator/merger', () => {
       expect(merged[0].severity).toBe('critical')
     })
 
+    it('merges cross-agent same-line same-severity title variants (real dup escape)', () => {
+      // Observed in a live run: three agents flagged the identical defect at
+      // the identical line with title variants whose Jaccard sits between the
+      // same-agent (0.5) and cross-agent (0.7) thresholds — all three
+      // survived dedup as separate criticals.
+      const a = finding({
+        severity: 'critical',
+        filePath: 'src/config.ts',
+        lineStart: 2,
+        title: 'Hardcoded database password in config',
+        agentName: 'security',
+      })
+      const b = finding({
+        severity: 'critical',
+        filePath: 'src/config.ts',
+        lineStart: 2,
+        title: 'Hardcoded database password in source',
+        agentName: 'logic',
+      })
+      const c = finding({
+        severity: 'critical',
+        filePath: 'src/config.ts',
+        lineStart: 2,
+        title: 'Hardcoded database password',
+        agentName: 'deadCode',
+      })
+      const merged = mergeFindings([a, b, c])
+      expect(merged).toHaveLength(1)
+      expect(merged[0].severity).toBe('critical')
+      expect(merged[0].mergedFromAgents).toEqual(
+        expect.arrayContaining(['security', 'logic', 'deadCode'])
+      )
+    })
+
+    it('does not merge cross-agent same-line findings of different severity below the strict bar', () => {
+      const a = finding({
+        severity: 'critical',
+        filePath: 'src/config.ts',
+        lineStart: 2,
+        title: 'Hardcoded database password in config',
+        agentName: 'security',
+      })
+      const b = finding({
+        severity: 'low',
+        filePath: 'src/config.ts',
+        lineStart: 2,
+        title: 'Hardcoded database default in config',
+        agentName: 'maintainability',
+      })
+      const merged = mergeFindings([a, b])
+      expect(merged).toHaveLength(2)
+    })
+
     it('does not merge unrelated titles with similar character sets', () => {
       const a = finding({
         severity: 'high',
@@ -59,10 +112,10 @@ describe('orchestrator/merger', () => {
     })
 
     it('does not merge cross-agent same-line findings below the cross-agent threshold', () => {
-      // Jaccard(a.title, b.title) = 4/6 ≈ 0.667 — above the old flat 0.4 bar
-      // the same-line branch used to apply regardless of agent (a bug: it
-      // bypassed the stricter 0.7 cross-agent threshold isNearMatch enforces
-      // for every other pair), but below the correct 0.7 cross-agent bar.
+      // Jaccard(a.title, b.title) = 4/6 ≈ 0.667 — between the same-agent
+      // (0.5) and cross-agent (0.7) bars. Cross-agent pairs in that band only
+      // merge when severities also agree (the same-severity carve-out); with
+      // differing severities the strict 0.7 cross-agent threshold applies.
       const a = finding({
         severity: 'high',
         filePath: 'src/auth.ts',
@@ -71,7 +124,7 @@ describe('orchestrator/merger', () => {
         agentName: 'security',
       })
       const b = finding({
-        severity: 'high',
+        severity: 'medium',
         filePath: 'src/auth.ts',
         lineStart: 10,
         title: 'alpha beta gamma delta zeta',

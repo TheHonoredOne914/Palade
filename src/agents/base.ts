@@ -3,6 +3,34 @@ import chalk from 'chalk'
 import type { CodeChunk, Language } from '../ingestion/types.js'
 import type { ModeConfig } from '../modes/index.js'
 import { validateAndFingerprintFindings } from '../orchestrator/findingValidation.js'
+import { SEVERITY_PENALTY } from '../config/defaults.js'
+import { HARDCODED_SKILLS } from './skills.js'
+import { getProvider } from '../providers/router.js'
+import {
+  createLimiter,
+  type IProvider,
+  type CompletionRequest,
+  type CompletionResponse,
+} from '../providers/base.js'
+
+export function formatSpecAndConstitution(context?: AgentContext): string {
+  let block = ''
+  if (context?.spec) {
+    block += `\n\n=== BUSINESS LOGIC SPECIFICATION ===\n${context.spec}\n====================================\n\nCRITICAL: Cross-reference the code against the business logic specification above to ensure it is implemented correctly.`
+  }
+  if (context?.constitution) {
+    block += `\n\nAGENT CONSTITUTION (BEHAVIORAL GUIDELINES):\n${context.constitution}`
+  }
+  return block
+}
+
+/** Strip chain-of-thought reasoning blocks emitted by some models. */
+function stripCoT(text: string): string {
+  return text
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+    .trim()
+}
 
 export type ReviewMode = 'standard' | 'security' | 'onboard' | 'debt' | 'ghost'
 
@@ -124,14 +152,6 @@ export interface AgentContext {
 export interface IAgent {
   name: AgentName
   analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]>
-}
-
-export const SEVERITY_PENALTY: Record<Severity, number> = {
-  critical: 10,
-  high: 5,
-  medium: 2,
-  low: 0.5,
-  info: 0,
 }
 
 // A flat output cap starves large batches the same way combined.ts's flat cap
@@ -257,8 +277,7 @@ export function parseFindingsResponse(
   let cleaned = raw.trim()
 
   // Safely strip CoT reasoning blocks
-  cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
-  cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
+  cleaned = stripCoT(cleaned)
 
   // Strip outer markdown code blocks — when multiple blocks exist, prefer the
   // one that looks like a JSON array (starts with '['). A simple non-greedy match
@@ -382,8 +401,6 @@ export function parseFindingsResponse(
   return findings
 }
 
-import { HARDCODED_SKILLS } from './skills.js'
-
 export function buildSystemPrompt(
   base: string,
   context: AgentContext,
@@ -400,8 +417,11 @@ export function buildSystemPrompt(
 - info: Informational observation or non-blocking suggestion.`
   if (context.diffContext) {
     const dc = context.diffContext
-    const changedPaths = dc.changedFiles.map((f) => f.path).join(', ')
-    prompt += `\n\nDIFF CONTEXT: This is a diff review of branch '${dc.headBranch}' vs '${dc.baseBranch}'. Focus on issues in the ${dc.changedFiles.length} changed files: ${changedPaths}. Prioritise newly introduced problems over pre-existing ones.`
+    const paths = dc.changedFiles.map((f) => f.path)
+    const changedPaths = paths.slice(0, 10).join(', ')
+    const truncationNote =
+      paths.length > 10 ? `\n  ...and ${paths.length - 10} more (truncated)` : ''
+    prompt += `\n\nDIFF CONTEXT: This is a diff review of branch '${dc.headBranch}' vs '${dc.baseBranch}'. Focus on issues in the ${dc.changedFiles.length} changed files: ${changedPaths}${truncationNote}. Prioritise newly introduced problems over pre-existing ones.`
   }
   if (context.targetDescription) {
     prompt += `\n\nSUBSYSTEM CONTEXT: ${context.targetDescription}`
@@ -443,24 +463,10 @@ export function buildSystemPrompt(
     prompt += `\n\n${HARDCODED_SKILLS}`
   }
 
-  if (context.spec) {
-    prompt += `\n\n=== BUSINESS LOGIC SPECIFICATION ===\n${context.spec}\n====================================\n\nCRITICAL: Cross-reference the code against the business logic specification above to ensure it is implemented correctly.`
-  }
-
-  if (context.constitution) {
-    prompt += `\n\nAGENT CONSTITUTION (BEHAVIORAL GUIDELINES):\n${context.constitution}`
-  }
+  prompt += formatSpecAndConstitution(context)
 
   return prompt
 }
-
-import { getProvider } from '../providers/router.js'
-import {
-  createLimiter,
-  type IProvider,
-  type CompletionRequest,
-  type CompletionResponse,
-} from '../providers/base.js'
 
 /** True when parseFindingsResponse returned ONLY its parse-failure sentinel. */
 export function isParseFailureSentinel(findings: AgentFinding[]): boolean {
@@ -533,13 +539,7 @@ export async function verifyCriticalHighFindings(
   // violated rule, has no way to confirm it. Mirror the same spec/
   // constitution block format buildSystemPrompt uses so the verifier has the
   // same information the original finding-generating call had (agents-002).
-  const specConstitutionBlock =
-    (context?.spec
-      ? `\n\n=== BUSINESS LOGIC SPECIFICATION ===\n${context.spec}\n====================================\n\nCRITICAL: Cross-reference the code against the business logic specification above to ensure it is implemented correctly.`
-      : '') +
-    (context?.constitution
-      ? `\n\nAGENT CONSTITUTION (BEHAVIORAL GUIDELINES):\n${context.constitution}`
-      : '')
+  const specConstitutionBlock = formatSpecAndConstitution(context)
   const verifyOne = async (f: AgentFinding): Promise<AgentFinding | null> => {
     const codeChunk = f.filePath
       ? chunks.find(
@@ -584,9 +584,7 @@ Reply strictly YES or NO.`,
         temperature: 0,
         signal,
       })
-      let cleaned = verifyResponse.content.trim()
-      cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
-      cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
+      const cleaned = stripCoT(verifyResponse.content)
       // Use the LAST standalone YES/NO token, not the first — a rambling
       // reply that reasons through the issue before landing on a verdict
       // (e.g. "This looks concerning... NO, actually it's sanitized") would

@@ -31,34 +31,9 @@ describe('error classes', () => {
   it('SwarmTimeoutError stores completed and total counts', () => {
     const err = new SwarmTimeoutError(3, 6, 30000)
     expect(err.name).toBe('SwarmTimeoutError')
+    expect(err.message).toBe('Swarm timed out after 30000ms. 3/6 agents completed.')
     expect(err.completedAgents).toBe(3)
     expect(err.totalAgents).toBe(6)
     expect(err.timeoutMs).toBe(30000)
-  })
-
-  it('ProviderRateLimitError was removed (dead code cleanup)', () => {
-    // We imported only the live classes — if ProviderRateLimitError existed,
-    // the import would succeed too, so verify by checking the module's
-    // named exports do not include it via the type system.
-    // This test is a regression guard: re-adding the class won't break this,
-    // but the tsc typecheck ensures the interface is consistent.
-    const liveExports = [
-      PaladeConfigError,
-      NoProvidersError,
-      TargetNotFoundError,
-      SwarmTimeoutError,
-    ]
-    expect(liveExports).toHaveLength(4)
-    expect(liveExports.map((c) => c.name)).not.toContain('ProviderRateLimitError')
-  })
-
-  it('IngestionError was removed (dead code cleanup)', () => {
-    const liveExports = [
-      PaladeConfigError,
-      NoProvidersError,
-      TargetNotFoundError,
-      SwarmTimeoutError,
-    ]
-    expect(liveExports.map((c) => c.name)).not.toContain('IngestionError')
   })
 })

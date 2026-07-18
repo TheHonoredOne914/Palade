@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { CustomAgent } from './agent.js'
 import * as router from '../../providers/router.js'
 import type { CodeChunk } from '../../ingestion/types.js'
@@ -16,6 +16,10 @@ describe('CustomAgent.analyze', () => {
       isAvailable: vi.fn().mockResolvedValue(true),
     }
     vi.spyOn(router, 'getProvider').mockReturnValue(mockProvider as unknown as IProvider)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('passes the dynamically loaded system prompt correctly', async () => {

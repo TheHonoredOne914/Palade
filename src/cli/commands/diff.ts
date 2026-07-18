@@ -4,11 +4,7 @@ import { walkProject, detectLanguages } from '../../ingestion/walker.js'
 import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../../ingestion/contextPacks.js'
-import {
-  estimateTotalTokens,
-  ECONOMY_SOFT_TOKEN_CAP,
-  ECONOMY_HARD_CHUNK_CAP,
-} from '../../orchestrator/scheduler.js'
+import { estimateTotalTokens } from '../../orchestrator/scheduler.js'
 import { mergeContexts } from '../../orchestrator/pipeline.js'
 import { runSwarm } from '../../orchestrator/swarm.js'
 import { calculateScore } from '../../scorer/calculator.js'
@@ -33,7 +29,7 @@ import { askConfirm } from '../../ui/prompt.js'
 import { buildAnnotationSummary } from '../../ingestion/annotationParser.js'
 import { readOptionalProjectDoc } from '../../config/docs.js'
 import { renderBadge, getBadgeData } from '../../scorer/badge.js'
-import type { ScopeOptions } from '../../ingestion/types.js'
+import type { ScopeOptions, CodeChunk } from '../../ingestion/types.js'
 import type { SwarmResult } from '../../orchestrator/types.js'
 import type { AgentContext, AgentFinding, AgentName, DiffContext } from '../../agents/base.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
@@ -48,6 +44,30 @@ interface DiffOpts {
   signal?: AbortSignal
   tui?: boolean
   strictTriage?: boolean
+}
+
+function injectContextAndSplit(chunks: CodeChunk[]): CodeChunk[] {
+  const keywordIndex = buildKeywordIndex(chunks)
+  const contextPrefixes = chunks.map((chunk) =>
+    mergeContexts(buildRetrievedContext(chunk, chunks), getKeywordContext(chunk, keywordIndex))
+  )
+  const enriched = chunks.map((chunk, i) => {
+    const contextPrefix = contextPrefixes[i]
+    if (contextPrefix) {
+      return {
+        ...chunk,
+        contextPrefix,
+        tokenCount: estimateTokens(contextPrefix + chunk.content),
+      }
+    }
+    return chunk
+  })
+  return enriched.flatMap((chunk) => {
+    if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > MAX_TOKENS) {
+      return splitLargeChunk(chunk)
+    }
+    return [chunk]
+  })
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -122,43 +142,11 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, ''))
     )
     let activeChunks = chunks.filter((c) => !ignoredFileSet.has(c.filePath.replace(/^\.?\/+/, '')))
-
-    // Mirror pipeline.ts's context injection so diff reviews get the same
-    // cross-file "here's what else uses/imports this symbol" context as a
-    // full `review` run, instead of every agent seeing each chunk in
-    // isolation. Context is built from non-ignored chunks only, matching
-    // pipeline.ts (an @palade ignore-file'd file's source must not get
-    // quoted into other prompts).
-    const contextSourceChunks = chunks.filter(
-      (c) => !ignoredFileSet.has(c.filePath.replace(/^\.?\/+/, ''))
-    )
-    const keywordIndex = buildKeywordIndex(contextSourceChunks)
-    const contextPrefixes = activeChunks.map((chunk) =>
-      mergeContexts(
-        buildRetrievedContext(chunk, contextSourceChunks),
-        getKeywordContext(chunk, keywordIndex)
-      )
-    )
-    activeChunks.forEach((chunk, i) => {
-      const contextPrefix = contextPrefixes[i]
-      if (contextPrefix) {
-        activeChunks[i] = {
-          ...chunk,
-          contextPrefix,
-          tokenCount: estimateTokens(contextPrefix + chunk.content),
-        }
-      }
-    })
-    activeChunks = activeChunks.flatMap((chunk) => {
-      if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > MAX_TOKENS) {
-        return splitLargeChunk(chunk)
-      }
-      return [chunk]
-    })
+    activeChunks = injectContextAndSplit(activeChunks)
 
     console.log(
       theme.dim(
-        `  Chunking: ${manifests.length} files → ${activeChunks.length} chunks (~${estimateTotalTokens(activeChunks).toLocaleString()} tokens)`
+        `  Chunking: ${manifests.length} files → ${activeChunks.length} chunks (~${estimateTotalTokens(activeChunks).toLocaleString('en-US')} tokens)`
       )
     )
 
@@ -266,12 +254,8 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           strictTriage: opts.strictTriage ?? false,
           noVerdict: false,
           maxConcurrentBatches: config.swarm.maxConcurrentBatches,
-          softTokenLimit: config.swarm.economyMode
-            ? Math.min(ECONOMY_SOFT_TOKEN_CAP, config.swarm.softTokenLimit)
-            : config.swarm.softTokenLimit,
-          hardChunkLimit: config.swarm.economyMode
-            ? Math.min(ECONOMY_HARD_CHUNK_CAP, config.swarm.hardChunkLimit)
-            : config.swarm.hardChunkLimit,
+          softTokenLimit: config.swarm.softTokenLimit,
+          hardChunkLimit: config.swarm.hardChunkLimit,
           maxSynthesisFindings: config.swarm.maxSynthesisFindings,
           synthesisTimeoutMs: config.swarm.synthesisTimeoutMs,
           decisionsRetentionLimit: config.swarm.decisionsRetentionLimit,
@@ -386,6 +370,9 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
             const oldContent = getFileContentAtRef(mergeBase, f.oldPath ?? f.path, projectRoot)
             if (oldContent === null) continue
             const dest = join(baseTempDir, f.path)
+            if (!dest.startsWith(baseTempDir)) {
+              throw new Error(`Path traversal attempt detected in git changed files: ${f.path}`)
+            }
             mkdirSync(dirname(dest), { recursive: true })
             writeFileSync(dest, oldContent, 'utf-8')
             writtenPaths.push(f.path)
@@ -398,12 +385,15 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
             const baseScope: ScopeOptions = { projectRoot: baseTempDir, files: writtenPaths }
             const baseManifests = await walkProject(baseTempDir, baseScope)
             if (baseManifests.length > 0) {
-              const baseChunks = await chunkFiles(baseManifests)
+              const baseChunks = injectContextAndSplit(await chunkFiles(baseManifests))
               const baseContext: AgentContext = {
                 projectLanguages: (await detectLanguages(baseTempDir, baseScope)).primary,
                 totalFiles: baseManifests.length,
                 totalChunks: baseChunks.length,
                 mode: 'standard',
+                includeSkills: config.swarm.includeSkills,
+                spec: context.spec,
+                constitution: context.constitution,
               }
               const baseSwarmResult = await runSwarm(
                 baseChunks,
@@ -414,14 +404,13 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                   customAgents: customAgentDefs,
                   agentCount: config.swarm.agentCount,
                   economyMode: config.swarm.economyMode,
+                  providerShares: config.swarm.providerShares,
+                  maxConcurrentBatches: config.swarm.maxConcurrentBatches,
+                  severityWeights: config.score.severityWeights,
                   projectRoot: baseTempDir,
                   noSynthesis: true,
-                  softTokenLimit: config.swarm.economyMode
-                    ? Math.min(ECONOMY_SOFT_TOKEN_CAP, config.swarm.softTokenLimit)
-                    : config.swarm.softTokenLimit,
-                  hardChunkLimit: config.swarm.economyMode
-                    ? Math.min(ECONOMY_HARD_CHUNK_CAP, config.swarm.hardChunkLimit)
-                    : config.swarm.hardChunkLimit,
+                  softTokenLimit: config.swarm.softTokenLimit,
+                  hardChunkLimit: config.swarm.hardChunkLimit,
                   signal: opts.signal,
                   onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
                     console.log(theme.dim(`  [base] Conflict: ${sideA} vs ${sideB} in ${filePath}`))

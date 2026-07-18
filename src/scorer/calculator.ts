@@ -1,7 +1,12 @@
 import type { AgentFinding, Severity } from '../agents/base.js'
-import { SEVERITY_PENALTY } from '../agents/base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from './types.js'
+import {
+  SEVERITY_PENALTY,
+  DEFAULT_PENALTY_CAPS,
+  DEFAULT_COMPLEXITY_PENALTIES,
+  DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
+} from '../config/defaults.js'
 
 // Floors are intentionally asymmetric: a single category is allowed to sink
 // further (floor 10) than the blended overall score (floor 5), so one bad
@@ -19,17 +24,11 @@ import type { ScoreCategory, CategoryScore, ScoreBreakdown, ScoreResult } from '
 const CATEGORY_SCORE_FLOOR = 10
 const DEFAULT_CATEGORY_PENALTY_CAP = 90
 const TOTAL_SCORE_FLOOR = 5
-const DEFAULT_TOTAL_PENALTY_CAP = 95
 
 /** Category/total penalty caps, overridable via `config.score.penaltyCaps`. */
 export interface PenaltyCaps {
   categoryPenaltyCap: number
   totalPenaltyCap: number
-}
-
-export const DEFAULT_PENALTY_CAPS: PenaltyCaps = {
-  categoryPenaltyCap: DEFAULT_CATEGORY_PENALTY_CAP,
-  totalPenaltyCap: DEFAULT_TOTAL_PENALTY_CAP,
 }
 
 /** Complexity-multiplier thresholds/factors, overridable via `config.score.complexityPenalties`. */
@@ -38,13 +37,6 @@ export interface ComplexityPenalties {
   lowFactor: number
   highThreshold: number
   highFactor: number
-}
-
-export const DEFAULT_COMPLEXITY_PENALTIES: ComplexityPenalties = {
-  lowThreshold: 5,
-  lowFactor: 0.5,
-  highThreshold: 20,
-  highFactor: 1.5,
 }
 
 /**
@@ -71,12 +63,6 @@ export interface CrossAgentPenaltyWeights {
   critical: number
   high: number
   medium: number
-}
-
-export const DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS: CrossAgentPenaltyWeights = {
-  critical: 15,
-  high: 8,
-  medium: 4,
 }
 
 /**
@@ -131,11 +117,7 @@ export function calculateCategoryScore(
   let penalty = 0
   for (const f of findings) {
     if (f.agentName === agentName) {
-      let fPenalty = penaltyFor(f, severityWeights)
-      if (agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
-        fPenalty = applyComplexityMultiplier(f.complexity, fPenalty, complexityPenalties)
-      }
-      penalty += fPenalty
+      penalty += computeFindingPenalty(f, severityWeights, complexityPenalties)
     }
   }
 
@@ -154,6 +136,18 @@ export function calculateCategoryScore(
 
 export const MAINTAINABILITY_AGENT = 'maintainability'
 
+export function computeFindingPenalty(
+  f: AgentFinding,
+  severityWeights: SeverityWeights,
+  complexityPenalties: ComplexityPenalties
+): number {
+  let fPenalty = penaltyFor(f, severityWeights)
+  if (f.agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
+    fPenalty = applyComplexityMultiplier(f.complexity, fPenalty, complexityPenalties)
+  }
+  return fPenalty
+}
+
 export function calculateTotalPenalty(
   findings: AgentFinding[],
   severityWeights: SeverityWeights = SEVERITY_PENALTY,
@@ -161,11 +155,7 @@ export function calculateTotalPenalty(
 ): number {
   let penalty = 0
   for (const f of findings) {
-    let fPenalty = penaltyFor(f, severityWeights)
-    if (f.agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
-      fPenalty = applyComplexityMultiplier(f.complexity, fPenalty, complexityPenalties)
-    }
-    penalty += fPenalty
+    penalty += computeFindingPenalty(f, severityWeights, complexityPenalties)
   }
   return penalty
 }
@@ -183,7 +173,8 @@ export function calculateCrossAgentPenalty(
     // Scale by blast radius (files/scope affected) so a conflict touching many
     // files scores worse than one touching a single file, with diminishing
     // returns via log2 so a huge blast radius doesn't blow up the score.
-    const blastMultiplier = Math.min(1 + Math.log2(Math.max(1, cf.blastRadius)) * 0.2, 3)
+    const radius = Number.isFinite(cf.blastRadius) ? Math.max(1, cf.blastRadius) : 1
+    const blastMultiplier = Math.min(1 + Math.log2(radius) * 0.2, 3)
     penalty += base * blastMultiplier
   }
   return penalty
@@ -215,18 +206,54 @@ export function calculateScore(
     ...SEVERITY_PENALTY,
     ...scoreConfig?.severityWeights,
   }
+  for (const k of Object.keys(severityWeights) as Array<keyof SeverityWeights>) {
+    severityWeights[k] = Math.max(
+      0,
+      Number.isFinite(severityWeights[k]) ? severityWeights[k] : SEVERITY_PENALTY[k]
+    )
+  }
+
   const crossAgentWeights: CrossAgentPenaltyWeights = {
     ...DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
     ...scoreConfig?.crossAgentPenalty,
   }
+
   const complexityPenalties: ComplexityPenalties = {
     ...DEFAULT_COMPLEXITY_PENALTIES,
     ...scoreConfig?.complexityPenalties,
   }
+  complexityPenalties.lowFactor = Math.max(
+    0,
+    Number.isFinite(complexityPenalties.lowFactor)
+      ? complexityPenalties.lowFactor
+      : DEFAULT_COMPLEXITY_PENALTIES.lowFactor
+  )
+  complexityPenalties.highFactor = Math.max(
+    0,
+    Number.isFinite(complexityPenalties.highFactor)
+      ? complexityPenalties.highFactor
+      : DEFAULT_COMPLEXITY_PENALTIES.highFactor
+  )
+  if (complexityPenalties.lowThreshold >= complexityPenalties.highThreshold) {
+    complexityPenalties.highThreshold = complexityPenalties.lowThreshold + 1
+  }
+
   const penaltyCaps: PenaltyCaps = {
     ...DEFAULT_PENALTY_CAPS,
     ...scoreConfig?.penaltyCaps,
   }
+  penaltyCaps.categoryPenaltyCap = Math.max(
+    0,
+    Number.isFinite(penaltyCaps.categoryPenaltyCap)
+      ? penaltyCaps.categoryPenaltyCap
+      : DEFAULT_PENALTY_CAPS.categoryPenaltyCap
+  )
+  penaltyCaps.totalPenaltyCap = Math.max(
+    0,
+    Number.isFinite(penaltyCaps.totalPenaltyCap)
+      ? penaltyCaps.totalPenaltyCap
+      : DEFAULT_PENALTY_CAPS.totalPenaltyCap
+  )
 
   const allBaseCategories: ScoreCategory[] = [
     'security',
