@@ -91,7 +91,6 @@ async function runClassicCLI(): Promise<void> {
     handleFatalError(reason)
   })
 
-  const isQuiet = process.argv.includes('--quiet')
   // Identify the actual subcommand token (mirrors the hasCommand scan above:
   // the first non-flag arg, excluding --config's value) instead of scanning
   // the whole argv for the literal string 'tui' — that scan misfired on e.g.
@@ -99,6 +98,13 @@ async function runClassicCLI(): Promise<void> {
   // 'tui' as an option VALUE, not the subcommand.
   const subcommandToken = commandScanArgs.find((a) => !a.startsWith('-'))
   const isTuiCommand = subcommandToken === 'tui'
+  // --quiet is only a `review` option (see the `.option('--quiet', ...)`
+  // registered on the review command below) — a bare `process.argv.includes`
+  // scan fired for ANY subcommand whose arguments happened to include the
+  // literal string '--quiet' too (e.g. passed positionally/misplaced), which
+  // isn't actually valid there. Gate it on the resolved subcommand instead,
+  // mirroring isTuiCommand/isWatchCommand just below (cli-008).
+  const isQuiet = subcommandToken === 'review' && process.argv.includes('--quiet')
   // 'watch' registers its own SIGINT handler (clears debounce timers, closes
   // the file watcher) later, after this classic-CLI handler would already
   // have synchronously exited — same reasoning as the 'tui' exclusion below

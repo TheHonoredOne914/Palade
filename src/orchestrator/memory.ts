@@ -87,7 +87,15 @@ export class AgentMemory {
         }
 
         if (finding.symbolName && finding.filePath) {
-          const key = `${finding.filePath}::${finding.symbolName}`
+          // Keyed by symbolName alone (not filePath::symbolName) so the same
+          // symbol name flagged by different agents in DIFFERENT files still
+          // lands in one entry — entry.files can then actually exceed size 1,
+          // which is what makes the blastRadius penalty below (files.size)
+          // ever fire (orchestrator-102). This does mean two unrelated
+          // same-named symbols in different files can share an entry; that's
+          // an acceptable false-positive rate for a cross-agent blast-radius
+          // signal, not a correctness-critical identity key.
+          const key = finding.symbolName
           if (!symbolAgentMap.has(key)) {
             symbolAgentMap.set(key, { agents: new Set(), findings: [], files: new Set() })
           }
@@ -109,10 +117,11 @@ export class AgentMemory {
       agents: Set<AgentName>
       filePaths: Set<string>
       lineRange?: [number, number]
-      // File-scoped symbol match key (e.g. "path::symbolName"), set only for
-      // the symbol-based grouping pass below. Used by the final dedup pass
-      // as a concrete match key when a lineRange is missing on one/both
-      // sides, instead of defaulting to "assume overlap" (orchestrator-001).
+      // Symbol match key (the bare symbolName, matched across files — see
+      // orchestrator-102), set only for the symbol-based grouping pass below.
+      // Used by the final dedup pass as a concrete match key when a lineRange
+      // is missing on one/both sides, instead of defaulting to "assume
+      // overlap" (orchestrator-001).
       symbolKey?: string
     }[] = []
 

@@ -33,8 +33,12 @@ export const BUILTIN_NAMES = Array.from(BUILTIN_AGENTS.keys()) as AgentName[]
  *
  * Array order IS the intentional priority order: when agentCount trims this
  * list down to a prefix (see getAgentsForMode below), security/architecture/
- * performance are prioritized and kept, while logic/pragmatism/testIntelligence
- * are the first to be dropped.
+ * performance are prioritized and kept longest, while maintainability/
+ * deadCode/testIntelligence/pragmatism/logic are dropped first — in that
+ * reverse-insertion order, so logic goes first, then pragmatism, then
+ * testIntelligence (testIntelligence survives longest of those three, but
+ * still drops before deadCode/maintainability) — matching BUILTIN_AGENTS's
+ * actual insertion order above (agents-104).
  */
 export const AGENT_REGISTRY: IAgent[] = Array.from(BUILTIN_AGENTS.values())
 
@@ -68,9 +72,14 @@ export function getAgentsForMode(
         : undefined
 
   if (effectiveOverrides && effectiveOverrides.length > 0) {
+    // De-dupe before resolving to agent instances — a repeated name in
+    // agentOverrides (e.g. user config typo/duplication) used to push the
+    // same agent instance into `agents` once per repetition, running it
+    // multiple times per batch for no benefit (agents-103).
+    const dedupedOverrides = Array.from(new Set(effectiveOverrides))
     const agents: IAgent[] = []
     const unmatched: AgentName[] = []
-    for (const name of effectiveOverrides) {
+    for (const name of dedupedOverrides) {
       const agent = allAgents.get(name)
       if (agent) agents.push(agent)
       else unmatched.push(name)

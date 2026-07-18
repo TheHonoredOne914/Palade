@@ -4,6 +4,7 @@ import type { ReporterContext, ReporterOutput, MarkdownTableOptions } from './ty
 import { CATEGORY_LABELS } from '../scorer/types.js'
 import type { Severity } from '../agents/base.js'
 import { scoreGrade } from '../ui/layout.js'
+import { groupBySeverity } from '../orchestrator/merger.js'
 
 const SEVERITY_EMOJI: Record<Severity, string> = {
   critical: '🔴',
@@ -236,14 +237,14 @@ export function buildMarkdownReport(ctx: ReporterContext): string {
   lines.push(`## Debt Estimate`)
   lines.push('')
   const debt = ctx.synthesis.debtEstimate
-  const debtCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 }
-  for (const f of ctx.findings) {
-    if (f.severity === 'critical') debtCounts.critical++
-    if (f.severity === 'high') debtCounts.high++
-    if (f.severity === 'medium') debtCounts.medium++
-    if (f.severity === 'low') debtCounts.low++
-    if (f.severity === 'info') debtCounts.info++
-    debtCounts.total++
+  const severityGroups = groupBySeverity(ctx.findings)
+  const debtCounts = {
+    critical: severityGroups.critical.length,
+    high: severityGroups.high.length,
+    medium: severityGroups.medium.length,
+    low: severityGroups.low.length,
+    info: severityGroups.info.length,
+    total: ctx.findings.length,
   }
   lines.push(`| Critical | High | Medium | Low | Info | Total |`)
   lines.push(`| --- | --- | --- | --- | --- | --- |`)

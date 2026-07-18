@@ -1,6 +1,13 @@
 import { BaseSpecialistAgent } from '../base.js'
 
 // Exported so economy mode's combined prompt (combined.ts) can reuse the
+// exact same partial-chunk warning text instead of a hand-paraphrased summary
+// that can drift from what this agent actually says, mirroring deadCode.ts's
+// DEAD_CODE_WARNING / testIntelligence.ts's TEST_INTELLIGENCE_WARNING /
+// maintainability.ts's MAINTAINABILITY_WARNING (agents-102).
+export const LOGIC_WARNING = `CRITICAL CONTEXT WARNING: You are reviewing PARTIAL chunks of a codebase, not the entire program. Do NOT assume a function is called with the "wrong" arguments or in an invalid state elsewhere in the codebase unless the call site is visible in the chunks provided or surfaced via REPOSITORY CONTEXT. Only flag LOCALLY verifiable logic flaws.`
+
+// Exported so economy mode's combined prompt (combined.ts) can reuse the
 // exact same domain-focus text instead of a second hand-written copy
 // (agents-001).
 export const LOGIC_FOCUS = `CRITICAL INSTRUCTIONS:
@@ -14,6 +21,8 @@ export class LogicAgent extends BaseSpecialistAgent {
   protected getSystemPrompt(): string {
     const prompt = `You are a Logic & Correctness expert reviewing source code.
 Your sole job is to identify logical flaws, state mismanagement, race conditions, edge case mishandling, and invalid assumptions.
+
+${LOGIC_WARNING}
 
 ${LOGIC_FOCUS}
 

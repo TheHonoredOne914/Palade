@@ -1,10 +1,10 @@
 import crypto from 'node:crypto'
 import chalk from 'chalk'
 import pLimit from 'p-limit'
-import type { AgentFinding, AgentContext, AgentName } from '../agents/base.js'
+import type { AgentFinding, AgentContext, AgentName, IAgent } from '../agents/base.js'
 import { getAgentsForMode } from '../agents/registry.js'
 import { synthesize as analyzeSynthesis, type SynthesisResult } from '../agents/synthesis.js'
-import { CombinedAnalyzer } from '../agents/combined.js'
+import { CombinedAnalyzer, DEFAULT_DOMAINS } from '../agents/combined.js'
 import { CustomAgent } from '../agents/custom/agent.js'
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
@@ -14,8 +14,9 @@ import { mergeFindings } from './merger.js'
 import {
   scheduleBatches,
   estimateTotalTokens,
+  ECONOMY_SOFT_TOKEN_CAP,
+  ECONOMY_HARD_CHUNK_CAP,
 } from './scheduler.js'
-import { applyEconomyRouting, applyEconomyLimits } from './economy.js'
 import { getFallbackStats, updateAgentProviders } from '../providers/router.js'
 import { expandProviderShares } from '../config/loader.js'
 import { isFatalAuthError } from '../providers/errorClassification.js'
@@ -55,19 +56,6 @@ export async function runSwarm(
         })
       : allChunks
 
-  // Economy-mode batch-size narrowing used to be only a convention followed
-  // by CLI command callers (review/diff/watch), not enforced here — a caller
-  // that set economyMode: true without also narrowing softTokenLimit/
-  // hardChunkLimit would send oversized batches to CombinedAnalyzer's
-  // context window. Clamp here so it's a runSwarm-level guarantee; only
-  // tightens the caller's values, never loosens ones already tighter than
-  // the economy caps (orchestrator-002).
-  const { softTokenLimit, hardChunkLimit } = applyEconomyLimits(
-    !!options.economyMode,
-    options.softTokenLimit,
-    options.hardChunkLimit
-  )
-
   // Economy mode replaces the N parallel per-domain BUILT-IN agents with a
   // single combined multi-domain analyzer that reviews all lenses in one
   // provider call per batch. This cuts the ~6x resend of the same chunk
@@ -98,8 +86,40 @@ export async function runSwarm(
     updateAgentProviders(expandedAgentProviders)
   }
 
-  let agents = applyEconomyRouting(modeAgents, !!options.economyMode)
-  if (options.economyMode && agents.some((a) => a.name === 'combined')) {      // The share expansion above was keyed by the pre-collapse specialist
+  let agents: IAgent[] = modeAgents
+  // Tracks whether CombinedAnalyzer is actually going to be used this run —
+  // only true once the builtInAgents.length > 1 branch below fires. Economy
+  // mode's tightened softTokenLimit/hardChunkLimit caps exist solely for
+  // CombinedAnalyzer's larger multi-domain output, so they must only clamp
+  // when it's really in play; otherwise the <= 1 built-in agent fallback to
+  // standard dispatch would still run standard-mode agents against
+  // economy-sized batches for no reason (orchestrator-101).
+  let usingCombinedAnalyzer = false
+  if (options.economyMode) {
+    const builtInAgents = modeAgents.filter((a) => !(a instanceof CustomAgent))
+    const customAgents = modeAgents.filter((a) => a instanceof CustomAgent)
+
+    // Ghost mode or heavily filtered modes might only have 1 built-in agent.
+    // Combining 1 agent defeats the purpose of economy mode (which is to batch N domains)
+    // and just degrades prompt quality. So if <= 1 built-in agent, just run standard mode.
+    if (builtInAgents.length <= 1) {
+      console.warn(
+        chalk.yellow(
+          '⚠ Economy mode requested but only 1 built-in agent active — falling back to standard mode.'
+        )
+      )
+    }
+    if (builtInAgents.length > 1) {
+      usingCombinedAnalyzer = true
+      const activeDomains = builtInAgents.map((a) => {
+        const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
+        return (
+          defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
+        )
+      })
+      agents = [new CombinedAnalyzer(activeDomains), ...customAgents]
+
+      // The share expansion above was keyed by the pre-collapse specialist
       // names (security, architecture, ...) — CombinedAnalyzer replaces all
       // of them with a single agent named 'combined', so those entries are
       // now orphaned and getProvider('primary', 'combined') would never find
@@ -120,6 +140,25 @@ export async function runSwarm(
         })
       }
     }
+  }
+
+  // Economy-mode batch-size narrowing used to be only a convention followed
+  // by CLI command callers (review/diff/watch), not enforced here — a caller
+  // that set economyMode: true without also narrowing softTokenLimit/
+  // hardChunkLimit would send oversized batches to CombinedAnalyzer's
+  // context window. Clamp here so it's a runSwarm-level guarantee; only
+  // tightens the caller's values, never loosens ones already tighter than
+  // the economy caps (orchestrator-002). Gated on usingCombinedAnalyzer (not
+  // just options.economyMode) so the <= 1 built-in agent fallback to
+  // standard dispatch above isn't left clamped at economy caps for agents
+  // that aren't CombinedAnalyzer (orchestrator-101).
+  const softTokenLimit = usingCombinedAnalyzer
+    ? Math.min(options.softTokenLimit ?? Infinity, ECONOMY_SOFT_TOKEN_CAP)
+    : options.softTokenLimit
+  const hardChunkLimit = usingCombinedAnalyzer
+    ? Math.min(options.hardChunkLimit ?? Infinity, ECONOMY_HARD_CHUNK_CAP)
+    : options.hardChunkLimit
+
   const memory = new AgentMemory()
 
   const agentTimings: Partial<Record<AgentName, number>> = {}

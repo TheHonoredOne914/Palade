@@ -55,6 +55,13 @@ export interface CodeChunk {
   tokenCount: number
   language: Language
   complexity?: number
+  // Per-top-level-node complexity breakdown for chunks that bundle multiple
+  // top-level AST nodes together (to fill the token budget) — lets
+  // agents/base.ts's annotateComplexity attach the complexity of the
+  // SPECIFIC node enclosing a finding's line instead of `complexity` above
+  // (a chunk-wide sum across every node in the chunk). Only populated by
+  // chunkByAST; absent for line/bracket-based chunks (ing-001).
+  nodeComplexities?: { startLine: number; endLine: number; complexity: number }[]
   // Set on the last chunk kept for a file when chunkFiles() had to drop
   // trailing chunks past MAX_CHUNKS_PER_FILE, so callers can detect
   // incomplete coverage programmatically (not just via log output).

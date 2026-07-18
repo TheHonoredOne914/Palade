@@ -29,7 +29,7 @@ import { askConfirm } from '../../ui/prompt.js'
 import { buildAnnotationSummary } from '../../ingestion/annotationParser.js'
 import { readOptionalProjectDoc } from '../../config/docs.js'
 import { renderBadge, getBadgeData } from '../../scorer/badge.js'
-import type { ScopeOptions } from '../../ingestion/types.js'
+import type { ScopeOptions, CodeChunk } from '../../ingestion/types.js'
 import type { SwarmResult } from '../../orchestrator/types.js'
 import type { AgentContext, AgentFinding, AgentName, DiffContext } from '../../agents/base.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
@@ -409,7 +409,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                   economyMode: config.swarm.economyMode,
                   providerShares: config.swarm.providerShares,
                   maxConcurrentBatches: config.swarm.maxConcurrentBatches,
-                  severityWeights: config.swarm.severityWeights,
+                  severityWeights: config.score.severityWeights,
                   projectRoot: baseTempDir,
                   noSynthesis: true,
                   softTokenLimit: config.swarm.softTokenLimit,
@@ -520,7 +520,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       throw new CliExitError(0)
     }
     console.error(theme.error(`\nDiff review failed: ${(err as Error).message}`))
-    if ((err as Error).stack && process.env.DEBUG) {
+    if ((err as Error).stack && process.env.DEBUG === 'palade') {
       console.error(chalk.gray((err as Error).stack))
     }
     throw new CliExitError(1)
