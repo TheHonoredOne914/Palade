@@ -49,10 +49,7 @@ interface DiffOpts {
 function injectContextAndSplit(chunks: CodeChunk[]): CodeChunk[] {
   const keywordIndex = buildKeywordIndex(chunks)
   const contextPrefixes = chunks.map((chunk) =>
-    mergeContexts(
-      buildRetrievedContext(chunk, chunks),
-      getKeywordContext(chunk, keywordIndex)
-    )
+    mergeContexts(buildRetrievedContext(chunk, chunks), getKeywordContext(chunk, keywordIndex))
   )
   const enriched = chunks.map((chunk, i) => {
     const contextPrefix = contextPrefixes[i]

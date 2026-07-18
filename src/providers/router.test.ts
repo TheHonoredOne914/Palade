@@ -15,7 +15,8 @@ function mockProvider(
     complete: vi.fn(async (): Promise<CompletionResponse> => {
       if (behavior === 'fail-retryable') throw new Error('503 service unavailable')
       if (behavior === 'fail-fatal') throw new AuthError('invalid api key', 401, name)
-      if (behavior === 'fail-unclassified') throw new Error('upstream returned proprietary error code 418')
+      if (behavior === 'fail-unclassified')
+        throw new Error('upstream returned proprietary error code 418')
       return {
         content: `response from ${name}`,
         inputTokens: 10,

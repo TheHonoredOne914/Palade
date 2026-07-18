@@ -35,12 +35,12 @@ class WatchController {
   private isProcessing = false
   private readonly accumulatedFindings = new Map<string, AgentFinding[]>()
   private readonly MAX_ACCUMULATED_FILES = 200
-  
+
   private sweepQueue: string[] = []
   private readonly urgentQueue: string[] = []
   private readonly urgentSet = new Set<string>()
   private readonly sweepSet = new Set<string>()
-  
+
   private loopTimer: ReturnType<typeof setTimeout> | null = null
   private currentSweepController: AbortController | null = null
   private watcher: FSWatcher | null = null
@@ -71,9 +71,13 @@ class WatchController {
       try {
         const manifests = await walkProject(this.projectRoot, { projectRoot: this.projectRoot })
         this.sweepQueue = manifests.map((m) => m.path)
-        manifests.forEach(m => this.sweepSet.add(m.path))
+        manifests.forEach((m) => this.sweepSet.add(m.path))
       } catch (err) {
-        console.warn(theme.error(`⚠ Failed to initialize background sweep queue: ${err instanceof Error ? err.message : String(err)}`))
+        console.warn(
+          theme.error(
+            `⚠ Failed to initialize background sweep queue: ${err instanceof Error ? err.message : String(err)}`
+          )
+        )
       }
     }
 
@@ -110,8 +114,10 @@ class WatchController {
     this.watcher.on('change', boundEnqueue)
     this.watcher.on('add', boundEnqueue)
 
-    this.donePromise = new Promise<void>((r) => { this.resolveDone = r })
-    
+    this.donePromise = new Promise<void>((r) => {
+      this.resolveDone = r
+    })
+
     process.on('exit', this.boundOnExit)
     process.on('SIGINT', this.boundOnSigint)
     process.on('SIGTERM', this.boundOnSigint)
@@ -153,7 +159,7 @@ class WatchController {
     const path = rawPath.split('\\').join('/')
     const existing = this.debounceTimers.get(path)
     if (existing) clearTimeout(existing)
-    
+
     this.debounceTimers.set(
       path,
       setTimeout(() => {
@@ -191,7 +197,7 @@ class WatchController {
       if (isUrgent) {
         nextFile = this.urgentQueue.shift()
         if (nextFile) this.urgentSet.delete(nextFile)
-        
+
         if (this.isContinuous && nextFile) {
           this.sweepQueue = this.sweepQueue.filter((f) => f !== nextFile)
           this.sweepQueue.push(nextFile)
@@ -284,10 +290,14 @@ class WatchController {
           } catch (err: unknown) {
             hasErrors = true
             if (err instanceof Error && err.name === 'AbortError') {
-              if (signal?.aborted) throw err 
+              if (signal?.aborted) throw err
               console.log(theme.dim(`    ⚠ ${agent.name} timed out.`))
             } else {
-              console.log(theme.dim(`    ⚠ ${agent.name} failed: ${err instanceof Error ? err.message : String(err)}`))
+              console.log(
+                theme.dim(
+                  `    ⚠ ${agent.name} failed: ${err instanceof Error ? err.message : String(err)}`
+                )
+              )
             }
           } finally {
             clearTimeout(timer)
@@ -315,7 +325,11 @@ class WatchController {
         this.accumulatedFindings.delete(filePath)
         console.log(theme.success(`  ✓ Clean: ${filePath}\n`))
       } else {
-        console.log(theme.dim(`  ⚠ Scan incomplete due to errors, keeping previous findings for: ${filePath}\n`))
+        console.log(
+          theme.dim(
+            `  ⚠ Scan incomplete due to errors, keeping previous findings for: ${filePath}\n`
+          )
+        )
         throw new Error('Scan incomplete due to errors')
       }
 
@@ -325,7 +339,11 @@ class WatchController {
         console.log(theme.dim(`  ⚠ Aborted scan of ${filePath} for higher priority task.`))
         throw err
       }
-      console.warn(theme.error(`  ⚠ Error scanning ${filePath}: ${err instanceof Error ? err.message : String(err)}`))
+      console.warn(
+        theme.error(
+          `  ⚠ Error scanning ${filePath}: ${err instanceof Error ? err.message : String(err)}`
+        )
+      )
       throw err
     }
   }
@@ -404,13 +422,7 @@ export async function watchCommand(opts: {
   }
   console.log()
 
-  const controller = new WatchController(
-    projectRoot,
-    debounceMs,
-    isContinuous,
-    config,
-    watchAgents
-  )
+  const controller = new WatchController(projectRoot, debounceMs, isContinuous, config, watchAgents)
 
   await controller.start()
 }

@@ -87,7 +87,6 @@ export async function triageFiles(
     let rankedPaths: string[] = []
     let cleaned = response.content.trim()
     try {
-
       // Strip outer markdown code blocks — prefer the block containing a JSON array
       const allBlocks = [...cleaned.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)]
       if (allBlocks.length > 0) {

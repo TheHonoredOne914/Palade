@@ -8,7 +8,7 @@ export function applyEconomyRouting(agents: IAgent[], economyMode: boolean): IAg
   if (!economyMode) return agents
   const builtInAgents = agents.filter((a) => !(a instanceof CustomAgent))
   const customAgents = agents.filter((a) => a instanceof CustomAgent)
-  
+
   if (builtInAgents.length <= 1) {
     if (builtInAgents.length === 1) {
       console.warn(

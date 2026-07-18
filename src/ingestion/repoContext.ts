@@ -129,7 +129,8 @@ function candidatesFor(raw: string): string[] {
   return candidates
 }
 
-const REEXPORT_RE = /export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g
+const REEXPORT_RE =
+  /export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g
 
 /** Resolves a relative re-export specifier against the file that contains it, to a manifest path. */
 function resolveReexport(
@@ -240,11 +241,7 @@ export async function buildRepoContext(
     if (!chunksByFile.has(c.filePath)) chunksByFile.set(c.filePath, [])
     chunksByFile.get(c.filePath)!.push(c)
   }
-  const { publicApiFiles, isLibrary } = buildPublicApi(
-    pkg,
-    manifestPaths,
-    chunksByFile
-  )
+  const { publicApiFiles, isLibrary } = buildPublicApi(pkg, manifestPaths, chunksByFile)
 
   // buildTimeFiles
   const buildTimeFiles = manifests
@@ -276,7 +273,7 @@ export async function buildRepoContext(
           const key = `${file}:${name}`
           if (seenGlobals.has(key)) continue
           seenGlobals.add(key)
-          
+
           if (fullContent === undefined) {
             fullContent = fileChunks.map((c) => c.content).join('\n')
           }
@@ -318,7 +315,9 @@ export function renderRepoContext(ctx: RepoContext): string {
 
   if (ctx.dependencyCycles.length > 0) {
     const items = ctx.dependencyCycles.map((cycle) => [...cycle, cycle[0]].join(' -> '))
-    sections.push(`DEPENDENCY CYCLES (defects — report under architecture):\n${renderCappedList(items, MAX_CYCLES)}`)
+    sections.push(
+      `DEPENDENCY CYCLES (defects — report under architecture):\n${renderCappedList(items, MAX_CYCLES)}`
+    )
   }
 
   const testedEntries = Object.entries(ctx.testedBy)

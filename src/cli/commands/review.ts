@@ -476,7 +476,7 @@ export async function reviewCommand(
   )
 
   const runTimestamp = new Date().toISOString()
-  
+
   // 10. Append to history
   await appendEntry(
     historyPath,

@@ -154,8 +154,6 @@ export interface IAgent {
   analyze(chunks: CodeChunk[], context: AgentContext, signal?: AbortSignal): Promise<AgentFinding[]>
 }
 
-
-
 // A flat output cap starves large batches the same way combined.ts's flat cap
 // starved multi-domain calls: more chunks reviewed means more potential
 // findings, so the JSON array gets cut off mid-stream (see
@@ -403,8 +401,6 @@ export function parseFindingsResponse(
   return findings
 }
 
-
-
 export function buildSystemPrompt(
   base: string,
   context: AgentContext,
@@ -423,7 +419,8 @@ export function buildSystemPrompt(
     const dc = context.diffContext
     const paths = dc.changedFiles.map((f) => f.path)
     const changedPaths = paths.slice(0, 10).join(', ')
-    const truncationNote = paths.length > 10 ? `\n  ...and ${paths.length - 10} more (truncated)` : ''
+    const truncationNote =
+      paths.length > 10 ? `\n  ...and ${paths.length - 10} more (truncated)` : ''
     prompt += `\n\nDIFF CONTEXT: This is a diff review of branch '${dc.headBranch}' vs '${dc.baseBranch}'. Focus on issues in the ${dc.changedFiles.length} changed files: ${changedPaths}${truncationNote}. Prioritise newly introduced problems over pre-existing ones.`
   }
   if (context.targetDescription) {

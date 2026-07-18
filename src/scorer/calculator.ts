@@ -207,7 +207,10 @@ export function calculateScore(
     ...scoreConfig?.severityWeights,
   }
   for (const k of Object.keys(severityWeights) as Array<keyof SeverityWeights>) {
-    severityWeights[k] = Math.max(0, Number.isFinite(severityWeights[k]) ? severityWeights[k] : SEVERITY_PENALTY[k])
+    severityWeights[k] = Math.max(
+      0,
+      Number.isFinite(severityWeights[k]) ? severityWeights[k] : SEVERITY_PENALTY[k]
+    )
   }
 
   const crossAgentWeights: CrossAgentPenaltyWeights = {
@@ -219,8 +222,18 @@ export function calculateScore(
     ...DEFAULT_COMPLEXITY_PENALTIES,
     ...scoreConfig?.complexityPenalties,
   }
-  complexityPenalties.lowFactor = Math.max(0, Number.isFinite(complexityPenalties.lowFactor) ? complexityPenalties.lowFactor : DEFAULT_COMPLEXITY_PENALTIES.lowFactor)
-  complexityPenalties.highFactor = Math.max(0, Number.isFinite(complexityPenalties.highFactor) ? complexityPenalties.highFactor : DEFAULT_COMPLEXITY_PENALTIES.highFactor)
+  complexityPenalties.lowFactor = Math.max(
+    0,
+    Number.isFinite(complexityPenalties.lowFactor)
+      ? complexityPenalties.lowFactor
+      : DEFAULT_COMPLEXITY_PENALTIES.lowFactor
+  )
+  complexityPenalties.highFactor = Math.max(
+    0,
+    Number.isFinite(complexityPenalties.highFactor)
+      ? complexityPenalties.highFactor
+      : DEFAULT_COMPLEXITY_PENALTIES.highFactor
+  )
   if (complexityPenalties.lowThreshold >= complexityPenalties.highThreshold) {
     complexityPenalties.highThreshold = complexityPenalties.lowThreshold + 1
   }
@@ -229,8 +242,18 @@ export function calculateScore(
     ...DEFAULT_PENALTY_CAPS,
     ...scoreConfig?.penaltyCaps,
   }
-  penaltyCaps.categoryPenaltyCap = Math.max(0, Number.isFinite(penaltyCaps.categoryPenaltyCap) ? penaltyCaps.categoryPenaltyCap : DEFAULT_PENALTY_CAPS.categoryPenaltyCap)
-  penaltyCaps.totalPenaltyCap = Math.max(0, Number.isFinite(penaltyCaps.totalPenaltyCap) ? penaltyCaps.totalPenaltyCap : DEFAULT_PENALTY_CAPS.totalPenaltyCap)
+  penaltyCaps.categoryPenaltyCap = Math.max(
+    0,
+    Number.isFinite(penaltyCaps.categoryPenaltyCap)
+      ? penaltyCaps.categoryPenaltyCap
+      : DEFAULT_PENALTY_CAPS.categoryPenaltyCap
+  )
+  penaltyCaps.totalPenaltyCap = Math.max(
+    0,
+    Number.isFinite(penaltyCaps.totalPenaltyCap)
+      ? penaltyCaps.totalPenaltyCap
+      : DEFAULT_PENALTY_CAPS.totalPenaltyCap
+  )
 
   const allBaseCategories: ScoreCategory[] = [
     'security',

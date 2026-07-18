@@ -36,5 +36,4 @@ describe('error classes', () => {
     expect(err.totalAgents).toBe(6)
     expect(err.timeoutMs).toBe(30000)
   })
-
 })

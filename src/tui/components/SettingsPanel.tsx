@@ -91,9 +91,19 @@ export function SettingsPanel({
 
   useEffect(() => {
     if (focusField === 'swarm') {
-      setSwarmIdx(Math.max(0, PROVIDERS.findIndex((p) => p.id === localSwarmPrimary)))
+      setSwarmIdx(
+        Math.max(
+          0,
+          PROVIDERS.findIndex((p) => p.id === localSwarmPrimary)
+        )
+      )
     } else if (focusField === 'synthesis') {
-      setSynthesisIdx(Math.max(0, PROVIDERS.findIndex((p) => p.id === localSwarmSynthesis)))
+      setSynthesisIdx(
+        Math.max(
+          0,
+          PROVIDERS.findIndex((p) => p.id === localSwarmSynthesis)
+        )
+      )
     }
   }, [focusField, localSwarmPrimary, localSwarmSynthesis])
 
@@ -136,13 +146,22 @@ export function SettingsPanel({
       .catch((err) => {
         if (!active) return
         setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models: [] } }))
-        setMessage(`⚠ Could not fetch models for ${selectedProvider.label}: ${err instanceof Error ? err.message : String(err)}`)
+        setMessage(
+          `⚠ Could not fetch models for ${selectedProvider.label}: ${err instanceof Error ? err.message : String(err)}`
+        )
       })
-      
+
     return () => {
       active = false
     }
-  }, [focusField, selectedProviderIdx, existingKeys, modelState, localModels, selectedProvider.label])
+  }, [
+    focusField,
+    selectedProviderIdx,
+    existingKeys,
+    modelState,
+    localModels,
+    selectedProvider.label,
+  ])
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -208,7 +227,7 @@ export function SettingsPanel({
         const total = Object.values(shares).reduce((sum, v) => sum + (v ?? 0), 0)
         let trimmed = false
         const next: Record<string, number> = { ...shares }
-        
+
         if (total > count) {
           trimmed = true
           let excess = total - count
@@ -220,16 +239,16 @@ export function SettingsPanel({
             excess -= reduceBy
           }
         }
-        
+
         const updates: Record<string, unknown> = { 'swarm.agentCount': count }
         for (const [id, val] of Object.entries(next)) {
           if (val !== savedShares[id]) {
             updates[`swarm.providerShares.${id}`] = val
           }
         }
-        
+
         await saveConfigValues(projectRoot, updates)
-        
+
         setShares(next)
         setSavedShares(next)
         setSavedAgentCount(count)
