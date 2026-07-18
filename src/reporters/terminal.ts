@@ -156,7 +156,7 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
   lines.push(chalk.dim(`Run ID: ${ctx.swarm.runId}`))
   lines.push(
     chalk.dim(
-      `Duration: ${(ctx.swarm.durationMs / 1000).toFixed(1)}s | Chunks: ${ctx.swarm.totalChunks} | Tokens: ${ctx.swarm.totalTokensEstimated.toLocaleString()}`
+      `Duration: ${(ctx.swarm.durationMs / 1000).toFixed(1)}s | Chunks: ${ctx.swarm.totalChunks} | Input Tokens (est): ${ctx.swarm.totalTokensEstimated.toLocaleString('en-US')}`
     )
   )
   lines.push('')

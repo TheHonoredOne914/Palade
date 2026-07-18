@@ -2,7 +2,7 @@ import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import { getProvider } from '../providers/router.js'
 import { CliExitError } from '../errors/types.js'
 import { estimateTotalTokens } from './scheduler.js'
-import { extractBalancedJson } from '../utils/jsonExtract.js'
+import { extractBalancedJson, salvageJsonStringArray } from '../utils/jsonExtract.js'
 import chalk from 'chalk'
 
 const DEFAULT_MAX_REVIEW_TOKENS = 200_000
@@ -32,7 +32,7 @@ export async function triageFiles(
   if (totalTokens <= budget) {
     console.log(
       chalk.cyan(
-        `  [triage] Project fits within token budget (${totalTokens.toLocaleString()}/${budget.toLocaleString()} tokens) — reviewing all files`
+        `  [triage] Project fits within token budget (${totalTokens.toLocaleString('en-US')}/${budget.toLocaleString('en-US')} tokens) — reviewing all files`
       )
     )
     return allChunks
@@ -40,7 +40,7 @@ export async function triageFiles(
 
   console.log(
     chalk.red(
-      `  [!] WARNING: Project token count (${totalTokens.toLocaleString()}) exceeds budget (${budget.toLocaleString()}). Some files will be silently dropped from the review.`
+      `  [!] WARNING: Project token count (${totalTokens.toLocaleString('en-US')}) exceeds budget (${budget.toLocaleString('en-US')}). Some files will be silently dropped from the review.`
     )
   )
 
@@ -70,7 +70,12 @@ export async function triageFiles(
     // than ~250 files (~30 chars/path), which breaks the JSON.parse below and
     // makes triage silently fall back to heuristicSelect() with no error
     // surfaced. Scale the budget with the actual number of paths to rank.
-    const maxTokens = Math.max(2048, manifests.length * 15)
+    // The 4096 floor leaves headroom for reasoning models (e.g. OpenCode
+    // Zen's mimo), whose thinking tokens count against the same budget and
+    // were observed truncating the array at ~1/3 of a 2048+ budget; a
+    // truncated response is still salvaged below, but a full ranking is
+    // better.
+    const maxTokens = Math.max(4096, manifests.length * 20)
 
     const response = await provider.complete({
       systemPrompt: TRIAGE_SYSTEM_PROMPT,
@@ -80,8 +85,8 @@ export async function triageFiles(
     })
 
     let rankedPaths: string[] = []
+    let cleaned = response.content.trim()
     try {
-      let cleaned = response.content.trim()
 
       // Strip outer markdown code blocks — prefer the block containing a JSON array
       const allBlocks = [...cleaned.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)]
@@ -100,11 +105,25 @@ export async function triageFiles(
 
       rankedPaths = JSON.parse(cleaned)
     } catch (err) {
-      console.warn(
-        chalk.yellow(
-          `  [triage] Failed to parse LLM array JSON: ${err instanceof Error ? err.message : String(err)}`
+      // A truncated response (maxTokens cut the array mid-element) is the
+      // common failure here. The ranking is ordered most-to-least important,
+      // so salvaging the complete leading elements keeps the highest-value
+      // part of the LLM's answer instead of dropping to heuristicSelect.
+      const salvaged = salvageJsonStringArray(cleaned)
+      if (salvaged) {
+        rankedPaths = salvaged
+        console.warn(
+          chalk.yellow(
+            `  [triage] LLM array JSON was malformed or truncated — salvaged ${salvaged.length} ranked path(s) from the partial response`
+          )
         )
-      )
+      } else {
+        console.warn(
+          chalk.yellow(
+            `  [triage] Failed to parse LLM array JSON: ${err instanceof Error ? err.message : String(err)}`
+          )
+        )
+      }
     }
 
     const validPaths = Array.isArray(rankedPaths)
@@ -178,7 +197,7 @@ export async function triageFiles(
 
         console.log(
           chalk.cyan(
-            `  [triage] Selected ${selected.length} chunks (${tokensUsed.toLocaleString()} tokens) from ${selected.length > 0 ? new Set(selected.map((c) => c.filePath)).size : 0} files`
+            `  [triage] Selected ${selected.length} chunks (${tokensUsed.toLocaleString('en-US')} tokens) from ${selected.length > 0 ? new Set(selected.map((c) => c.filePath)).size : 0} files`
           )
         )
         return selected
@@ -244,7 +263,7 @@ function heuristicSelect(
 
   console.log(
     chalk.cyan(
-      `  [triage] Heuristic selected ${selected.length} chunks (${tokensUsed.toLocaleString()} tokens) from ${new Set(selected.map((c) => c.filePath)).size} files`
+      `  [triage] Heuristic selected ${selected.length} chunks (${tokensUsed.toLocaleString('en-US')} tokens) from ${new Set(selected.map((c) => c.filePath)).size} files`
     )
   )
   return selected

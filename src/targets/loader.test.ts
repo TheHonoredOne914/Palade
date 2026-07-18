@@ -1,5 +1,43 @@
-import { describe, it, expect } from 'vitest'
-import { resolveTargetPaths } from './loader.js'
+import { describe, it, expect, afterEach } from 'vitest'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { loadTargets, resolveTargetPaths } from './loader.js'
+
+describe('loadTargets file resolution', () => {
+  const tmpDirs: string[] = []
+  const makeTmpDir = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), 'palade-targets-'))
+    tmpDirs.push(dir)
+    return dir
+  }
+  afterEach(() => {
+    for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
+
+  const targetsSource = (name: string): string =>
+    `export default [{ name: '${name}', description: 'd', entry: ['src/'] }]\n`
+
+  it('returns [] when neither targets file exists', async () => {
+    expect(await loadTargets(makeTmpDir())).toEqual([])
+  })
+
+  it('falls back to legacy root palade.targets.ts when .palade/ file is absent', async () => {
+    const root = makeTmpDir()
+    writeFileSync(join(root, 'palade.targets.ts'), targetsSource('legacy'), 'utf-8')
+    const targets = await loadTargets(root)
+    expect(targets.map((t) => t.name)).toEqual(['legacy'])
+  })
+
+  it('prefers .palade/palade.targets.ts over the legacy root file', async () => {
+    const root = makeTmpDir()
+    mkdirSync(join(root, '.palade'))
+    writeFileSync(join(root, '.palade', 'palade.targets.ts'), targetsSource('canonical'), 'utf-8')
+    writeFileSync(join(root, 'palade.targets.ts'), targetsSource('legacy'), 'utf-8')
+    const targets = await loadTargets(root)
+    expect(targets.map((t) => t.name)).toEqual(['canonical'])
+  })
+})
 
 describe('resolveTargetPaths', () => {
   const projectRoot =

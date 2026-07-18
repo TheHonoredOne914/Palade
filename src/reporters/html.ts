@@ -379,7 +379,7 @@ function replacePlaceholders(
     RUN_ID: escapeHtml(ctx.swarm.runId),
     DURATION: `${(ctx.swarm.durationMs / 1000).toFixed(1)}s`,
     TOTAL_CHUNKS: String(ctx.swarm.totalChunks),
-    TOTAL_TOKENS: ctx.swarm.totalTokensEstimated.toLocaleString(),
+    TOTAL_TOKENS: ctx.swarm.totalTokensEstimated.toLocaleString('en-US'),
   }
 
   // Single pass over the TEMPLATE only. Sequential .replace calls re-scan

@@ -125,7 +125,19 @@ function shouldMerge(a: AgentFinding, b: AgentFinding, opts: NearMatchOptions = 
         // this branch used to apply the loose 0.4 bar regardless of agent,
         // bypassing that threshold for the same-line case.
         const threshold = a.agentName === b.agentName ? sameAgentThreshold : crossAgentThreshold
-        if (jaccardSimilarity(a.title, b.title) > threshold) return true
+        const titleSim = jaccardSimilarity(a.title, b.title)
+        if (titleSim > threshold) return true
+        // Cross-agent title variants of the same defect ("… in config" vs
+        // "… in source" vs bare) land between the two thresholds and used to
+        // survive as separate findings. Exact same line + same severity is a
+        // strong enough collision signal to accept the looser same-agent bar.
+        if (
+          a.agentName !== b.agentName &&
+          a.severity === b.severity &&
+          titleSim > sameAgentThreshold
+        ) {
+          return true
+        }
       }
       // Nearby lines: only merge when the titles actually describe the same
       // issue — proximity alone collapses unrelated findings and loses one of

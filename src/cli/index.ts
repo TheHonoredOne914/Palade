@@ -142,7 +142,7 @@ async function runClassicCLI(): Promise<void> {
   program
     .command('review [path]')
     .description('Review codebase with AI swarm')
-    .option(VALUE_FLAG_STRINGS.target, 'Review a named target from palade.targets.ts')
+    .option(VALUE_FLAG_STRINGS.target, 'Review a named target from .palade/palade.targets.ts')
     .option('--all-targets', 'Review all defined targets')
     .option(VALUE_FLAG_STRINGS.dir, 'Scope review to a directory')
     .option(VALUE_FLAG_STRINGS.file, 'Scope to specific file(s)', collect, [])

@@ -120,7 +120,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       })
     )
     console.log(
-      `[pipeline] Symbol-scoped: ${chunksByPath.size} file(s) → ${chunks.length} chunk(s) (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
+      `[pipeline] Symbol-scoped: ${chunksByPath.size} file(s) → ${chunks.length} chunk(s) (~${estimateTotalTokens(chunks).toLocaleString('en-US')} tokens)`
     )
   } else {
     manifests = await walkProject(opts.projectRoot, scope)
@@ -147,7 +147,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
     chunks = await chunkFiles(manifests)
 
     console.log(
-      `[pipeline] Chunking complete: ${manifests.length} files → ${chunks.length} chunks (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
+      `[pipeline] Chunking complete: ${manifests.length} files → ${chunks.length} chunks (~${estimateTotalTokens(chunks).toLocaleString('en-US')} tokens)`
     )
   }
 

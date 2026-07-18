@@ -10,6 +10,33 @@
  * `indexOf('[')`/`lastIndexOf(']')` substring slice, which broke on any
  * stray bracket elsewhere in the model's response (orchestrator-010).
  */
+/**
+ * Salvage the complete string elements of a JSON string array that failed
+ * JSON.parse — typically because the model's response was truncated
+ * mid-array by the maxTokens cap ("Unexpected end of JSON input"). Returns
+ * every complete quoted string found after the first `[`, or null when
+ * there's nothing to salvage.
+ *
+ * For triage this is strictly better than discarding the response: the array
+ * is ordered most-to-least important, so a truncated prefix still carries
+ * the highest-value ranking.
+ */
+// ponytail: strings-only salvage — extend to nested values if a caller ever needs objects.
+export function salvageJsonStringArray(text: string): string[] | null {
+  const start = text.indexOf('[')
+  if (start === -1) return null
+  const matches = text.slice(start).matchAll(/"(?:[^"\\]|\\.)*"/g)
+  const out: string[] = []
+  for (const m of matches) {
+    try {
+      out.push(JSON.parse(m[0]) as string)
+    } catch {
+      // skip malformed literal
+    }
+  }
+  return out.length > 0 ? out : null
+}
+
 export function extractBalancedJson(text: string, open: string, close: string): string | null {
   let depth = 0
   let start = -1

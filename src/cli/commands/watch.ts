@@ -130,11 +130,19 @@ class WatchController {
     for (const timer of this.debounceTimers.values()) clearTimeout(timer)
     this.debounceTimers.clear()
     if (this.loopTimer) clearTimeout(this.loopTimer)
-    try { this.watcher?.close() } catch {}
+    try {
+      this.watcher?.close()
+    } catch {
+      // watcher may already be closed
+    }
   }
 
   private onExit(): void {
-    try { this.watcher?.close() } catch {}
+    try {
+      this.watcher?.close()
+    } catch {
+      // watcher may already be closed
+    }
   }
 
   private onSigint(): void {

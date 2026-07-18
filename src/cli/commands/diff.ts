@@ -149,7 +149,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
 
     console.log(
       theme.dim(
-        `  Chunking: ${manifests.length} files → ${activeChunks.length} chunks (~${estimateTotalTokens(activeChunks).toLocaleString()} tokens)`
+        `  Chunking: ${manifests.length} files → ${activeChunks.length} chunks (~${estimateTotalTokens(activeChunks).toLocaleString('en-US')} tokens)`
       )
     )
 
