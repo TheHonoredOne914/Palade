@@ -276,6 +276,6 @@ export function shouldRetryEmptyContent(
   return content.trim().length === 0 && outputTokens > 0 && attempt < maxAttempts
 }
 
-export function nextRetryMaxTokens(maxTokens: number): number {
-  return Math.min(maxTokens * 2, MAX_RETRY_TOKENS)
+export function nextRetryMaxTokens(maxTokens: number, ceiling: number = MAX_RETRY_TOKENS): number {
+  return Math.min(maxTokens * 2, ceiling)
 }

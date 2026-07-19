@@ -24,6 +24,8 @@ import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 import { applyLineIgnores } from '../ingestion/annotationParser.js'
 import { ReviewCancelledError } from '../errors/types.js'
 
+const DEFAULT_MAX_CONCURRENT_BATCHES = 5
+
 export async function runSwarm(
   allChunks: CodeChunk[],
   context: AgentContext,
@@ -85,6 +87,14 @@ export async function runSwarm(
   }
 
   let agents: IAgent[] = modeAgents
+  // Tracks whether CombinedAnalyzer is actually going to be used this run —
+  // only true once the builtInAgents.length > 1 branch below fires. Economy
+  // mode's tightened softTokenLimit/hardChunkLimit caps exist solely for
+  // CombinedAnalyzer's larger multi-domain output, so they must only clamp
+  // when it's really in play; otherwise the <= 1 built-in agent fallback to
+  // standard dispatch would still run standard-mode agents against
+  // economy-sized batches for no reason (orchestrator-101).
+  let usingCombinedAnalyzer = false
   if (options.economyMode) {
     const builtInAgents = modeAgents.filter((a) => !(a instanceof CustomAgent))
     const customAgents = modeAgents.filter((a) => a instanceof CustomAgent)
@@ -100,6 +110,7 @@ export async function runSwarm(
       )
     }
     if (builtInAgents.length > 1) {
+      usingCombinedAnalyzer = true
       const activeDomains = builtInAgents.map((a) => {
         const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
         return (
@@ -137,20 +148,14 @@ export async function runSwarm(
   // hardChunkLimit would send oversized batches to CombinedAnalyzer's
   // context window. Clamp here so it's a runSwarm-level guarantee; only
   // tightens the caller's values, never loosens ones already tighter than
-  // the economy caps (orchestrator-002).
-  //
-  // Gated on whether a CombinedAnalyzer actually ended up in `agents` — not
-  // on the raw options.economyMode flag — because economyMode with <= 1
-  // built-in agent falls back to running agents individually (standard mode)
-  // above, and that fallback path's chunks are never sent through
-  // CombinedAnalyzer's larger multi-domain batches, so narrowing to the
-  // tighter economy caps there would needlessly shrink batches with no
-  // corresponding benefit (orchestrator-008).
-  const usingCombined = agents.some((a) => a instanceof CombinedAnalyzer)
-  const softTokenLimit = usingCombined
+  // the economy caps (orchestrator-002). Gated on usingCombinedAnalyzer (not
+  // just options.economyMode) so the <= 1 built-in agent fallback to
+  // standard dispatch above isn't left clamped at economy caps for agents
+  // that aren't CombinedAnalyzer (orchestrator-101).
+  const softTokenLimit = usingCombinedAnalyzer
     ? Math.min(options.softTokenLimit ?? Infinity, ECONOMY_SOFT_TOKEN_CAP)
     : options.softTokenLimit
-  const hardChunkLimit = usingCombined
+  const hardChunkLimit = usingCombinedAnalyzer
     ? Math.min(options.hardChunkLimit ?? Infinity, ECONOMY_HARD_CHUNK_CAP)
     : options.hardChunkLimit
 
@@ -209,7 +214,7 @@ export async function runSwarm(
       const agentHardChunkLimit =
         agent instanceof CustomAgent ? options.hardChunkLimit : hardChunkLimit
       const batches = scheduleBatches(reviewChunks, agentSoftTokenLimit, agentHardChunkLimit)
-      const limit = pLimit(options.maxConcurrentBatches ?? 5) // Max concurrent batches per agent
+      const limit = pLimit(agentContext.maxConcurrentBatches ?? DEFAULT_MAX_CONCURRENT_BATCHES) // Max concurrent batches per agent
 
       const batchPromises = batches.map((batch, batchIdx) =>
         limit(async () => {
@@ -316,11 +321,6 @@ export async function runSwarm(
         // call further down in this same agent promise, silently losing
         // partial findings from batches that completed fine.
         memory.record(agent.name, applyLineIgnores(allFindings, options.ignoredLines ?? []))
-        // Attach the partial findings collected so far to the thrown error so
-        // a caller that catches it (review.ts, diff.ts currently just log the
-        // message) COULD recover them instead of the generic re-throw making
-        // this "preserve partial findings" step unreachable in practice.
-        Object.assign(agentError, { partialFindings: memory.getAll() })
         throw agentError
       }
 
@@ -416,7 +416,7 @@ export async function runSwarm(
     // pure latency at the end of the run. Arbitration calls are independent
     // of each other, so run them concurrently under the same per-agent batch
     // concurrency cap used elsewhere in the swarm.
-    const limit = pLimit(options.maxConcurrentBatches ?? 5)
+    const limit = pLimit(agentContext.maxConcurrentBatches ?? DEFAULT_MAX_CONCURRENT_BATCHES)
     await Promise.allSettled(
       conflicts.map((conflict) =>
         limit(async () => {

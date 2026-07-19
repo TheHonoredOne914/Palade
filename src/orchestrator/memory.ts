@@ -1,5 +1,5 @@
 import type { AgentFinding, AgentName, Severity } from '../agents/base.js'
-import { SEVERITY_PENALTY } from '../agents/base.js'
+import { SEVERITY_PENALTY } from '../config/defaults.js'
 import type { CrossAgentFinding } from './types.js'
 import {
   SEVERITY_RANK,
@@ -20,6 +20,21 @@ function highestSeverity(findings: AgentFinding[]): Severity {
     if (findings.some((f) => f.severity === sev)) return sev
   }
   return 'info'
+}
+
+/** Union-find with path compression for clustering passes. */
+function makeUnionFind(n: number) {
+  const parent = Array.from({ length: n }, (_, i) => i)
+  const find = (x: number): number => {
+    if (parent[x] !== x) parent[x] = find(parent[x])
+    return parent[x]
+  }
+  const union = (x: number, y: number): void => {
+    const rx = find(x)
+    const ry = find(y)
+    if (rx !== ry) parent[rx] = ry
+  }
+  return { find, union }
 }
 
 export class AgentMemory {
@@ -72,7 +87,15 @@ export class AgentMemory {
         }
 
         if (finding.symbolName && finding.filePath) {
-          const key = `${finding.filePath}::${finding.symbolName}`
+          // Keyed by symbolName alone (not filePath::symbolName) so the same
+          // symbol name flagged by different agents in DIFFERENT files still
+          // lands in one entry — entry.files can then actually exceed size 1,
+          // which is what makes the blastRadius penalty below (files.size)
+          // ever fire (orchestrator-102). This does mean two unrelated
+          // same-named symbols in different files can share an entry; that's
+          // an acceptable false-positive rate for a cross-agent blast-radius
+          // signal, not a correctness-critical identity key.
+          const key = finding.symbolName
           if (!symbolAgentMap.has(key)) {
             symbolAgentMap.set(key, { agents: new Set(), findings: [], files: new Set() })
           }
@@ -94,10 +117,11 @@ export class AgentMemory {
       agents: Set<AgentName>
       filePaths: Set<string>
       lineRange?: [number, number]
-      // File-scoped symbol match key (e.g. "path::symbolName"), set only for
-      // the symbol-based grouping pass below. Used by the final dedup pass
-      // as a concrete match key when a lineRange is missing on one/both
-      // sides, instead of defaulting to "assume overlap" (orchestrator-001).
+      // Symbol match key (the bare symbolName, matched across files — see
+      // orchestrator-102), set only for the symbol-based grouping pass below.
+      // Used by the final dedup pass as a concrete match key when a lineRange
+      // is missing on one/both sides, instead of defaulting to "assume
+      // overlap" (orchestrator-001).
       symbolKey?: string
     }[] = []
 
@@ -108,16 +132,7 @@ export class AgentMemory {
     // grouped together.
     for (const [filePath, fileFindings] of findingsByFile) {
       const n = fileFindings.length
-      const parent = Array.from({ length: n }, (_, i) => i)
-      const find = (x: number): number => {
-        if (parent[x] !== x) parent[x] = find(parent[x])
-        return parent[x]
-      }
-      const union = (x: number, y: number): void => {
-        const rx = find(x)
-        const ry = find(y)
-        if (rx !== ry) parent[rx] = ry
-      }
+      const { find, union } = makeUnionFind(n)
 
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
@@ -170,16 +185,7 @@ export class AgentMemory {
     // instead, mirroring merger.ts's file-level merge branch (orchestrator-002).
     for (const [filePath, fileFindings] of findingsByFileNoLine) {
       const n = fileFindings.length
-      const parent = Array.from({ length: n }, (_, i) => i)
-      const find = (x: number): number => {
-        if (parent[x] !== x) parent[x] = find(parent[x])
-        return parent[x]
-      }
-      const union = (x: number, y: number): void => {
-        const rx = find(x)
-        const ry = find(y)
-        if (rx !== ry) parent[rx] = ry
-      }
+      const { find, union } = makeUnionFind(n)
 
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {

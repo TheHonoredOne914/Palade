@@ -15,17 +15,17 @@ import {
 } from './base.js'
 import type { IAgent } from './base.js'
 import { validateAndFingerprintFindings } from '../orchestrator/findingValidation.js'
-import { SECURITY_FOCUS } from './specialist/security.js'
-import { ARCHITECTURE_FOCUS } from './specialist/architecture.js'
-import { PERFORMANCE_FOCUS } from './specialist/performance.js'
+import { SECURITY_WARNING, SECURITY_FOCUS } from './specialist/security.js'
+import { ARCHITECTURE_WARNING, ARCHITECTURE_FOCUS } from './specialist/architecture.js'
+import { PERFORMANCE_WARNING, PERFORMANCE_FOCUS } from './specialist/performance.js'
 import { MAINTAINABILITY_WARNING, MAINTAINABILITY_FOCUS } from './specialist/maintainability.js'
 import { DEAD_CODE_WARNING, DEAD_CODE_FOCUS } from './specialist/deadCode.js'
 import {
   TEST_INTELLIGENCE_WARNING,
   TEST_INTELLIGENCE_FOCUS,
 } from './specialist/testIntelligence.js'
-import { PRAGMATISM_FOCUS } from './specialist/pragmatism.js'
-import { LOGIC_FOCUS } from './specialist/logic.js'
+import { PRAGMATISM_WARNING, PRAGMATISM_FOCUS } from './specialist/pragmatism.js'
+import { LOGIC_WARNING, LOGIC_FOCUS } from './specialist/logic.js'
 
 /**
  * Economy-mode analyzer: runs ALL specialist domains in a single provider call
@@ -112,14 +112,14 @@ export const DEFAULT_DOMAINS: DomainSpec[] = [
 // domain subset still gets the real guardrail text for any built-in name it
 // includes (agents-001).
 const DOMAIN_GUARDRAILS: Partial<Record<AgentName, string>> = {
-  security: SECURITY_FOCUS,
-  architecture: ARCHITECTURE_FOCUS,
-  performance: PERFORMANCE_FOCUS,
+  security: `${SECURITY_WARNING}\n\n${SECURITY_FOCUS}`,
+  architecture: `${ARCHITECTURE_WARNING}\n\n${ARCHITECTURE_FOCUS}`,
+  performance: `${PERFORMANCE_WARNING}\n\n${PERFORMANCE_FOCUS}`,
   maintainability: `${MAINTAINABILITY_WARNING}\n\n${MAINTAINABILITY_FOCUS}`,
   deadCode: `${DEAD_CODE_WARNING}\n\n${DEAD_CODE_FOCUS}`,
   testIntelligence: `${TEST_INTELLIGENCE_WARNING}\n\n${TEST_INTELLIGENCE_FOCUS}`,
-  logic: LOGIC_FOCUS,
-  pragmatism: PRAGMATISM_FOCUS,
+  logic: `${LOGIC_WARNING}\n\n${LOGIC_FOCUS}`,
+  pragmatism: `${PRAGMATISM_WARNING}\n\n${PRAGMATISM_FOCUS}`,
 }
 
 function buildCombinedSystemPrompt(domains: DomainSpec[]): string {

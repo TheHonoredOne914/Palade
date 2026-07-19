@@ -1,5 +1,12 @@
 import { type AgentName, BaseSpecialistAgent } from '../base.js'
 
+// Exported so economy mode's combined prompt (combined.ts) can reuse the
+// exact same partial-chunk warning text instead of a hand-paraphrased summary
+// that can drift from what this agent actually says, mirroring deadCode.ts's
+// DEAD_CODE_WARNING / testIntelligence.ts's TEST_INTELLIGENCE_WARNING /
+// maintainability.ts's MAINTAINABILITY_WARNING (agents-102).
+export const SECURITY_WARNING = `CRITICAL CONTEXT WARNING: You are reviewing PARTIAL chunks of a codebase, not the entire program. Do NOT assume input is unsanitized or a check is missing just because sanitization/authorization isn't visible in the current chunk — it may happen upstream (middleware, a caller, a framework) outside what you can see. Only flag a gap you can confirm is actually missing from the visible code path, or one surfaced via injected cross-file context you were actually given.`
+
 // Domain focus + anti-false-positive guardrails, exported so economy mode's
 // combined multi-domain prompt (combined.ts) can splice in the exact same
 // text instead of maintaining a second hand-written summary that drifts out
@@ -23,6 +30,8 @@ Also check VALIDATION LIBRARIES PRESENT in REPOSITORY CONTEXT: if a validation l
 const SYSTEM_PROMPT = `You are a specialist security code reviewer. You are part of a parallel AI swarm analyzing a codebase.
 
 Your job: identify security issues in the code provided.
+
+${SECURITY_WARNING}
 
 Before outputting any JSON, you MUST write a <thinking> block to trace data flow, analyze edge cases, and justify your logic. 
 At the end of your <thinking> block, perform a Self-Critique: ask yourself if there are any conditions where the code is actually safe or if you might be hallucinating. If the code is safe, drop the finding.

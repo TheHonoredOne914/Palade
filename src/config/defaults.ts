@@ -1,18 +1,41 @@
-import { PaladeConfig } from './schema.js'
-import { SEVERITY_PENALTY } from '../agents/base.js'
-import { DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS, DEFAULT_PENALTY_CAPS } from '../scorer/calculator.js'
+import type { PaladeConfig } from './schema.js'
 
 export const DEFAULT_CONSTITUTION_PATH = '.palade/constitution.md'
 export const DEFAULT_BADGE_PATH = 'palade-badge.svg'
 export const DEFAULT_SPEC_PATH = 'palade.spec.md'
 
-export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
+export const SEVERITY_PENALTY = {
+  critical: 10,
+  high: 5,
+  medium: 2,
+  low: 0.5,
+  info: 0,
+} as const
+
+export const DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS = {
+  critical: 15,
+  high: 8,
+  medium: 4,
+} as const
+
+export const DEFAULT_PENALTY_CAPS = {
+  categoryPenaltyCap: 90,
+  totalPenaltyCap: 95,
+} as const
+
+export const DEFAULT_COMPLEXITY_PENALTIES = {
+  lowThreshold: 5,
+  lowFactor: 0.5,
+  highThreshold: 20,
+  highFactor: 1.5,
+} as const
+
+type DefaultConfigType = Omit<Partial<PaladeConfig>, 'swarm'> & {
+  swarm: Omit<PaladeConfig['swarm'], 'primary' | 'synthesis'>
+}
+
+export const DEFAULT_CONFIG: DefaultConfigType = {
   swarm: {
-    // primary/synthesis below are unreachable placeholders: loadConfig always
-    // overwrites them with its auto-detected defaultPrimary/defaultSynthesis
-    // (see src/config/loader.ts), regardless of the values set here.
-    primary: 'opencode-zen',
-    synthesis: 'nvidia',
     agentCount: 8,
     timeoutMs: 600000,
     maxReviewTokens: 200_000,
@@ -40,12 +63,7 @@ export const DEFAULT_CONFIG: Partial<PaladeConfig> = {
     maxHistoryEntries: 50,
     severityWeights: { ...SEVERITY_PENALTY },
     crossAgentPenalty: { ...DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS },
-    complexityPenalties: {
-      lowThreshold: 5,
-      lowFactor: 0.5,
-      highThreshold: 20,
-      highFactor: 1.5,
-    },
+    complexityPenalties: { ...DEFAULT_COMPLEXITY_PENALTIES },
     penaltyCaps: { ...DEFAULT_PENALTY_CAPS },
   },
 }

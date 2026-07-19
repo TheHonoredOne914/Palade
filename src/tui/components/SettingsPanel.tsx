@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
-import { saveApiKey, saveConfigValue, PROVIDERS } from '../../config/apiKey.js'
+import { saveApiKey, saveConfigValue, saveConfigValues, PROVIDERS } from '../../config/apiKey.js'
 import type { ProviderId } from '../../config/apiKey.js'
 import { fetchModels } from '../../config/models.js'
 import { BUILTIN_NAMES } from '../../agents/registry.js'
@@ -81,9 +81,31 @@ export function SettingsPanel({
   const [localSwarmPrimary, setLocalSwarmPrimary] = useState(swarmPrimary)
   const [localSwarmSynthesis, setLocalSwarmSynthesis] = useState(swarmSynthesis)
   const [agentCount, setAgentCount] = useState(Math.min(swarmAgentCount, MAX_AGENTS))
-  const [savedAgentCount, setSavedAgentCount] = useState(swarmAgentCount)
+  const [savedAgentCount, setSavedAgentCount] = useState(Math.min(swarmAgentCount, MAX_AGENTS))
   const [shares, setShares] = useState<Record<string, number>>(providerShares)
   const [savedShares, setSavedShares] = useState<Record<string, number>>(providerShares)
+
+  useEffect(() => setLocalModels(currentModels), [currentModels])
+  useEffect(() => setLocalSwarmPrimary(swarmPrimary), [swarmPrimary])
+  useEffect(() => setLocalSwarmSynthesis(swarmSynthesis), [swarmSynthesis])
+
+  useEffect(() => {
+    if (focusField === 'swarm') {
+      setSwarmIdx(
+        Math.max(
+          0,
+          PROVIDERS.findIndex((p) => p.id === localSwarmPrimary)
+        )
+      )
+    } else if (focusField === 'synthesis') {
+      setSynthesisIdx(
+        Math.max(
+          0,
+          PROVIDERS.findIndex((p) => p.id === localSwarmSynthesis)
+        )
+      )
+    }
+  }, [focusField, localSwarmPrimary, localSwarmSynthesis])
 
   const selectedProvider = PROVIDERS[selectedProviderIdx]
   const modelEntry = modelState[selectedProvider.id]
@@ -94,6 +116,7 @@ export function SettingsPanel({
   // call would just fail, so go straight to the manual-entry fallback.
   useEffect(() => {
     if (focusField !== 'model') return
+    let active = true
     const id = selectedProvider.id
     const cached = modelState[id]
     if (cached) {
@@ -110,15 +133,35 @@ export function SettingsPanel({
     const key = existingKeys[id]
     if (!key) return
     setModelState((prev) => ({ ...prev, [id]: { status: 'loading', models: [] } }))
-    fetchModels(id as ProviderId, key).then((models) => {
-      setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models } }))
-      if (models.length > 0) {
-        const current = localModels[id]
-        const idx = current ? models.indexOf(current) : -1
-        setModelIdx(idx >= 0 ? idx : 0)
-      }
-    })
-  }, [focusField, selectedProviderIdx, existingKeys, modelState, localModels])
+    fetchModels(id as ProviderId, key)
+      .then((models) => {
+        if (!active) return
+        setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models } }))
+        if (models.length > 0) {
+          const current = localModels[id]
+          const idx = current ? models.indexOf(current) : -1
+          setModelIdx(idx >= 0 ? idx : 0)
+        }
+      })
+      .catch((err) => {
+        if (!active) return
+        setModelState((prev) => ({ ...prev, [id]: { status: 'loaded', models: [] } }))
+        setMessage(
+          `⚠ Could not fetch models for ${selectedProvider.label}: ${err instanceof Error ? err.message : String(err)}`
+        )
+      })
+
+    return () => {
+      active = false
+    }
+  }, [
+    focusField,
+    selectedProviderIdx,
+    existingKeys,
+    modelState,
+    localModels,
+    selectedProvider.label,
+  ])
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -183,10 +226,11 @@ export function SettingsPanel({
         // excess based on object key order with no warning shown.
         const total = Object.values(shares).reduce((sum, v) => sum + (v ?? 0), 0)
         let trimmed = false
+        const next: Record<string, number> = { ...shares }
+
         if (total > count) {
           trimmed = true
           let excess = total - count
-          const next: Record<string, number> = { ...shares }
           for (const id of Object.keys(next)) {
             if (excess <= 0) break
             const val = next[id] ?? 0
@@ -194,15 +238,19 @@ export function SettingsPanel({
             next[id] = val - reduceBy
             excess -= reduceBy
           }
-          for (const [id, val] of Object.entries(next)) {
-            if (val !== shares[id]) {
-              await saveConfigValue(projectRoot, `swarm.providerShares.${id}`, val)
-            }
-          }
-          setShares(next)
-          setSavedShares(next)
         }
-        await saveConfigValue(projectRoot, 'swarm.agentCount', count)
+
+        const updates: Record<string, unknown> = { 'swarm.agentCount': count }
+        for (const [id, val] of Object.entries(next)) {
+          if (val !== savedShares[id]) {
+            updates[`swarm.providerShares.${id}`] = val
+          }
+        }
+
+        await saveConfigValues(projectRoot, updates)
+
+        setShares(next)
+        setSavedShares(next)
         setSavedAgentCount(count)
         setMessage(
           trimmed
@@ -213,7 +261,7 @@ export function SettingsPanel({
         setMessage(`✗ Error: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
-    [projectRoot, shares]
+    [projectRoot, shares, savedShares]
   )
 
   const saveShare = useCallback(
@@ -263,17 +311,14 @@ export function SettingsPanel({
         return
       }
       if (key.rightArrow) {
-        // Clamp to the remaining unallocated capacity across ALL providers,
-        // not just agentCount alone — otherwise several providers can each
-        // be pushed up to agentCount, silently producing a total that
-        // exceeds agentCount (expandProviderShares then truncates it based
-        // on object key order with no warning shown) (tui-001).
-        const othersTotal = Object.entries(shares).reduce(
-          (sum, [pid, val]) => (pid === id ? sum : sum + (val ?? 0)),
-          0
-        )
-        const maxForThis = Math.max(0, agentCount - othersTotal)
-        setShares((prev) => ({ ...prev, [id]: Math.min(maxForThis, current + 1) }))
+        setShares((prev) => {
+          const othersTotal = Object.entries(prev).reduce(
+            (sum, [pid, val]) => (pid === id ? sum : sum + (val ?? 0)),
+            0
+          )
+          const maxForThis = Math.max(0, agentCount - othersTotal)
+          return { ...prev, [id]: Math.min(maxForThis, (prev[id] ?? 0) + 1) }
+        })
         return
       }
       if (key.return) {
@@ -283,7 +328,7 @@ export function SettingsPanel({
     }
     if (focusField === 'agents') {
       if (key.leftArrow) {
-        setAgentCount((c) => Math.max(1, c - 1))
+        setAgentCount((c) => (c <= 1 ? c : c - 1))
         return
       }
       if (key.rightArrow) {
@@ -326,7 +371,7 @@ export function SettingsPanel({
   })
 
   const modelDisplay = hasFetchedModels
-    ? modelEntry!.models[modelIdx]
+    ? (modelEntry!.models[modelIdx] ?? '')
     : modelEntry?.status === 'loading'
       ? 'loading models…'
       : (localModels[selectedProvider.id] ?? '(type a model id below)')

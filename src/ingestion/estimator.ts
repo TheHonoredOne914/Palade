@@ -27,6 +27,17 @@ const PRICING_TABLE: Record<string, { input: number; output: number }> = {
   'ollama:': { input: 0, output: 0 },
 }
 
+function lookupPrice(key: string): { input: number; output: number } | undefined {
+  const hit = PRICING_TABLE[key]
+  if (hit) return hit
+  // Free-tier models not in the catalog are still $0 — providers mark them
+  // with a "-free"/":free" model-name suffix (e.g. mimo-v2.5-free,
+  // cohere/north-mini-code:free). Without this, any uncatalogued free model
+  // reported "No known pricing" on dry runs.
+  if (/[-:]free$/.test(key)) return { input: 0, output: 0 }
+  return undefined
+}
+
 function getProviderModelKey(providerName: string, providerConfig?: { model?: string }): string {
   if (providerName === 'ollama') return 'ollama:'
   if (providerName === 'opencode-zen')
@@ -75,8 +86,8 @@ export function estimateRunCost(
   const primaryKey = getProviderModelKey(primaryName, primaryConfig)
   const synthesisKey = getProviderModelKey(synthesisName, synthesisConfig)
 
-  const primaryPrice = PRICING_TABLE[primaryKey]
-  const synthesisPrice = PRICING_TABLE[synthesisKey]
+  const primaryPrice = lookupPrice(primaryKey)
+  const synthesisPrice = lookupPrice(synthesisKey)
 
   let primaryCost: number | null = null
   if (primaryPrice) {

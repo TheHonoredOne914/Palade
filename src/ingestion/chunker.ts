@@ -7,12 +7,28 @@ export const MAX_TOKENS = 6000
 const CHUNK_LINES = 150
 const CHUNK_OVERLAP = 30
 export const CHARS_PER_TOKEN = 4
-const MAX_TREE_SITTER_LINES = 3000
+const MAX_AST_PARSE_LINES = 3000
 const MAX_CHUNKS_PER_FILE = 50
-const MAX_TREE_SITTER_BYTES = 300_000
+const MAX_AST_PARSE_BYTES = 300_000
 
 export function estimateTokens(content: string): number {
   return Math.ceil(content.length / CHARS_PER_TOKEN)
+}
+
+// estimateTokens is a cheap chars/4 approximation, not a real tokenizer — a
+// dense chunk (long identifiers, non-ASCII text, minified code) can have a
+// REAL token count noticeably higher than this estimate implies. Using the
+// raw MAX_TOKENS/hardChunkLimit as the boundary for the HARD split decision
+// (splitLargeChunk below, and scheduler.ts's equivalent splitToLimit/
+// splitChunk) risked emitting a "fits under the limit" chunk that actually
+// overflowed the provider's real token count once parsed there. Applied only
+// to that hard-split decision/sizing math — estimateTokens() itself stays
+// the plain chars/4 approximation everywhere else (cost estimates in
+// estimator.ts, the softer per-chunk grouping heuristic in chunkByAST) so
+// those aren't silently shrunk too (ing-003).
+const HARD_SPLIT_SAFETY_MARGIN = 0.85
+export function hardSplitBudget(hardChunkLimit: number): number {
+  return Math.max(1, Math.floor(hardChunkLimit * HARD_SPLIT_SAFETY_MARGIN))
 }
 
 function makeChunkId(filePath: string, startLine: number, endLine: number): string {
@@ -23,7 +39,8 @@ export function splitLargeChunk(
   chunk: CodeChunk,
   hardChunkLimit: number = MAX_TOKENS
 ): CodeChunk[] {
-  if (chunk.tokenCount <= hardChunkLimit) return [chunk]
+  const effectiveLimit = hardSplitBudget(hardChunkLimit)
+  if (chunk.tokenCount <= effectiveLimit) return [chunk]
 
   const lines = chunk.content.split('\n')
   const chunks: CodeChunk[] = []
@@ -39,8 +56,9 @@ export function splitLargeChunk(
 
     let endIdx = Math.min(startIdx + CHUNK_LINES, lines.length)
     if (prefixChars > 0) {
-      // Shrink the first sub-chunk so prefix + content stays within hardChunkLimit.
-      const maxContentChars = hardChunkLimit * CHARS_PER_TOKEN - prefixChars
+      // Shrink the first sub-chunk so prefix + content stays within
+      // effectiveLimit (hardChunkLimit minus the ing-003 safety margin).
+      const maxContentChars = effectiveLimit * CHARS_PER_TOKEN - prefixChars
       let charCount = 0
       let adjustedEnd = startIdx
       for (let i = startIdx; i < endIdx; i++) {
@@ -70,6 +88,7 @@ export function splitLargeChunk(
       // a complex function keep its complexity-based scoring multiplier
       // instead of losing it once split.
       complexity: chunk.complexity,
+      nodeComplexities: chunk.nodeComplexities,
       contextPrefix,
     })
 
@@ -149,11 +168,30 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
 
   const finishChunk = () => {
     if (!currentStartNode || !currentEndNode) return
-    const start = sourceFile.getLineAndCharacterOfPosition(currentStartNode.getStart())
+    // getStart(sourceFile, true) includes leading trivia (JSDoc/lead
+    // comments) rather than the default getStart(), which skips straight to
+    // the node's first non-trivia token — the plain getStart() was silently
+    // dropping a function/class's doc comment from the chunk even though the
+    // line-based fallback chunker keeps it (ing-006).
+    const startPos = currentStartNode.getStart(sourceFile, true)
+    const start = sourceFile.getLineAndCharacterOfPosition(startPos)
     const end = sourceFile.getLineAndCharacterOfPosition(currentEndNode.getEnd())
-    const chunkContent = content.substring(currentStartNode.getStart(), currentEndNode.getEnd())
+    const chunkContent = content.substring(startPos, currentEndNode.getEnd())
     const symbolName = getTopLevelSymbolName(currentStartNode)
     const complexity = calculateComplexityForNodes(currentNodes)
+    // Per-node breakdown so a finding can be attributed to the complexity of
+    // the specific top-level node it falls inside, rather than this chunk's
+    // summed complexity across every node bundled into it (ing-001) — see
+    // agents/base.ts's annotateComplexity.
+    const nodeComplexities = currentNodes.map((node) => {
+      const nodeStart = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile, true))
+      const nodeEnd = sourceFile.getLineAndCharacterOfPosition(node.getEnd())
+      return {
+        startLine: nodeStart.line + 1,
+        endLine: nodeEnd.line + 1,
+        complexity: calculateComplexityForNodes([node]),
+      }
+    })
 
     chunks.push({
       id: makeChunkId(filePath, start.line + 1, end.line + 1),
@@ -165,6 +203,7 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
       tokenCount: estimateTokens(chunkContent),
       language,
       complexity,
+      nodeComplexities,
     })
 
     currentStartNode = null
@@ -420,7 +459,7 @@ async function chunkOneFile(manifest: FileManifest): Promise<CodeChunk[]> {
   // to the cheaper line/bracket-based chunking strategy above these caps.
   const lineCount = content.length === 0 ? 0 : content.split('\n').length
   const byteSize = Buffer.byteLength(content, 'utf-8')
-  const exceedsParseLimits = lineCount > MAX_TREE_SITTER_LINES || byteSize > MAX_TREE_SITTER_BYTES
+  const exceedsParseLimits = lineCount > MAX_AST_PARSE_LINES || byteSize > MAX_AST_PARSE_BYTES
 
   let chunks: CodeChunk[]
   if (isAstLanguage && !exceedsParseLimits) {
@@ -440,7 +479,7 @@ async function chunkOneFile(manifest: FileManifest): Promise<CodeChunk[]> {
     if (isAstLanguage && exceedsParseLimits) {
       console.warn(
         `[chunker] File ${manifest.path} (${lineCount} lines, ${byteSize} bytes) exceeds the ` +
-          `AST parsing size guard (${MAX_TREE_SITTER_LINES} lines / ${MAX_TREE_SITTER_BYTES} bytes) — ` +
+          `AST parsing size guard (${MAX_AST_PARSE_LINES} lines / ${MAX_AST_PARSE_BYTES} bytes) — ` +
           `falling back to line-based chunking.`
       )
     }

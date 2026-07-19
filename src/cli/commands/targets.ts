@@ -6,6 +6,7 @@ import { loadConfig } from '../../config/loader.js'
 import { initRouter } from '../../providers/router.js'
 import { generateTarget } from '../../targets/generator.js'
 import { CliExitError } from '../../errors/types.js'
+import { handleFatalError } from '../../errors/handler.js'
 import chalk from 'chalk'
 export const targetsCommand = new Command('targets').description(
   'Manage review targets (subsystems)'
@@ -97,7 +98,11 @@ targetsCommand
   .description('Search npm for palade-target-* packages')
   .argument('[query]', 'Search query', '')
   .action(async (query: string): Promise<void> => {
-    await runTargetsSearch(query)
+    try {
+      await runTargetsSearch(query)
+    } catch (err) {
+      handleFatalError(err)
+    }
   })
 
 targetsCommand
@@ -105,7 +110,11 @@ targetsCommand
   .description('Install a target package from npm into .palade/palade.targets.ts')
   .argument('<package>', 'npm package name (e.g. palade-target-auth)')
   .action(async (pkg: string): Promise<void> => {
-    await runTargetsAdd(pkg)
+    try {
+      await runTargetsAdd(pkg)
+    } catch (err) {
+      handleFatalError(err)
+    }
   })
 
 targetsCommand
@@ -113,12 +122,20 @@ targetsCommand
   .description('Use AI to generate a target based on a natural language description')
   .argument('<query>', 'Description of the subsystem (e.g. "user authentication flow")')
   .action(async (query: string): Promise<void> => {
-    await runTargetsGenerate(query)
+    try {
+      await runTargetsGenerate(query)
+    } catch (err) {
+      handleFatalError(err)
+    }
   })
 
 targetsCommand
   .command('list')
   .description('List locally defined targets')
   .action(async (): Promise<void> => {
-    await runTargetsList()
+    try {
+      await runTargetsList()
+    } catch (err) {
+      handleFatalError(err)
+    }
   })

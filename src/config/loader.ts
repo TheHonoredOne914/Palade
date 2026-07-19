@@ -8,6 +8,7 @@ import { PaladeConfigSchema, type PaladeConfig } from './schema.js'
 import { DEFAULT_CONFIG } from './defaults.js'
 import { PaladeConfigError } from '../errors/types.js'
 import { BUILTIN_NAMES } from '../agents/registry.js'
+import { PROVIDER_NAMES } from '../providers/router.js'
 
 dotenvConfig()
 
@@ -202,14 +203,9 @@ export async function loadConfig(): Promise<PaladeConfig> {
     }
   }
 
-  const allConfiguredProviders = [
-    'opencode-zen',
-    'groq',
-    'nvidia',
-    'cerebras',
-    'openrouter',
-    'ollama',
-  ].filter((p) => !!(mergedProviders as Record<string, { apiKey?: string } | undefined>)[p]?.apiKey)
+  const allConfiguredProviders = PROVIDER_NAMES.filter(
+    (p) => !!(mergedProviders as Record<string, { apiKey?: string } | undefined>)[p]?.apiKey
+  )
 
   const freeProviders = allConfiguredProviders.filter((p) => p === 'opencode-zen' || p === 'ollama')
   const paidProviders = allConfiguredProviders.filter((p) => p !== 'opencode-zen' && p !== 'ollama')
