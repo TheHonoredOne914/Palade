@@ -522,7 +522,6 @@ export async function verifyCriticalHighFindings(
   findings: AgentFinding[],
   chunks: CodeChunk[],
   provider: IProvider,
-  agentName: AgentName,
   context?: AgentContext,
   signal?: AbortSignal
 ): Promise<AgentFinding[]> {
@@ -678,7 +677,7 @@ export abstract class BaseSpecialistAgent implements IAgent {
       }
       annotateComplexity(findings, chunks)
 
-      return verifyCriticalHighFindings(findings, chunks, provider, this.name, context, signal)
+      return verifyCriticalHighFindings(findings, chunks, provider, context, signal)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err

@@ -156,12 +156,6 @@ export function tagQuotaError(err: Error): Error {
   return err
 }
 
-export function isQuotaTaggedError(err: unknown): boolean {
-  return (
-    err instanceof Error && Boolean((err as Error & { [QUOTA_ERROR_TAG]?: true })[QUOTA_ERROR_TAG])
-  )
-}
-
 /**
  * Standard message for a 429 response that isn't a daily/quota exhaustion
  * (isDailyLimitError said no) — by the time an adapter reaches this, the

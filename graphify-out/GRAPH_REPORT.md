@@ -1,16 +1,16 @@
-# Graph Report - Palade  (2026-07-13)
+# Graph Report - Palade  (2026-07-19)
 
 ## Corpus Check
-- 165 files · ~108,786 words
+- 164 files · ~108,987 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 991 nodes · 2596 edges · 71 communities (50 shown, 21 thin omitted)
+- 989 nodes · 2583 edges · 70 communities (48 shown, 22 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 9 edges (avg confidence: 0.57)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `da5ebb64`
+- Built from commit: `c0c29a05`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -68,7 +68,6 @@
 - Community 63
 - Community 67
 - Community 70
-- Community 74
 - Community 77
 - Community 81
 - Community 91
@@ -92,12 +91,12 @@
   src/ingestion/walker.ts → package.json
 - `walkDir()` --references--> `ignore`  [EXTRACTED]
   src/ingestion/walker.ts → package.json
-- `Conflict` --references--> `AgentFinding`  [EXTRACTED]
-  src/orchestrator/verdict.ts → src/agents/base.ts
 - `CombinedAnalyzer` --references--> `AgentName`  [EXTRACTED]
   src/agents/combined.ts → src/agents/base.ts
 - `DomainSpec` --references--> `AgentName`  [EXTRACTED]
   src/agents/combined.ts → src/agents/base.ts
+- `CustomAgent` --references--> `AgentName`  [EXTRACTED]
+  src/agents/custom/agent.ts → src/agents/base.ts
 
 ## Import Cycles
 - 3-file cycle: `src/agents/custom/agent.ts -> src/agents/custom/schema.ts -> src/agents/registry.ts -> src/agents/custom/agent.ts`
@@ -105,31 +104,31 @@
 - 4-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/base.ts`
 - 4-file cycle: `src/agents/custom/agent.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/custom/agent.ts`
 - 4-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/scorer/calculator.ts -> src/agents/base.ts`
-- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/custom/agent.ts -> src/agents/base.ts`
-- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/architecture.ts -> src/agents/base.ts`
-- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/deadCode.ts -> src/agents/base.ts`
-- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/logic.ts -> src/agents/base.ts`
-- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/maintainability.ts -> src/agents/base.ts`
-- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/performance.ts -> src/agents/base.ts`
-- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/pragmatism.ts -> src/agents/base.ts`
-- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/security.ts -> src/agents/base.ts`
-- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/testIntelligence.ts -> src/agents/base.ts`
 - 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/scorer/calculator.ts -> src/orchestrator/types.ts -> src/agents/base.ts`
+- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/performance.ts -> src/agents/base.ts`
+- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/architecture.ts -> src/agents/base.ts`
+- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/logic.ts -> src/agents/base.ts`
+- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/security.ts -> src/agents/base.ts`
+- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/maintainability.ts -> src/agents/base.ts`
+- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/custom/agent.ts -> src/agents/base.ts`
+- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/deadCode.ts -> src/agents/base.ts`
+- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/pragmatism.ts -> src/agents/base.ts`
+- 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/agents/registry.ts -> src/agents/specialist/testIntelligence.ts -> src/agents/base.ts`
 - 5-file cycle: `src/agents/base.ts -> src/providers/router.ts -> src/config/schema.ts -> src/scorer/calculator.ts -> src/scorer/types.ts -> src/agents/base.ts`
 
-## Communities (71 total, 21 thin omitted)
+## Communities (70 total, 22 thin omitted)
 
 ### Community 0 - "router.ts"
 Cohesion: 0.31
 Nodes (7): SEVERITY_PENALTY, DEFAULT_CONFIG, ProviderConfigSchema, NOTE: applied PER-KIND, not to the combined file total — 'full' and, ReportFormatSchema, DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS, DEFAULT_PENALTY_CAPS
 
 ### Community 1 - "base.ts"
-Cohesion: 0.21
-Nodes (14): annotateComplexity(), buildChunkContext(), buildSystemPrompt(), completeAndParseFindings(), computeMaxTokens(), isParseFailureSentinel(), parseFindingsResponse(), salvageTruncatedArray() (+6 more)
+Cohesion: 0.20
+Nodes (15): AgentContext, annotateComplexity(), buildChunkContext(), buildSystemPrompt(), completeAndParseFindings(), computeMaxTokens(), isParseFailureSentinel(), parseFindingsResponse() (+7 more)
 
 ### Community 2 - "html.ts"
-Cohesion: 0.17
-Nodes (25): BADGE_COLOR_HEX, buildTemplateData(), __dirname, escapeHtml(), formatDeltaText(), getScoreColor(), getScoreGradeClass(), getTemplatePath() (+17 more)
+Cohesion: 0.07
+Nodes (58): SynthesisResult, SwarmResult, BADGE_COLOR_HEX, buildTemplateData(), __dirname, escapeHtml(), formatDeltaText(), getScoreColor() (+50 more)
 
 ### Community 3 - "settings.ts"
 Cohesion: 0.16
@@ -137,51 +136,43 @@ Nodes (17): ProviderId, PROVIDERS, quoteKeyIfNeeded(), readCurrentKeys(), resolv
 
 ### Community 4 - "diff.ts"
 Cohesion: 0.06
-Nodes (53): DiffContext, diffCommand(), DiffOpts, throwIfAborted(), OptionalDocResult, readOptionalProjectDoc(), addedLineRanges(), buildFingerprint() (+45 more)
+Nodes (64): ignore, DiffContext, diffCommand(), DiffOpts, throwIfAborted(), watchCommand(), OptionalDocResult, readOptionalProjectDoc() (+56 more)
 
 ### Community 5 - "contextPacks.ts"
-Cohesion: 0.42
-Nodes (6): fingerprintFor(), getMatchingChunkAndClamp(), normalizePath(), normalizePathKey(), chunks, validateAndFingerprintFindings()
+Cohesion: 0.13
+Nodes (15): scripts, build, clean, dev, format, format:check, graph:update, lint (+7 more)
 
 ### Community 6 - "harness.test.ts"
-Cohesion: 0.07
-Nodes (43): ALL_DEFECTS, Defect, DefectCategory, FINDING_VALIDATION_DEFECTS, MERGER_DEFECTS, realBugCount(), SCHEDULER_DEFECTS, Severity (+35 more)
+Cohesion: 0.06
+Nodes (47): ALL_DEFECTS, Defect, DefectCategory, FINDING_VALIDATION_DEFECTS, MERGER_DEFECTS, realBugCount(), SCHEDULER_DEFECTS, Severity (+39 more)
 
 ### Community 7 - "useCommandRunner.ts"
-Cohesion: 0.10
-Nodes (35): decisionsCommand(), runTargetsAdd(), runTargetsGenerate(), runTargetsList(), runTargetsSearch(), targetsCommand, throwIfAborted(), VALUE_FLAG_STRINGS (+27 more)
+Cohesion: 0.07
+Nodes (43): decisionsCommand(), runTargetsAdd(), runTargetsGenerate(), runTargetsList(), runTargetsSearch(), targetsCommand, throwIfAborted(), VALUE_FLAG_STRINGS (+35 more)
 
 ### Community 8 - "types.ts"
-Cohesion: 0.09
-Nodes (17): loadCustomAgents(), CustomAgentDefinition, CustomAgentDefinitionSchema, formatErrorMessages(), handleFatalError(), CliExitError, NoProvidersError, OllamaNotRunningError (+9 more)
+Cohesion: 0.27
+Nodes (4): loadCustomAgents(), CustomAgentDefinition, CustomAgentDefinitionSchema, PaladeConfigError
 
 ### Community 9 - "repoContext.ts"
 Cohesion: 0.19
 Nodes (13): buildPublicApi(), buildRepoContext(), candidatesFor(), collectStrings(), findCycles(), isTestFile(), renderCappedList(), renderRepoContext() (+5 more)
 
 ### Community 10 - "base.ts"
-Cohesion: 0.27
-Nodes (11): CompletionRequest, CompletionResponse, FATAL_QUOTA_KEYWORDS, fetchWithRetry(), isDailyLimitError(), nextRetryMaxTokens(), QUOTA_ERROR_TAG, rateLimitedMessage() (+3 more)
+Cohesion: 0.30
+Nodes (14): CompletionRequest, CompletionResponse, FATAL_QUOTA_KEYWORDS, fetchWithRetry(), isDailyLimitError(), nextRetryMaxTokens(), QUOTA_ERROR_TAG, rateLimitedMessage() (+6 more)
 
 ### Community 11 - "history.ts"
-Cohesion: 0.33
-Nodes (5): BadgeColor, BadgeData, CATEGORY_LABELS, CategoryScore, ScoreBreakdown
+Cohesion: 0.20
+Nodes (10): devDependencies, eslint, @eslint/js, prettier, tsx, @types/node, @types/react, typescript (+2 more)
 
 ### Community 12 - "package.json"
-Cohesion: 0.05
-Nodes (43): author, bin, palade, bugs, url, description, devDependencies, eslint (+35 more)
-
-### Community 13 - "types.ts"
-Cohesion: 0.19
-Nodes (17): Severity, SynthesisResult, SynthesizeOptions, CrossAgentFinding, SwarmResult, AiConsumableArchitectureIssue, AiConsumableBug, AiConsumableReport (+9 more)
+Cohesion: 0.12
+Nodes (15): author, bin, palade, bugs, url, description, engines, node (+7 more)
 
 ### Community 14 - "🤖 Palade"
 Cohesion: 0.05
 Nodes (40): Palade Benchmark Report, Precision — mature libraries, Recall — planted vulnerabilities, Reliability — read this before trusting any single run, Reproduce, Setup, 🏆 Benchmarks, 🔁 CI/CD Integration (+32 more)
-
-### Community 15 - "markdown.ts"
-Cohesion: 0.27
-Nodes (15): buildMarkdownReport(), createMarkdownTable(), DEFAULT_OPTIONS, escapeMarkdown(), renderAgentTimings(), renderCategoryScoresTable(), renderCrossAgentFindings(), renderFindingsDetail() (+7 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.13
@@ -189,7 +180,7 @@ Nodes (14): compilerOptions, declaration, esModuleInterop, jsx, module, moduleRe
 
 ### Community 18 - "terminal.ts"
 Cohesion: 0.05
-Nodes (58): ReviewMode, reviewCommand(), ReviewOptions, VALID_REPORT_FORMATS, scoreCommand(), escapeRegex(), getLanguage(), resolveSymbol() (+50 more)
+Nodes (54): ReviewMode, reviewCommand(), ReviewOptions, VALID_REPORT_FORMATS, scoreCommand(), launchPicker(), ReviewCancelledError, escapeRegex() (+46 more)
 
 ### Community 19 - "badge.ts"
 Cohesion: 0.33
@@ -199,32 +190,36 @@ Nodes (4): Codebase Knowledge Graph (graphify) — Read This First, Cross-Sessio
 Cohesion: 0.15
 Nodes (12): Adjudication (ground truth — full repo access), Agent 1: Security, Agent 2: Architecture, Agent 3: Performance, Agent 4: Maintainability, Agent 5: Dead Code, Agent 6: Test Intelligence, Baseline Numbers (+4 more)
 
+### Community 22 - "dependencies"
+Cohesion: 0.11
+Nodes (5): IProvider, NvidiaProvider, FallbackProvider, markResponsibleProviderDead(), ProviderAssignment
+
 ### Community 23 - "GroqProvider"
-Cohesion: 0.20
-Nodes (7): AuthError, OpenAIChoice, OpenAIResponse, OpenAIUsage, OpenAIChoice, OpenAIResponse, OpenAIUsage
+Cohesion: 0.14
+Nodes (8): AuthError, NoProvidersError, OllamaNotRunningError, SwarmTimeoutError, TargetNotFoundError, isFatalAuthError(), AllProvidersExhaustedError, dummyReq
 
 ### Community 26 - "createLimiter"
-Cohesion: 0.09
-Nodes (5): createLimiter(), CerebrasProvider, GroqProvider, OpenCodeZenProvider, OpenRouterProvider
+Cohesion: 0.13
+Nodes (6): createLimiter(), GroqProvider, OpenAIChoice, OpenAIResponse, OpenAIUsage, OpenCodeZenProvider
 
 ### Community 28 - "Community 28"
-Cohesion: 0.16
-Nodes (23): AgentContext, AnnotationSummary, DEFAULT_DOMAINS, applyLineIgnores(), parseFile(), parseFileAsync(), stripStringLiterals(), Annotation (+15 more)
+Cohesion: 0.14
+Nodes (24): DEFAULT_DOMAINS, applyLineIgnores(), linesAreNear(), estimateTotalTokens(), runSwarm(), heuristicSelect(), scoreManifestForReview(), triageFiles() (+16 more)
 
 ### Community 29 - "calculator.ts"
-Cohesion: 0.23
-Nodes (13): applyComplexityMultiplier(), calculateCategoryScore(), calculateCrossAgentPenalty(), calculateScore(), calculateTotalPenalty(), ComplexityPenalties, countBySeverity(), CrossAgentPenaltyWeights (+5 more)
+Cohesion: 0.07
+Nodes (41): Severity, computeDebtCounts(), computeDebtHours(), computeGhostHours(), DebtEstimate, parseSynthesisResponse(), PriorityFix, selectFindingsForSynthesis() (+33 more)
 
 ### Community 30 - "[1.0.0-rc.1] - 2026-06-27"
 Cohesion: 0.25
 Nodes (7): [1.0.0-rc.1] - 2026-06-27, [1.0.0-rc.2] - 2026-07-07, Added, Changed, Changelog, Fixed, Security
 
 ### Community 31 - "AgentFinding"
-Cohesion: 0.25
-Nodes (10): highestSeverity(), SEVERITY_ORDER, groupBySeverity(), isNearMatch(), jaccardSimilarity(), mergeFindings(), mergeTwo(), NearMatchOptions (+2 more)
+Cohesion: 0.67
+Nodes (3): repository, type, url
 
 ### Community 32 - "Community 32"
-Cohesion: 0.14
+Cohesion: 0.13
 Nodes (14): AgentName, DummyAgent, BaseSpecialistAgent, AGENT_REGISTRY, BUILTIN_AGENTS, getAgentsForMode(), ArchitectureAgent, DeadCodeAgent (+6 more)
 
 ### Community 33 - "Contributing to Palade"
@@ -232,64 +227,60 @@ Cohesion: 0.33
 Nodes (5): Architecture and Scope, Contributing to Palade, Pull Request Process, Setting Up For Development, Testing
 
 ### Community 34 - "IProvider"
-Cohesion: 0.07
-Nodes (20): IProvider, isFatalAuthError(), PoolSourceTaggedError, PROVIDER_POOL_SOURCE, agentAssignments, allProviders, AllProvidersExhaustedError, createProviderInstances() (+12 more)
+Cohesion: 0.14
+Nodes (15): PoolSourceTaggedError, PROVIDER_POOL_SOURCE, agentAssignments, allProviders, createProviderInstances(), FallbackStats, getFallbackChain(), initRouter() (+7 more)
 
 ### Community 63 - "Community 63"
-Cohesion: 0.25
-Nodes (8): DEBOUNCE_MS, EstimateResult, estimateRunCost(), getProviderModelKey(), PRICING_TABLE, CodeChunk, scheduleBatches(), SplitResult
+Cohesion: 0.16
+Nodes (11): AnnotationSummary, IAgent, DEBOUNCE_MS, parseFileAsync(), stripStringLiterals(), Annotation, CodeChunk, FileManifest (+3 more)
 
 ### Community 67 - "Community 67"
-Cohesion: 0.08
-Nodes (32): dependencies, chalk, chokidar, commander, dotenv, ignore, ink, ink-spinner (+24 more)
+Cohesion: 0.17
+Nodes (12): dependencies, chalk, chokidar, commander, dotenv, ink, ink-spinner, ink-text-input (+4 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.13
-Nodes (14): PaladeConfig, App(), AppProps, SafeInputHandlerProps, CommandInput(), CommandInputProps, OutputLine, OutputLineItem() (+6 more)
-
-### Community 74 - "Community 74"
-Cohesion: 0.36
-Nodes (8): computeDebtCounts(), computeDebtHours(), computeGhostHours(), DebtEstimate, parseSynthesisResponse(), PriorityFix, selectFindingsForSynthesis(), synthesize()
+Cohesion: 0.12
+Nodes (16): PaladeConfig, ScopeOptions, PipelineOptions, App(), AppProps, SafeInputHandlerProps, CommandInput(), CommandInputProps (+8 more)
 
 ### Community 77 - "Community 77"
-Cohesion: 0.22
-Nodes (16): initCommand(), applySets(), formatValue(), initConfig(), interactiveSettings(), parseValue(), settingsCommand(), SettingsOptions (+8 more)
+Cohesion: 0.26
+Nodes (14): initCommand(), applySets(), formatValue(), initConfig(), interactiveSettings(), parseValue(), settingsCommand(), SettingsOptions (+6 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.21
-Nodes (8): IAgent, AGENT_NAME_ALIASES, attributeFindings(), buildCombinedSystemPrompt(), CombinedAnalyzer, DOMAIN_GUARDRAILS, DomainSpec, normalizeAgentName()
+Cohesion: 0.17
+Nodes (12): AGENT_NAME_ALIASES, attributeFindings(), CombinedAnalyzer, DOMAIN_GUARDRAILS, DomainSpec, normalizeAgentName(), fingerprintFor(), getMatchingChunkAndClamp() (+4 more)
 
 ### Community 91 - "Community 91"
-Cohesion: 0.22
-Nodes (12): BUILTIN_NAMES, isProviderConfigured(), buildEnvConfig(), collectKeys(), expandProviderShares(), formatZodError(), loadConfig(), getFallbackChain() (+4 more)
+Cohesion: 0.25
+Nodes (10): BUILTIN_NAMES, isProviderConfigured(), buildEnvConfig(), collectKeys(), expandProviderShares(), formatZodError(), loadConfig(), __dirname (+2 more)
 
 ### Community 93 - "Community 93"
 Cohesion: 0.24
 Nodes (7): Header(), HeaderProps, ASCII_ART, GRADIENT, BannerOptions, printBanner(), renderAscii()
 
 ### Community 102 - "Community 102"
-Cohesion: 0.21
-Nodes (6): AgentFinding, AgentMemory, analyze(), makeChunk(), makeContext(), runOneBatchWithTimeout()
+Cohesion: 0.19
+Nodes (7): AgentFinding, AgentMemory, analyze(), makeChunk(), makeContext(), runOneBatchWithTimeout(), Conflict
 
 ## Knowledge Gaps
-- **237 isolated node(s):** `session-start.sh script`, `PATH`, `name`, `version`, `description` (+232 more)
+- **239 isolated node(s):** `session-start.sh script`, `PATH`, `name`, `version`, `description` (+234 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **21 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **22 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `dependencies` connect `Community 67` to `package.json`?**
+- **Why does `ignore` connect `diff.ts` to `Community 67`?**
+  _High betweenness centrality (0.093) - this node is a cross-community bridge._
+- **Why does `dependencies` connect `Community 67` to `package.json`, `diff.ts`?**
   _High betweenness centrality (0.092) - this node is a cross-community bridge._
-- **Why does `buildIgnoreFilter()` connect `Community 67` to `Community 63`?**
+- **Why does `buildIgnoreFilter()` connect `diff.ts` to `Community 63`?**
   _High betweenness centrality (0.073) - this node is a cross-community bridge._
 - **What connects `session-start.sh script`, `PATH`, `name` to the rest of the system?**
-  _239 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _241 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `html.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.06573426573426573 - nodes in this community are weakly interconnected._
 - **Should `diff.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.06409130816505706 - nodes in this community are weakly interconnected._
-- **Should `harness.test.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.07058001397624039 - nodes in this community are weakly interconnected._
-- **Should `useCommandRunner.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.09565217391304348 - nodes in this community are weakly interconnected._
-- **Should `types.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.09309309309309309 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05759623861298854 - nodes in this community are weakly interconnected._
+- **Should `contextPacks.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.13333333333333333 - nodes in this community are weakly interconnected._

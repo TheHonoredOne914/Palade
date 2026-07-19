@@ -25,8 +25,8 @@
     "semantic_hash": ""
   },
   "src/agents/base.ts": {
-    "mtime": 1783880669.3505032,
-    "ast_hash": "eff4bc0284fcdeaf4627083bc567f8fa",
+    "mtime": 1784429252.3058763,
+    "ast_hash": "b192eff46bb956cf441d1030993d4649",
     "semantic_hash": ""
   },
   "src/agents/combined.analyze.test.ts": {
@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "src/agents/combined.ts": {
-    "mtime": 1783880669.3505032,
-    "ast_hash": "1e005980e8315f225451a4a98d450724",
+    "mtime": 1784429257.9898763,
+    "ast_hash": "af265732cf49befbd64d5ffb09f1c576",
     "semantic_hash": ""
   },
   "src/agents/custom/agent.analyze.test.ts": {
@@ -50,8 +50,8 @@
     "semantic_hash": ""
   },
   "src/agents/custom/agent.ts": {
-    "mtime": 1783880669.3505032,
-    "ast_hash": "4e8d2b6caf9689f22b3783109f787464",
+    "mtime": 1784429260.409876,
+    "ast_hash": "1644805a071445c8760ce739a9efdab7",
     "semantic_hash": ""
   },
   "src/agents/custom/custom.test.ts": {
@@ -475,8 +475,8 @@
     "semantic_hash": ""
   },
   "src/orchestrator/swarm.ts": {
-    "mtime": 1783948400.9787576,
-    "ast_hash": "1398ab0cd62ba360d1bacef8900ba57d",
+    "mtime": 1784429302.7058752,
+    "ast_hash": "b840e7cc2155c6e4e054651fa347b7f2",
     "semantic_hash": ""
   },
   "src/orchestrator/triage-risk.test.ts": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "src/providers/base.ts": {
-    "mtime": 1783733670.467831,
-    "ast_hash": "ae811e4946dadcff4a5e61e6d5dca36f",
+    "mtime": 1784429264.3858762,
+    "ast_hash": "de12ac14dfe696fa90afdb0009948ab4",
     "semantic_hash": ""
   },
   "src/providers/cerebras.ts": {
@@ -550,8 +550,8 @@
     "semantic_hash": ""
   },
   "src/providers/pool.ts": {
-    "mtime": 1783948265.8387606,
-    "ast_hash": "e9af416a696a190a63396083889f3c61",
+    "mtime": 1784429320.8298748,
+    "ast_hash": "5f4140808b60e2d2664267b12c2a09d3",
     "semantic_hash": ""
   },
   "src/providers/router.test.ts": {
@@ -572,11 +572,6 @@
   "src/reporters/html.ts": {
     "mtime": 1783733790.095828,
     "ast_hash": "3ccdf9a1c895930ce9e2b800e227a2f1",
-    "semantic_hash": ""
-  },
-  "src/reporters/index.ts": {
-    "mtime": 1783275853.9832506,
-    "ast_hash": "50cf3a0bd77571a3d8409429566f7dbf",
     "semantic_hash": ""
   },
   "src/reporters/json.ts": {

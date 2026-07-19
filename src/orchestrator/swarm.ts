@@ -54,20 +54,6 @@ export async function runSwarm(
         })
       : allChunks
 
-  // Economy-mode batch-size narrowing used to be only a convention followed
-  // by CLI command callers (review/diff/watch), not enforced here — a caller
-  // that set economyMode: true without also narrowing softTokenLimit/
-  // hardChunkLimit would send oversized batches to CombinedAnalyzer's
-  // context window. Clamp here so it's a runSwarm-level guarantee; only
-  // tightens the caller's values, never loosens ones already tighter than
-  // the economy caps (orchestrator-002).
-  const softTokenLimit = options.economyMode
-    ? Math.min(options.softTokenLimit ?? Infinity, ECONOMY_SOFT_TOKEN_CAP)
-    : options.softTokenLimit
-  const hardChunkLimit = options.economyMode
-    ? Math.min(options.hardChunkLimit ?? Infinity, ECONOMY_HARD_CHUNK_CAP)
-    : options.hardChunkLimit
-
   // Economy mode replaces the N parallel per-domain BUILT-IN agents with a
   // single combined multi-domain analyzer that reviews all lenses in one
   // provider call per batch. This cuts the ~6x resend of the same chunk
@@ -144,6 +130,30 @@ export async function runSwarm(
       }
     }
   }
+
+  // Economy-mode batch-size narrowing used to be only a convention followed
+  // by CLI command callers (review/diff/watch), not enforced here — a caller
+  // that set economyMode: true without also narrowing softTokenLimit/
+  // hardChunkLimit would send oversized batches to CombinedAnalyzer's
+  // context window. Clamp here so it's a runSwarm-level guarantee; only
+  // tightens the caller's values, never loosens ones already tighter than
+  // the economy caps (orchestrator-002).
+  //
+  // Gated on whether a CombinedAnalyzer actually ended up in `agents` — not
+  // on the raw options.economyMode flag — because economyMode with <= 1
+  // built-in agent falls back to running agents individually (standard mode)
+  // above, and that fallback path's chunks are never sent through
+  // CombinedAnalyzer's larger multi-domain batches, so narrowing to the
+  // tighter economy caps there would needlessly shrink batches with no
+  // corresponding benefit (orchestrator-008).
+  const usingCombined = agents.some((a) => a instanceof CombinedAnalyzer)
+  const softTokenLimit = usingCombined
+    ? Math.min(options.softTokenLimit ?? Infinity, ECONOMY_SOFT_TOKEN_CAP)
+    : options.softTokenLimit
+  const hardChunkLimit = usingCombined
+    ? Math.min(options.hardChunkLimit ?? Infinity, ECONOMY_HARD_CHUNK_CAP)
+    : options.hardChunkLimit
+
   const memory = new AgentMemory()
 
   const agentTimings: Partial<Record<AgentName, number>> = {}

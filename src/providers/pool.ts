@@ -1,4 +1,6 @@
 import type { IProvider, CompletionRequest, CompletionResponse } from './base.js'
+import { tagQuotaError } from './base.js'
+import { AuthError } from '../errors/types.js'
 
 // Attached to errors thrown by ProviderPool.complete() so callers (router.ts)
 // can scope dead-marking to the exact member instance that threw, instead of
@@ -47,6 +49,34 @@ export class ProviderPool implements IProvider {
     // can classify it (at this point the pool genuinely is exhausted). Index
     // was already advanced above before the availability loop.
     const provider = candidate ?? this.providers[startIdx % n]
+    // The last-resort fallback picked above (when isAvailable() found no live
+    // candidate) can itself already be marked dead — under concurrent
+    // multi-key load, a sibling call may have marked it dead moments earlier.
+    // Calling .complete() on an already-dead adapter throws its own plain
+    // "marked dead" Error, which isn't an AuthError or quota-tagged error, so
+    // router.ts's isFatalAuthError() never recognizes it as fatal and the
+    // fast-abort-on-dead-auth path is silently defeated. Synthesize a
+    // properly classified error here instead, mirroring how
+    // FallbackProvider.complete() (router.ts) distinguishes auth-dead from
+    // quota-dead via isDeadFromAuth()/isDead(). Only triggers when we fell
+    // through to the last-resort pick (candidate is undefined) — the normal
+    // happy-path fallback (candidate found live via isAvailable()) is
+    // untouched.
+    if (!candidate && (provider.isDead?.() ?? false)) {
+      const deadErr = provider.isDeadFromAuth?.()
+        ? new AuthError(
+            `${provider.name} is already marked dead from an auth error earlier this session.`,
+            401,
+            provider.name
+          )
+        : tagQuotaError(
+            new Error(
+              `${provider.name} is already marked dead (quota exhausted) earlier this session.`
+            )
+          )
+      ;(deadErr as PoolSourceTaggedError)[PROVIDER_POOL_SOURCE] = provider
+      throw deadErr
+    }
     try {
       return await provider.complete(req)
     } catch (err) {
