@@ -28,6 +28,16 @@ function escapeMarkdown(text: string): string {
   return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/`/g, '\\`').replace(/\n/g, ' ')
 }
 
+// LLM-provided prose (synthesis executiveSummary/crossCuttingObservations,
+// priority-fix rationale) goes straight into markdown headings/body text —
+// neutralise leading markdown structure markers so a stray "\n## ..." or
+// "```" can't inject rogue sections/fences into the report. Only
+// renderPriorityFixes's rationale used to go through this; executiveSummary
+// and crossCuttingObservations were inserted completely unescaped (rep-003).
+function proseSafe(s: string): string {
+  return s.replace(/^[ \t]*(#{1,6}[ \t])/gm, '\\$1').replace(/^[ \t]*(```)/gm, '\\$1')
+}
+
 function createMarkdownTable(
   headers: string[],
   rows: string[][],
@@ -80,12 +90,6 @@ function renderPriorityFixes(
 ): string {
   if (fixes.length === 0) return '*No priority fixes identified.*'
 
-  // LLM-provided text goes into headings/prose — collapse newlines in the
-  // title and neutralise leading markdown structure markers in the rationale
-  // so a stray "\n## ..." can't inject rogue sections into the report.
-  const proseSafe = (s: string): string =>
-    s.replace(/^[ \t]*(#{1,6}[ \t])/gm, '\\$1').replace(/^[ \t]*(```)/gm, '\\$1')
-
   return fixes
     .map((f) => {
       const files = f.affectedFiles.length > 0 ? f.affectedFiles.join(', ') : 'N/A'
@@ -102,7 +106,7 @@ ${proseSafe(f.rationale)}
 
 function renderObservations(observations: string[]): string {
   if (observations.length === 0) return '*No cross-cutting observations.*'
-  return observations.map((o) => `- ${o}`).join('\n')
+  return observations.map((o) => `- ${proseSafe(o)}`).join('\n')
 }
 
 function renderFindingsSummary(findings: ReporterContext['findings']): string {
@@ -216,8 +220,22 @@ export function buildMarkdownReport(ctx: ReporterContext): string {
 
   lines.push(`## Executive Summary`)
   lines.push('')
-  lines.push(ctx.synthesis.executiveSummary)
+  lines.push(proseSafe(ctx.synthesis.executiveSummary))
   lines.push('')
+
+  // Surface when findings came from a degraded/fallback provider, not the
+  // configured primary — mirrors terminal.ts's equivalent warning, which
+  // used to be the only reporter that surfaced this (rep-007).
+  const providersUsed = new Set<string>()
+  for (const f of ctx.findings) {
+    if (f.provider) providersUsed.add(f.provider)
+  }
+  if (providersUsed.size > 1) {
+    lines.push(
+      `> ⚠ Providers used: ${Array.from(providersUsed).join(', ')} (some findings from fallback)`
+    )
+    lines.push('')
+  }
 
   lines.push(`## Category Scores`)
   lines.push('')

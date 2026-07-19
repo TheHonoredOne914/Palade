@@ -31,7 +31,10 @@ export function getModeConfig(mode: ReviewMode): ModeConfig {
 }
 
 export function validateMode(raw: string): ReviewMode {
-  const valid: ReviewMode[] = ['standard', 'security', 'onboard', 'debt', 'ghost']
+  // Derived from MODES' own key set instead of a separately hand-typed
+  // literal array, so adding/removing a mode here can't drift out of sync
+  // with the actual MODES record (cli-004).
+  const valid = Object.keys(MODES) as ReviewMode[]
   if (!valid.includes(raw as ReviewMode)) {
     throw new Error(`Invalid mode '${raw}'. Valid modes: ${valid.join(', ')}`)
   }

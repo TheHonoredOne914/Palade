@@ -77,7 +77,11 @@ export async function resolveSymbol(
     }
 
     if (foundNode) {
-      const start = sourceFile.getLineAndCharacterOfPosition(foundNode.getStart())
+      // getStart(sourceFile, true) includes leading trivia (JSDoc/lead
+      // comments), matching chunker.ts's finishChunk() — plain getStart()
+      // skips straight to the first non-trivia token and silently dropped a
+      // resolved symbol's doc comment (ingest-002).
+      const start = sourceFile.getLineAndCharacterOfPosition(foundNode.getStart(sourceFile, true))
       const end = sourceFile.getLineAndCharacterOfPosition(foundNode.getEnd())
       startLine = start.line
       endLine = end.line

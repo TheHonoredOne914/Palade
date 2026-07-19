@@ -28,13 +28,19 @@ export function maskKey(key: string): string {
   return key.slice(0, 4) + '...' + key.slice(-4)
 }
 
-// Matches long alnum/-/_/. runs — the shape of most provider API keys. A
-// provider's raw HTTP error body (echoed verbatim into thrown Error messages
-// by every adapter, see providers/base.ts) could theoretically include the
-// submitted key back in the response text; redacting anything key-shaped
-// before a message hits stdout/logs is strictly safer than trusting that
-// never happens.
-const KEY_LIKE_PATTERN = /\b[A-Za-z0-9_.-]{20,}\b/g
+// Matches long alnum/-/_/./+//= runs — the shape of most provider API keys
+// AND base64-encoded tokens (which use +, /, and = padding — chars the old
+// class excluded, so a base64 token got split at those boundaries and each
+// fragment passed through unredacted (rep-008)). A provider's raw HTTP error
+// body (echoed verbatim into thrown Error messages by every adapter, see
+// providers/base.ts) could theoretically include the submitted key back in
+// the response text; redacting anything key-shaped before a message hits
+// stdout/logs is strictly safer than trusting that never happens. No
+// trailing \b: '=' padding (and other included chars) are non-word
+// characters, so a trailing \b would require a following word character —
+// wrongly refusing to match a key/token that ends the string or is followed
+// by whitespace/punctuation, which is the common case.
+const KEY_LIKE_PATTERN = /\b[A-Za-z0-9_.+/=-]{20,}/g
 
 /** Redacts key-shaped substrings from free-form log text using maskKey(). */
 export function sanitizeErrorMessage(text: string): string {

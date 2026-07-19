@@ -215,6 +215,17 @@ export function scoreManifestForReview(m: FileManifest): number {
   if (/type|interface|dto/.test(p) && !boundaryTypeFile) score -= 2
 
   score += Math.min(m.linesOfCode / 50, 5)
+
+  // The LLM triage prompt names churn and import-centrality as the top-2
+  // ranking signals, but this heuristic fallback (used when the LLM call
+  // fails/is skipped) ignored both entirely — a hot, heavily-churned file
+  // with no risky-sounding name would score the same as a barely-touched one
+  // (orch-001). Mirror the same two signals here, capped so no single one
+  // can dominate the name-based heuristics above.
+  score += Math.min((m.churnCount ?? 0) / 3, 8) // frequently-changed files
+  score += Math.min(m.importers?.length ?? 0, 6) // imported by many = central
+  score += Math.min((m.importCount ?? 0) / 3, 3) // large fan-out = more integration surface
+
   return score
 }
 

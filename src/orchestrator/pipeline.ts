@@ -4,13 +4,13 @@ import chalk from 'chalk'
 import type { AgentContext } from '../agents/base.js'
 import type { ScopeOptions, CodeChunk, FileManifest } from '../ingestion/types.js'
 import { walkProject } from '../ingestion/walker.js'
-import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../ingestion/chunker.js'
+import { chunkFiles, estimateTokens, MAX_TOKENS } from '../ingestion/chunker.js'
 import { buildKeywordIndex, getKeywordContext } from '../ingestion/keywordIndex.js'
 import { buildRetrievedContext } from '../ingestion/contextPacks.js'
 import { buildAnnotationSummary, parseFile } from '../ingestion/annotationParser.js'
 import { buildRepoContext, renderRepoContext } from '../ingestion/repoContext.js'
 import type { SwarmResult, SwarmOptions, ResolvedTarget } from './types.js'
-import { estimateTotalTokens } from './scheduler.js'
+import { estimateTotalTokens, splitChunkToLimit } from './scheduler.js'
 import { runSwarm } from './swarm.js'
 import { triageFiles } from './triage.js'
 import { estimateRunCost } from '../ingestion/estimator.js'
@@ -144,7 +144,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
       }
     }
 
-    chunks = await chunkFiles(manifests)
+    chunks = await chunkFiles(manifests, opts.swarmOptions?.hardChunkLimit ?? MAX_TOKENS)
 
     console.log(
       `[pipeline] Chunking complete: ${manifests.length} files → ${chunks.length} chunks (~${estimateTotalTokens(chunks).toLocaleString()} tokens)`
@@ -152,7 +152,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   }
 
   // Phase 11: Build annotation summary and apply ignores
-  const annotationSummary = buildAnnotationSummary(manifests, chunks)
+  const annotationSummary = buildAnnotationSummary(manifests)
 
   // Filter out ignored files
   const ignoredSet = new Set(annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, '')))
@@ -228,7 +228,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<SwarmResult> {
   const hardChunkLimit = opts.swarmOptions?.hardChunkLimit ?? MAX_TOKENS
   activeChunks = activeChunks.flatMap((chunk) => {
     if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > hardChunkLimit) {
-      return splitLargeChunk(chunk, hardChunkLimit)
+      return splitChunkToLimit(chunk, hardChunkLimit)
     }
     return [chunk]
   })

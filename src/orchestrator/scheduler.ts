@@ -135,42 +135,51 @@ export function estimateTotalTokens(chunks: CodeChunk[]): number {
   return chunks.reduce((sum, c) => sum + c.tokenCount, 0)
 }
 
+// Recursively split a single oversized chunk down to hardChunkLimit using
+// splitChunk's natural-break-point + overlap logic above (blank
+// line/closing-brace search near the midpoint, ~10% overlap between the two
+// halves), falling back to a hard character truncation if splitting hasn't
+// converged after 10 levels. Exported so other re-split call sites (e.g.
+// pipeline.ts's post-context-injection re-chunk pass) can reuse the same
+// overlap/break-point behavior scheduleBatches uses internally, instead of
+// falling back to chunker.ts's simpler fixed-line, no-break-point
+// splitLargeChunk (orch-004).
+export function splitChunkToLimit(chunk: CodeChunk, hardChunkLimit: number, depth = 0): CodeChunk[] {
+  if (depth > 10) {
+    // Depth cap: splitting hasn't converged below hardChunkLimit after 10
+    // levels (e.g. a single line whose contextPrefix alone is enormous).
+    // Hard-truncate instead of returning the chunk oversized — an emitted
+    // chunk over the limit gets truncated unpredictably at the provider
+    // level instead of here, where we can at least log it (orchestrator-002).
+    const truncated = hardTruncateChunk(chunk, hardChunkLimit)
+    console.warn(
+      chalk.yellow(
+        `⚠ scheduler: chunk ${chunk.id} still exceeded the ${hardChunkLimit}-token limit after ${depth} splits — hard-truncated from ${chunk.tokenCount} to ${truncated.tokenCount} tokens`
+      )
+    )
+    return [truncated]
+  }
+  // Gate on the ing-003 safety-margined budget, not the raw hardChunkLimit —
+  // estimateTokens' chars/4 approximation can understate a dense chunk's real
+  // token count, so a chunk that "fits" by the raw estimate could still
+  // overflow the provider's real hard limit once actually counted.
+  if (chunk.tokenCount <= hardSplitBudget(hardChunkLimit)) {
+    return [chunk]
+  }
+  const halves = splitChunk(chunk, hardChunkLimit)
+  return halves.flatMap((h) => splitChunkToLimit(h, hardChunkLimit, depth + 1))
+}
+
 export function scheduleBatches(
   chunks: CodeChunk[],
   softTokenLimit: number = SOFT_TOKEN_LIMIT,
   hardChunkLimit: number = HARD_CHUNK_LIMIT
 ): CodeChunk[][] {
   if (chunks.length === 0) return []
-  // Split oversized chunks recursively to ensure all pieces are under hardChunkLimit
-  function splitToLimit(chunk: CodeChunk, depth = 0): CodeChunk[] {
-    if (depth > 10) {
-      // Depth cap: splitting hasn't converged below hardChunkLimit after 10
-      // levels (e.g. a single line whose contextPrefix alone is enormous).
-      // Hard-truncate instead of returning the chunk oversized — an emitted
-      // chunk over the limit gets truncated unpredictably at the provider
-      // level instead of here, where we can at least log it (orchestrator-002).
-      const truncated = hardTruncateChunk(chunk, hardChunkLimit)
-      console.warn(
-        chalk.yellow(
-          `⚠ scheduler: chunk ${chunk.id} still exceeded the ${hardChunkLimit}-token limit after ${depth} splits — hard-truncated from ${chunk.tokenCount} to ${truncated.tokenCount} tokens`
-        )
-      )
-      return [truncated]
-    }
-    // Gate on the ing-003 safety-margined budget, not the raw hardChunkLimit
-    // — estimateTokens' chars/4 approximation can understate a dense chunk's
-    // real token count, so a chunk that "fits" by the raw estimate could
-    // still overflow the provider's real hard limit once actually counted.
-    if (chunk.tokenCount <= hardSplitBudget(hardChunkLimit)) {
-      return [chunk]
-    }
-    const halves = splitChunk(chunk, hardChunkLimit)
-    return halves.flatMap((h) => splitToLimit(h, depth + 1))
-  }
 
   const processedChunks: CodeChunk[] = []
   for (const chunk of chunks) {
-    processedChunks.push(...splitToLimit(chunk))
+    processedChunks.push(...splitChunkToLimit(chunk, hardChunkLimit))
   }
 
   // Real per-chunk token sum — this is what the bin-packing loop below

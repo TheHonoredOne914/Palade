@@ -1,3 +1,4 @@
+import chalk from 'chalk'
 import type { IAgent, ReviewMode, AgentName } from './base.js'
 import { PaladeConfigError } from '../errors/types.js'
 import { GHOST_MODE } from '../modes/ghost.js'
@@ -72,6 +73,19 @@ export function getAgentsForMode(
         : undefined
 
   if (effectiveOverrides && effectiveOverrides.length > 0) {
+    // agentOverrides (a mode's fixed agent list, e.g. ghost mode's
+    // ['deadCode']) takes the branch below and never consults agentCount at
+    // all — a configured agentCount silently has no effect for these modes,
+    // which used to be invisible. One-line notice so the user isn't left
+    // wondering why their configured agentCount didn't change anything
+    // (agents-007).
+    if (agentCount && agentCount > 0) {
+      console.log(
+        chalk.dim(
+          `  [agents] mode '${mode}' uses a fixed agent list (agentOverrides) — configured agentCount (${agentCount}) is ignored.`
+        )
+      )
+    }
     // De-dupe before resolving to agent instances — a repeated name in
     // agentOverrides (e.g. user config typo/duplication) used to push the
     // same agent instance into `agents` once per repetition, running it

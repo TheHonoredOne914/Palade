@@ -76,9 +76,23 @@ export interface IProvider {
 // every adapter. They're not exposed via config because tuning them per-run
 // would change retry timing underneath the router's own backoff/fallback
 // logic in unpredictable ways; see CLAUDE.md's "Performance Tuning Knobs".
-const MAX_RETRIES = 3
+// Exported (rather than threading a per-provider override through config, see
+// prov-004) so a caller that genuinely needs a different retry count can
+// still reference the shared default instead of hardcoding a copy of `3`.
+export const MAX_RETRIES = 3
 const BASE_DELAY_MS = 500
 const MAX_DELAY_MS = 8000
+
+// HTTP statuses fetchWithRetry treats as transient and worth retrying.
+// Extracted to a named constant (was an inline literal) so the retryable set
+// has one definition instead of being invisible to callers/tests, and widened
+// to include the other 5xx statuses that are conventionally transient
+// (Cloudflare's 520-524/529, and 507/509) alongside the original four — 501
+// (Not Implemented) and 505 (HTTP Version Not Supported) are deliberately
+// excluded since retrying those can never succeed (prov-003).
+export const RETRYABLE_STATUS: readonly number[] = [
+  500, 502, 503, 504, 507, 509, 520, 521, 522, 523, 524, 529,
+]
 
 // Single source of truth for the per-request deadline default, shared by
 // every adapter (groq/cerebras/nvidia/openrouter/opencode-zen/ollama) — used
@@ -216,7 +230,7 @@ export async function fetchWithRetry(
         await sleep(delayMs, externalSignal)
         continue
       }
-      if ([500, 502, 503, 504].includes(res.status) && attempt < retries) {
+      if (RETRYABLE_STATUS.includes(res.status) && attempt < retries) {
         // Same jitter as the 429 and network-error retry paths below — without
         // it, concurrent batches hitting the same outage all retry in lockstep
         // instead of spreading their retries out.

@@ -158,7 +158,12 @@ function getTopLevelSymbolName(node: ts.Node): string | undefined {
   return undefined
 }
 
-function chunkByAST(content: string, filePath: string, language: Language): CodeChunk[] {
+function chunkByAST(
+  content: string,
+  filePath: string,
+  language: Language,
+  maxTokens: number = MAX_TOKENS
+): CodeChunk[] {
   const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
   const chunks: CodeChunk[] = []
   let currentStartNode: ts.Node | null = null
@@ -177,7 +182,20 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
     const start = sourceFile.getLineAndCharacterOfPosition(startPos)
     const end = sourceFile.getLineAndCharacterOfPosition(currentEndNode.getEnd())
     const chunkContent = content.substring(startPos, currentEndNode.getEnd())
-    const symbolName = getTopLevelSymbolName(currentStartNode)
+    // A chunk can bundle several small top-level nodes together (see the
+    // MAX_TOKENS packing loop below) — using only currentStartNode's name
+    // silently dropped every other symbol in the bundle from symbolName,
+    // which keywordIndex.ts's getKeywordContext and label rely on for
+    // matching/display (ingest-005). CodeChunk.symbolName stays a plain
+    // string (changing it to an array would ripple through every consumer
+    // above), so bundle up to a handful of names into one comma-joined
+    // string as a minimal-risk improvement rather than a full array field.
+    const bundledNames = currentNodes
+      .map(getTopLevelSymbolName)
+      .filter((n): n is string => Boolean(n))
+    const uniqueBundledNames = Array.from(new Set(bundledNames))
+    const symbolName =
+      uniqueBundledNames.length > 1 ? uniqueBundledNames.slice(0, 5).join(', ') : bundledNames[0]
     const complexity = calculateComplexityForNodes(currentNodes)
     // Per-node breakdown so a finding can be attributed to the complexity of
     // the specific top-level node it falls inside, rather than this chunk's
@@ -215,11 +233,12 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
   ts.forEachChild(sourceFile, (node) => {
     const nodeTokens = estimateTokens(node.getText(sourceFile))
 
-    // Flush thresholds match MAX_TOKENS (the actual per-chunk cap downstream)
+    // Flush thresholds match maxTokens (the actual per-chunk cap downstream,
+    // configurable via chunkFiles' own maxTokens param — see ingest-010)
     // instead of a stale lower constant — the old 2000/3000 values predated
     // MAX_TOKENS being raised to 6000 and were silently doubling chunk count
     // (and every downstream batch/provider call) on TypeScript-heavy codebases.
-    if (nodeTokens > MAX_TOKENS) {
+    if (nodeTokens > maxTokens) {
       finishChunk()
       currentStartNode = node
       currentEndNode = node
@@ -228,7 +247,7 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
       return
     }
 
-    if (currentTokenCount + nodeTokens > MAX_TOKENS) {
+    if (currentTokenCount + nodeTokens > maxTokens) {
       finishChunk()
     }
 
@@ -240,7 +259,7 @@ function chunkByAST(content: string, filePath: string, language: Language): Code
 
   finishChunk()
 
-  return chunks.flatMap(splitLargeChunk)
+  return chunks.flatMap((c) => splitLargeChunk(c, maxTokens))
 }
 
 // Keywords after which a '/' is unambiguously a regex start even though the
@@ -296,7 +315,7 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
   while (startIdx < lines.length) {
     let depth = 0
     let currentIdx = startIdx
-    const maxLines = 300
+    const maxLines = CHUNK_LINES * 2
 
     // Scanner state, persists across lines within this chunk scan
     let inString: '"' | "'" | '`' | null = null
@@ -437,7 +456,10 @@ function chunkByBrackets(content: string, filePath: string, language: string): C
 
 const MAX_CONCURRENT_FILE_READS = 16
 
-async function chunkOneFile(manifest: FileManifest): Promise<CodeChunk[]> {
+async function chunkOneFile(
+  manifest: FileManifest,
+  maxTokens: number = MAX_TOKENS
+): Promise<CodeChunk[]> {
   let content: string
   try {
     content = await readFile(manifest.absolutePath, 'utf-8')
@@ -464,7 +486,7 @@ async function chunkOneFile(manifest: FileManifest): Promise<CodeChunk[]> {
   let chunks: CodeChunk[]
   if (isAstLanguage && !exceedsParseLimits) {
     try {
-      chunks = chunkByAST(content, manifest.path, manifest.language)
+      chunks = chunkByAST(content, manifest.path, manifest.language, maxTokens)
     } catch (err) {
       // chunkByAST is documented to fall back to line-based chunking on parse
       // failure, but that fallback only actually happens if we catch here —
@@ -473,7 +495,9 @@ async function chunkOneFile(manifest: FileManifest): Promise<CodeChunk[]> {
       console.warn(
         `[chunker] AST parsing failed for ${manifest.path} (${err instanceof Error ? err.message : String(err)}) — falling back to line-based chunking.`
       )
-      chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap(splitLargeChunk)
+      chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap((c) =>
+        splitLargeChunk(c, maxTokens)
+      )
     }
   } else {
     if (isAstLanguage && exceedsParseLimits) {
@@ -484,8 +508,10 @@ async function chunkOneFile(manifest: FileManifest): Promise<CodeChunk[]> {
       )
     }
     // chunkByBrackets caps blocks at 300 lines, but very long lines can still
-    // push a chunk past MAX_TOKENS — enforce the token cap explicitly.
-    chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap(splitLargeChunk)
+    // push a chunk past maxTokens — enforce the token cap explicitly.
+    chunks = chunkByBrackets(content, manifest.path, manifest.language).flatMap((c) =>
+      splitLargeChunk(c, maxTokens)
+    )
   }
 
   if (chunks.length > MAX_CHUNKS_PER_FILE) {
@@ -508,7 +534,14 @@ async function chunkOneFile(manifest: FileManifest): Promise<CodeChunk[]> {
   return chunks
 }
 
-export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]> {
+export async function chunkFiles(
+  manifests: FileManifest[],
+  // Defaults to the module constant, preserving current behavior for every
+  // existing caller — threaded through so a run-level hardChunkLimit
+  // (config.swarm.hardChunkLimit) can size chunks correctly from the start
+  // instead of only being enforced by a later re-split pass (ingest-010).
+  maxTokens: number = MAX_TOKENS
+): Promise<CodeChunk[]> {
   // Files were previously read and chunked one at a time (await inside a
   // for-of loop), fully serializing disk I/O across the whole project. A
   // bounded-concurrency map keeps output order stable (Promise.all resolves
@@ -516,7 +549,7 @@ export async function chunkFiles(manifests: FileManifest[]): Promise<CodeChunk[]
   // file reads/parses overlap.
   const limit = pLimit(MAX_CONCURRENT_FILE_READS)
   const perFileChunks = await Promise.all(
-    manifests.map((manifest) => limit(() => chunkOneFile(manifest)))
+    manifests.map((manifest) => limit(() => chunkOneFile(manifest, maxTokens)))
   )
   return perFileChunks.flat()
 }

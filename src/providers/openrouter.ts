@@ -32,6 +32,14 @@ function resolveDefaultReferer(): string {
 const DEFAULT_REFERER = resolveDefaultReferer()
 const DEFAULT_TITLE = 'Palade'
 
+// Exported (unlike the other adapters' module-level CONFIG object, since
+// this one is built inline per-instance in the constructor below to close
+// over referer/title) so config/models.test.ts can assert
+// config/models.ts's PROVIDER_BASE_URLS.openrouter entry actually matches
+// this adapter's real default instead of the two hand-duplicated literals
+// silently drifting apart (cli-006).
+export const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
+
 // Thin subclass of the shared OpenAI-compatible adapter (providers-003) —
 // OpenRouter's only quirk beyond the shared defaults is the extra
 // HTTP-Referer/X-Title attribution headers it recommends sending.
@@ -49,7 +57,7 @@ export class OpenRouterProvider extends OpenAICompatibleProvider {
       name: 'openrouter',
       label: 'OpenRouter',
       defaultModel: 'openrouter/free',
-      defaultBaseUrl: 'https://openrouter.ai/api/v1',
+      defaultBaseUrl: DEFAULT_BASE_URL,
       defaultMaxConcurrency: 8,
       defaultMaxTokens: 4096,
       extraHeaders: () => ({ 'HTTP-Referer': referer, 'X-Title': title }),

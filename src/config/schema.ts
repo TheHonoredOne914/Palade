@@ -36,17 +36,24 @@ const ProviderConfigSchema = z.object({
   referer: z.string().optional(),
   title: z.string().optional(),
 })
+  // Only the root schema was .strict() — a typo'd key nested inside a
+  // provider config (e.g. `apiKye`) used to parse silently instead of
+  // failing config load, leaving the user's actual intended key unset with
+  // no signal (cli-003).
+  .strict()
 
 export const PaladeConfigSchema = z
   .object({
-    providers: z.object({
-      groq: ProviderConfigSchema.optional(),
-      cerebras: ProviderConfigSchema.optional(),
-      nvidia: ProviderConfigSchema.optional(),
-      openrouter: ProviderConfigSchema.optional(),
-      'opencode-zen': ProviderConfigSchema.optional(),
-      ollama: ProviderConfigSchema.optional(),
-    }),
+    providers: z
+      .object({
+        groq: ProviderConfigSchema.optional(),
+        cerebras: ProviderConfigSchema.optional(),
+        nvidia: ProviderConfigSchema.optional(),
+        openrouter: ProviderConfigSchema.optional(),
+        'opencode-zen': ProviderConfigSchema.optional(),
+        ollama: ProviderConfigSchema.optional(),
+      })
+      .strict(),
     swarm: z
       .object({
         primary: ProviderNameSchema.default('opencode-zen'),
@@ -96,6 +103,7 @@ export const PaladeConfigSchema = z
         // first), unlike every other swarm cap previously not config-backed.
         decisionsRetentionLimit: z.number().int().min(1).default(100),
       })
+      .strict()
       .default(() => ({ ...(DEFAULT_CONFIG.swarm as Record<string, unknown>) })),
     output: z
       .object({
@@ -104,6 +112,7 @@ export const PaladeConfigSchema = z
         openBrowser: z.boolean().default(true),
         port: z.number().int().default(4242),
       })
+      .strict()
       .default({}),
     score: z
       .object({
@@ -156,6 +165,7 @@ export const PaladeConfigSchema = z
           })
           .default({}),
       })
+      .strict()
       .default({}),
   })
   .strict()

@@ -8,7 +8,7 @@ import {
   WorkspaceTooLargeError,
   CliExitError,
 } from './types.js'
-import { sanitizeForLog } from '../utils/sanitize.js'
+import { sanitizeForLog, sanitizeErrorMessage } from '../utils/sanitize.js'
 import { AllProvidersExhaustedError } from '../providers/router.js'
 
 export function formatErrorMessages(err: unknown): string[] {
@@ -74,7 +74,11 @@ export function formatErrorMessages(err: unknown): string[] {
 
   if (err instanceof Error) {
     const debug = process.env.DEBUG === 'palade'
-    const lines = [chalk.red(`Unexpected error: ${err.message}`)]
+    // Every other branch above surfaces a controlled, known-safe message;
+    // this generic fallback prints whatever the underlying error happened to
+    // say, which — unlike the extra-fields sanitizeForLog() call just below
+    // (DEBUG-only) — ran completely unsanitized regardless of DEBUG (rep-010).
+    const lines = [chalk.red(`Unexpected error: ${sanitizeErrorMessage(err.message)}`)]
     if (debug) {
       lines.push(chalk.dim(err.stack ?? ''))
       const {

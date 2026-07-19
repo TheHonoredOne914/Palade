@@ -158,7 +158,7 @@ export async function watchCommand(opts: {
         return
       }
 
-      const chunks = await chunkFiles(manifests)
+      const chunks = await chunkFiles(manifests, config.swarm.hardChunkLimit)
       if (chunks.length === 0) {
         return
       }

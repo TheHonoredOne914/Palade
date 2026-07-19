@@ -11,6 +11,7 @@ import type { Severity } from '../agents/base.js'
 import { CATEGORY_LABELS } from '../scorer/types.js'
 import { getScoreColor as getScoreColorTier } from '../scorer/badge.js'
 import { groupBySeverity } from '../orchestrator/merger.js'
+import { scoreGrade } from '../ui/layout.js'
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
   critical: 'severity-critical',
@@ -357,10 +358,25 @@ function replacePlaceholders(
     SCORE: String(data.score),
     SCORE_COLOR: data.scoreColor,
     SCORE_GRADE_CLASS: getScoreGradeClass(data.score),
+    // The score circle only ever rendered its CSS grade class (a color), not
+    // the actual letter grade text — a viewer had no way to see "B+" etc.
+    // without cross-referencing the color against the CSS legend (rep-006).
+    SCORE_GRADE: escapeHtml(scoreGrade(data.score)),
     DELTA: String(data.delta),
     DELTA_TEXT: data.deltaText,
     DELTA_CLASS: data.delta > 0 ? 'positive' : data.delta < 0 ? 'negative' : 'neutral',
     EXECUTIVE_SUMMARY: data.executiveSummary,
+    // Surface when findings came from a degraded/fallback provider, not the
+    // configured primary — mirrors terminal.ts's equivalent warning, which
+    // used to be the only reporter that surfaced this (rep-007).
+    PROVIDER_FALLBACK_NOTE: (() => {
+      const providersUsed = new Set<string>()
+      for (const f of ctx.findings) {
+        if (f.provider) providersUsed.add(f.provider)
+      }
+      if (providersUsed.size <= 1) return ''
+      return `<div class="provider-fallback-note" style="margin-top:0.75rem;color:var(--accent-yellow,#fbbf24);">⚠ Providers used: ${escapeHtml(Array.from(providersUsed).join(', '))} (some findings from fallback)</div>`
+    })(),
     CATEGORY_SCORES: data.categoryScoresHtml,
     PRIORITY_FIXES: data.priorityFixesHtml,
     OBSERVATIONS: data.observationsHtml,
@@ -395,6 +411,10 @@ function replacePlaceholders(
 let htmlServer: Server | null = null
 let serverTimeout: ReturnType<typeof setTimeout> | null = null
 
+// How long the local report server stays up before auto-closing. Extracted
+// from an inline `10 * 60 * 1000` magic number (rep-002).
+export const REPORT_SERVER_TTL_MS = 10 * 60 * 1000
+
 export function writeHtmlReport(ctx: ReporterContext, outputPath: string): ReporterOutput {
   const template = loadTemplate()
   const data = buildTemplateData(ctx)
@@ -416,7 +436,12 @@ export function writeHtmlReport(ctx: ReporterContext, outputPath: string): Repor
 
 export function startLocalServer(
   htmlPath: string,
-  port: number = 4242,
+  // No default here — config/schema.ts's output.port already owns the
+  // canonical default (4242), and every real caller (review.ts/diff.ts)
+  // already threads config.output.port through. A second hardcoded default
+  // here was an unreachable duplicate that could silently drift from the
+  // schema's value (rep-001).
+  port: number,
   options: { openBrowser?: boolean } = {}
 ): void {
   if (htmlServer) {
@@ -465,13 +490,10 @@ export function startLocalServer(
     }
   })
 
-  serverTimeout = setTimeout(
-    () => {
-      stopLocalServer()
-      console.log('Palade report server auto-closed after 10 minutes')
-    },
-    10 * 60 * 1000
-  )
+  serverTimeout = setTimeout(() => {
+    stopLocalServer()
+    console.log('Palade report server auto-closed after 10 minutes')
+  }, REPORT_SERVER_TTL_MS)
   serverTimeout.unref?.()
 }
 

@@ -10,6 +10,10 @@ function toPosix(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\.?\/+/, '')
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function withoutExtension(path: string): string {
   return path.replace(
     /\.(tsx?|jsx?|mts|cts|mjs|cjs|py|go|rs|java|cs|cpp|cc|c|h|hpp|rb|php|swift|kt|dart)$/,
@@ -65,7 +69,7 @@ function scoreRelatedChunk(
   subjectImports: string[],
   subjectTerms: Set<string>,
   subjectTestBases: string[],
-  subjectBase?: string
+  subjectBaseRe?: RegExp
 ): number {
   if (candidate.id === subject.id) return 0
 
@@ -81,7 +85,11 @@ function scoreRelatedChunk(
     if (candidateBase === testBase) score += 8
   }
 
-  if (subjectBase && candidate.content.includes(subjectBase)) score += 4
+  // Word-boundary match instead of a plain substring — a bare `.includes()`
+  // credited unrelated candidates whenever the subject's basename happened to
+  // appear inside a longer identifier/word (e.g. subject "user" matching any
+  // candidate mentioning "username" or "userService") (ingest-011).
+  if (subjectBaseRe && subjectBaseRe.test(candidate.content)) score += 4
 
   if (subjectTerms.size > 0) {
     const candidateTerms = getIdentifierTerms(candidate)
@@ -101,6 +109,7 @@ export function buildRetrievedContext(subject: CodeChunk, allChunks: CodeChunk[]
   const subjectTerms = getIdentifierTerms(subject)
   const subjectTestBases = expectedTestBases(subject.filePath)
   const subjectBase = withoutExtension(toPosix(subject.filePath)).split('/').pop()
+  const subjectBaseRe = subjectBase ? new RegExp(`\\b${escapeRegex(subjectBase)}\\b`) : undefined
 
   const related = allChunks
     .map((chunk) => ({
@@ -111,7 +120,7 @@ export function buildRetrievedContext(subject: CodeChunk, allChunks: CodeChunk[]
         subjectImports,
         subjectTerms,
         subjectTestBases,
-        subjectBase
+        subjectBaseRe
       ),
     }))
     .filter((entry) => entry.score >= 4)

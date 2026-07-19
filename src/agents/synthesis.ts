@@ -1,6 +1,6 @@
 import type { IProvider } from '../providers/base.js'
 import { getProvider } from '../providers/router.js'
-import type { AgentContext, AgentFinding, Severity } from './base.js'
+import { computeMaxTokens, type AgentContext, type AgentFinding, type Severity } from './base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import { penaltyFor } from '../scorer/calculator.js'
 
@@ -299,9 +299,12 @@ export async function synthesize(
     const droppedFindings = sorted.filter((f) => !cappedSet.has(f))
 
     // Scale the output budget with the finding cap so raising
-    // maxSynthesisFindings doesn't risk truncated JSON — same pattern as
-    // combined.ts's per-domain scaling (Math.max(8192, domains.length * 1500)).
-    const maxTokens = Math.max(4096, maxSynthesisFindings * 150)
+    // maxSynthesisFindings doesn't risk truncated JSON — reuses base.ts's
+    // shared computeMaxTokens budget helper (same one combined.ts uses for
+    // its own per-domain scaling) instead of a separately hand-rolled
+    // formula, parameterized with this call's own per-item cost so the
+    // numeric result is unchanged (agents-003).
+    const maxTokens = computeMaxTokens(maxSynthesisFindings, 0, { perItemCost: 150 })
 
     let droppedSummary = ''
     if (droppedFindings.length > 0) {

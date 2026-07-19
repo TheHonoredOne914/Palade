@@ -37,7 +37,7 @@ export async function settingsCommand(opts: SettingsOptions): Promise<void> {
   }
 
   if (opts.list) {
-    await showCurrentConfig(projectRoot)
+    await showCurrentConfig()
     return
   }
 
@@ -46,7 +46,7 @@ export async function settingsCommand(opts: SettingsOptions): Promise<void> {
     return
   }
 
-  await showCurrentConfig(projectRoot)
+  await showCurrentConfig()
 }
 
 async function interactiveSettings(projectRoot: string): Promise<void> {
@@ -63,7 +63,7 @@ async function interactiveSettings(projectRoot: string): Promise<void> {
     throw new CliExitError(1)
   }
 
-  await showCurrentConfig(projectRoot)
+  await showCurrentConfig()
 
   console.log()
   const wantsApi = await askConfirm('Do you want to configure an API key for a provider?', true)
@@ -86,7 +86,11 @@ async function interactiveSettings(projectRoot: string): Promise<void> {
   console.log(theme.success(`\n  ✓ Saved ${envVar}\n`))
 }
 
-async function showCurrentConfig(projectRoot: string): Promise<void> {
+// projectRoot dropped (was unused) — loadConfig() below always reads from
+// process.cwd() internally and has no projectRoot parameter to thread it
+// into, so the argument was silently ignored regardless of what callers
+// passed (cli-005).
+async function showCurrentConfig(): Promise<void> {
   console.log()
   console.log(theme.bold('  Palade Settings'))
   console.log(theme.dim('  ─────────────────────────────────'))

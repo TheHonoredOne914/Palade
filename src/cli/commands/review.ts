@@ -21,8 +21,8 @@ import type { ScopeOptions } from '../../ingestion/types.js'
 import type { AgentName } from '../../agents/base.js'
 import type { ResolvedTarget, SwarmResult } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
-import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
-import { detectLanguages } from '../../ingestion/walker.js'
+import { CliExitError, ReviewCancelledError, TargetNotFoundError } from '../../errors/types.js'
+import { detectLanguages, detectLanguage } from '../../ingestion/walker.js'
 import { ECONOMY_SOFT_TOKEN_CAP, ECONOMY_HARD_CHUNK_CAP } from '../../orchestrator/scheduler.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync, statSync } from 'node:fs'
@@ -177,7 +177,11 @@ export async function reviewCommand(
             endLine: lineCount,
             content,
             tokenCount: Math.ceil(content.length / 4),
-            language: chunk.language,
+            // The dependency file is very often a different language than
+            // the origin symbol's chunk (e.g. a TS file importing a .py
+            // helper, or vice versa) — tag it with its own detected
+            // language instead of blindly reusing chunk.language (ingest-003).
+            language: detectLanguage(dep),
           })
         } catch {
           // unreadable dependency — skip
@@ -262,12 +266,13 @@ export async function reviewCommand(
   if (opts.target) {
     const match = allTargets.find((t) => t.name === opts.target)
     if (!match) {
-      console.error(
-        chalk.red(
-          `Target "${opts.target}" not found. Available: ${allTargets.map((t) => t.name).join(', ') || '(none)'}`
-        )
+      // TargetNotFoundError previously existed only as a defined class with
+      // no throw site — this hand-rolled console.error + generic CliExitError
+      // duplicated its message/behavior instead of using it (rep-012).
+      throw new TargetNotFoundError(
+        opts.target,
+        allTargets.map((t) => t.name)
       )
-      throw new CliExitError(1)
     }
     resolvedTarget = {
       definition: match,

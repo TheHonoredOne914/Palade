@@ -144,8 +144,15 @@ export const SEVERITY_PENALTY: Record<Severity, number> = {
 // starves the other. Single parameterized formula (agents-003) so
 // combined.ts no longer maintains its own hand-copied variant of this same
 // math that could drift out of sync.
-export function computeMaxTokens(chunkCount: number, domainCount = 0): number {
-  return Math.max(4096, chunkCount * 1000 + domainCount * 300)
+export function computeMaxTokens(
+  chunkCount: number,
+  domainCount = 0,
+  opts: { floor?: number; perItemCost?: number; perExtraCost?: number } = {}
+): number {
+  const floor = opts.floor ?? 4096
+  const perItemCost = opts.perItemCost ?? 1000
+  const perExtraCost = opts.perExtraCost ?? 300
+  return Math.max(floor, chunkCount * perItemCost + domainCount * perExtraCost)
 }
 
 export function buildChunkContext(chunks: CodeChunk[]): string {
@@ -533,7 +540,14 @@ export async function verifyCriticalHighFindings(
   // violated rule, has no way to confirm it. Mirror the same spec/
   // constitution block format buildSystemPrompt uses so the verifier has the
   // same information the original finding-generating call had (agents-002).
+  // Same reasoning extends to context.repoContext (cross-file/dependency
+  // context injected into the original finding-generating call, see
+  // buildSystemPrompt's `if (context.repoContext)` block above) — a finding
+  // whose only justification is something in another file (e.g. "this
+  // handler is reachable from an unauthenticated route defined elsewhere")
+  // was unverifiable and got silently dropped without it (agents-001).
   const specConstitutionBlock =
+    (context?.repoContext ? `\n\n${context.repoContext}` : '') +
     (context?.spec
       ? `\n\n=== BUSINESS LOGIC SPECIFICATION ===\n${context.spec}\n====================================\n\nCRITICAL: Cross-reference the code against the business logic specification above to ensure it is implemented correctly.`
       : '') +

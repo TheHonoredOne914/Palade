@@ -39,6 +39,7 @@
     "dev": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "test": "vitest run",
+    "benchmark": "tsx src/benchmark/run.ts",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",

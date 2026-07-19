@@ -43,6 +43,15 @@ export async function askConfirm(query: string, defaultYes = true): Promise<bool
 }
 
 export async function askList(query: string, choices: string[]): Promise<string> {
+  // An empty choices array would make every `return choices[0]` fallback
+  // below (the TUI guard, and the stdin-closed case further down) silently
+  // return `undefined` typed as `string` — fail loudly instead so a caller
+  // bug (asking the user to pick from a list that was never populated)
+  // surfaces immediately rather than propagating an undefined "selection"
+  // (rep-011).
+  if (choices.length === 0) {
+    throw new Error('askList called with an empty choices array')
+  }
   // Intentional defense-in-depth (uicli-007) — see askQuestion's guard above.
   if (process.env.PALADE_TUI) {
     console.warn('[prompt] Readline blocked under TUI')

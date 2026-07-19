@@ -6,6 +6,14 @@ import { PaladeConfigError } from '../../errors/types.js'
 
 const AGENTS_FILE = 'palade.agents.ts'
 
+// Monotonic counter for the cache-busting import query param below — Date.now()
+// has only millisecond resolution, so two loadCustomAgents() calls within the
+// same millisecond (e.g. review + watch re-triggering back to back) would
+// produce the identical `?t=` value and Node's ESM loader could serve the
+// stale cached module for the second call instead of re-reading the file
+// (agents-006).
+let importCacheBustCounter = 0
+
 export async function loadCustomAgents(projectRoot: string): Promise<CustomAgentDefinition[]> {
   const filePath = resolve(projectRoot, AGENTS_FILE)
 
@@ -15,7 +23,7 @@ export async function loadCustomAgents(projectRoot: string): Promise<CustomAgent
 
   let raw: unknown
   try {
-    const fileUrl = pathToFileURL(filePath).href + `?t=${Date.now()}`
+    const fileUrl = pathToFileURL(filePath).href + `?t=${Date.now()}-${importCacheBustCounter++}`
     const mod = await import(fileUrl)
     raw = mod.default ?? mod
   } catch (e) {

@@ -142,4 +142,24 @@ export interface SwarmOptions {
   nearMatchSameAgentThreshold?: number
   /** Title-similarity threshold for near-match dedup between findings from different agents. Defaults to 0.7. */
   nearMatchCrossAgentThreshold?: number
+  /**
+   * Economy-mode soft token cap (scheduler.ts's ECONOMY_SOFT_TOKEN_CAP),
+   * tightening softTokenLimit while economy mode's CombinedAnalyzer is in
+   * use. Defaults to the current hardcoded 6_000 (orch-003).
+   */
+  economySoftTokenCap?: number
+  /**
+   * Economy-mode hard chunk cap (scheduler.ts's ECONOMY_HARD_CHUNK_CAP),
+   * tightening hardChunkLimit while economy mode's CombinedAnalyzer is in
+   * use. Defaults to the current hardcoded 3_000 (orch-003).
+   */
+  economyHardChunkCap?: number
+  /**
+   * Optional deadline (ms) for the ENTIRE swarm phase (all agents/batches),
+   * distinct from timeoutMs (which caps a single batch call). Undefined by
+   * default — disabled, opt-in only, so existing runs are unaffected. When
+   * set and exceeded, runSwarm aborts in-flight work and throws
+   * SwarmTimeoutError with however many agents had finished (rep-012).
+   */
+  wholeRunTimeoutMs?: number
 }

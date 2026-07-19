@@ -27,9 +27,16 @@ export function getKeywordContext(
   maxResults = 3,
   maxTokensPerResult = 250
 ): string {
-  if (!chunk.symbolName) return ''
+  // Fallback chunks (chunkByBrackets on non-TS/JS or oversized files) never
+  // get a symbolName — bailing out here meant those chunks got zero keyword
+  // context. Fall back to sampling the chunk's own content/filename as the
+  // search basis instead of requiring a symbolName (ingest-001); the
+  // searchTerms.length===0 check below still short-circuits genuinely empty
+  // chunks the same way the old guard did.
+  if (!chunk.symbolName && !chunk.content) return ''
 
-  const searchString = `${chunk.symbolName || ''} ${chunk.content.substring(0, 200)}`.toLowerCase()
+  const searchString =
+    `${chunk.symbolName || chunk.filePath} ${chunk.content.substring(0, 200)}`.toLowerCase()
   // Extract words longer than 3 characters to use as search terms
   let searchTerms = Array.from(new Set(searchString.match(/\b[a-z]{4,}\b/g) || []))
 

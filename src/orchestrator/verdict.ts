@@ -124,7 +124,15 @@ function getValence(text: string): ValenceResult {
 // conflicts built from such a near-tie as low confidence.
 const NEAR_TIE_MARGIN = 1
 
-export function detectConflicts(findings: AgentFinding[]): Conflict[] {
+export interface DetectConflictsOptions {
+  /** Line-proximity window passed through to merger.ts's linesAreNear; defaults to its own NEAR_MATCH_WINDOW_LINES (60). */
+  windowLines?: number
+}
+
+export function detectConflicts(
+  findings: AgentFinding[],
+  options: DetectConflictsOptions = {}
+): Conflict[] {
   const conflicts: Conflict[] = []
   const grouped = new Map<string, AgentFinding[]>()
 
@@ -152,7 +160,7 @@ export function detectConflicts(findings: AgentFinding[]): Conflict[] {
         // predicate: isNearMatch also gates on title similarity, which would
         // wrongly suppress conflicts here — opposing recommendations (the
         // whole point of a conflict) routinely have dissimilar titles.
-        if (!linesAreNear(a, b)) continue
+        if (!linesAreNear(a, b, options.windowLines)) continue
 
         const valA = getValence(a.title + ' ' + a.description)
         const valB = getValence(b.title + ' ' + b.description)

@@ -1,7 +1,7 @@
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { ReporterContext, ReporterOutput } from './types.js'
-import type { Severity } from '../agents/base.js'
+import type { AgentName, Severity } from '../agents/base.js'
 
 interface AiConsumableBug {
   id: string
@@ -19,6 +19,10 @@ interface AiConsumableArchitectureIssue {
   description: string
   affectedFiles: string[]
   severity: Severity
+  /** Which agents independently flagged this same cross-cutting issue. */
+  agents: AgentName[]
+  /** How many files/areas this issue's blast radius spans. */
+  blastRadius: number
 }
 
 interface AiConsumableReport {
@@ -47,6 +51,11 @@ export function buildJsonReport(ctx: ReporterContext): AiConsumableReport {
       description: f.description,
       affectedFiles: f.filePaths,
       severity: f.severity,
+      // Previously dropped — a consumer of the JSON report had no way to see
+      // which agents corroborated a cross-cutting issue or how far it spread
+      // (rep-004).
+      agents: f.agents,
+      blastRadius: f.blastRadius,
     })),
   }
 }

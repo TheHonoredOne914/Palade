@@ -66,17 +66,30 @@ export function applyComplexityMultiplier(
 /** Per-severity penalty weights, overridable via `config.score.severityWeights`. */
 export type SeverityWeights = Record<Severity, number>
 
-/** Base per-conflict penalty weights, overridable via `config.score.crossAgentPenalty`. */
+/**
+ * Base per-conflict penalty weights, overridable via `config.score.crossAgentPenalty`.
+ *
+ * Deliberately diverges from SeverityWeights/SEVERITY_PENALTY: low/info are
+ * explicit 0-weight entries here (never omitted), not merely "falls through
+ * to no case matched" — a cross-agent conflict on a low/info-severity
+ * finding intentionally contributes zero penalty (the two-agents-agree
+ * signal only matters once severity clears medium), unlike per-finding
+ * SEVERITY_PENALTY, which gives low a small nonzero weight (0.5) (scorer-005).
+ */
 export interface CrossAgentPenaltyWeights {
   critical: number
   high: number
   medium: number
+  low: number
+  info: number
 }
 
 export const DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS: CrossAgentPenaltyWeights = {
   critical: 15,
   high: 8,
   medium: 4,
+  low: 0,
+  info: 0,
 }
 
 /**
@@ -99,6 +112,18 @@ export function penaltyFor(
   return Number.isFinite(f.scorePenalty) ? (f.scorePenalty as number) : severityWeights[f.severity]
 }
 
+// Verdict findings (verdict.ts arbitration decisions injected as a new
+// finding, agentName set to one of the two conflicting agents — often
+// 'architecture' — severity 'info', tags including 'architectural-decision'/
+// 'arbitration-verdict') are synthetic bookkeeping, not a real issue found IN
+// that category's domain. Counting them in a category's findingCount
+// inflated it for a category that merely happened to be on one side of an
+// arbitrated conflict (scorer-007).
+function isVerdictFinding(f: AgentFinding): boolean {
+  const tags = f.tags ?? []
+  return tags.includes('architectural-decision') || tags.includes('arbitration-verdict')
+}
+
 export function countBySeverity(
   findings: AgentFinding[],
   agentName: string
@@ -108,7 +133,7 @@ export function countBySeverity(
   let high = 0
 
   for (const f of findings) {
-    if (f.agentName === agentName) {
+    if (f.agentName === agentName && !isVerdictFinding(f)) {
       total++
       if (f.severity === 'critical') critical++
       if (f.severity === 'high') high++
@@ -130,7 +155,7 @@ export function calculateCategoryScore(
 
   let penalty = 0
   for (const f of findings) {
-    if (f.agentName === agentName) {
+    if (f.agentName === agentName && !isVerdictFinding(f)) {
       let fPenalty = penaltyFor(f, severityWeights)
       if (agentName === MAINTAINABILITY_AGENT && typeof f.complexity === 'number') {
         fPenalty = applyComplexityMultiplier(f.complexity, fPenalty, complexityPenalties)
@@ -176,10 +201,7 @@ export function calculateCrossAgentPenalty(
 ): number {
   let penalty = 0
   for (const cf of crossFindings) {
-    let base = 0
-    if (cf.severity === 'critical') base = weights.critical
-    else if (cf.severity === 'high') base = weights.high
-    else if (cf.severity === 'medium') base = weights.medium
+    const base = weights[cf.severity]
     // Scale by blast radius (files/scope affected) so a conflict touching many
     // files scores worse than one touching a single file, with diminishing
     // returns via log2 so a huge blast radius doesn't blow up the score.
@@ -194,6 +216,29 @@ export interface ScoreWeightsConfig {
   crossAgentPenalty?: Partial<CrossAgentPenaltyWeights>
   complexityPenalties?: Partial<ComplexityPenalties>
   penaltyCaps?: Partial<PenaltyCaps>
+}
+
+// Merges a partial numeric-override object over its defaults, keeping the
+// default for any key whose override is not a finite number — mirrors
+// penaltyFor's Number.isFinite guard (line ~99) so a misconfigured
+// config.score.* override (NaN, Infinity, or a non-numeric value that
+// slipped past schema validation) can't poison every downstream arithmetic
+// sum into NaN (scorer-002). Generic over any flat Record<string, number>
+// shape, since severityWeights/crossAgentPenalty/complexityPenalties/
+// penaltyCaps are all shaped that way.
+function sanitizeNumericOverrides<T extends object>(
+  defaults: T,
+  overrides: Partial<T> | undefined
+): T {
+  if (!overrides) return { ...defaults }
+  const result: T = { ...defaults }
+  for (const key of Object.keys(overrides) as (keyof T)[]) {
+    const value = overrides[key] as unknown
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      result[key] = value as T[typeof key]
+    }
+  }
+  return result
 }
 
 export function calculateScore(
@@ -211,22 +256,22 @@ export function calculateScore(
    */
   executedCategories?: ScoreCategory[]
 ): ScoreResult {
-  const severityWeights: SeverityWeights = {
-    ...SEVERITY_PENALTY,
-    ...scoreConfig?.severityWeights,
-  }
-  const crossAgentWeights: CrossAgentPenaltyWeights = {
-    ...DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
-    ...scoreConfig?.crossAgentPenalty,
-  }
-  const complexityPenalties: ComplexityPenalties = {
-    ...DEFAULT_COMPLEXITY_PENALTIES,
-    ...scoreConfig?.complexityPenalties,
-  }
-  const penaltyCaps: PenaltyCaps = {
-    ...DEFAULT_PENALTY_CAPS,
-    ...scoreConfig?.penaltyCaps,
-  }
+  const severityWeights: SeverityWeights = sanitizeNumericOverrides(
+    SEVERITY_PENALTY,
+    scoreConfig?.severityWeights
+  )
+  const crossAgentWeights: CrossAgentPenaltyWeights = sanitizeNumericOverrides(
+    DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
+    scoreConfig?.crossAgentPenalty
+  )
+  const complexityPenalties: ComplexityPenalties = sanitizeNumericOverrides(
+    DEFAULT_COMPLEXITY_PENALTIES,
+    scoreConfig?.complexityPenalties
+  )
+  const penaltyCaps: PenaltyCaps = sanitizeNumericOverrides(
+    DEFAULT_PENALTY_CAPS,
+    scoreConfig?.penaltyCaps
+  )
 
   const allBaseCategories: ScoreCategory[] = [
     'security',
@@ -298,12 +343,20 @@ export function calculateScore(
     categoryScores.length === 0
       ? 100
       : categoryScores.reduce((sum, c) => sum + c.score, 0) / categoryScores.length
-  // Blend: 60% average category score, 40% penalty-based score
-  const penaltyScore = Math.max(
+  // Blend: 60% average category score, 40% penalty-based score.
+  //
+  // penaltyScore is intentionally NOT floored at TOTAL_SCORE_FLOOR here —
+  // avgCategoryScore is itself bounded below by CATEGORY_SCORE_FLOOR (10) per
+  // category once averaged, so pre-flooring penaltyScore at 5 made
+  // TOTAL_SCORE_FLOOR unreachable: total = avg*0.6 + penaltyScore*0.4 could
+  // never go below 10*0.6 + 5*0.4 = 8, regardless of how bad totalPenalty
+  // got. Flooring only the final blended total lets a genuinely catastrophic
+  // penalty actually reach TOTAL_SCORE_FLOOR (scorer-001).
+  const penaltyScore = Math.round(100 - Math.min(totalPenalty, penaltyCaps.totalPenaltyCap))
+  const total = Math.max(
     TOTAL_SCORE_FLOOR,
-    Math.round(100 - Math.min(totalPenalty, penaltyCaps.totalPenaltyCap))
+    Math.round(avgCategoryScore * 0.6 + penaltyScore * 0.4)
   )
-  const total = Math.round(avgCategoryScore * 0.6 + penaltyScore * 0.4)
 
   const breakdown: ScoreBreakdown = {
     total,

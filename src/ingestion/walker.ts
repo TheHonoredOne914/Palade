@@ -43,7 +43,7 @@ const EXT_MAP: Record<string, Language> = {
   '.dart': 'dart',
 }
 
-function detectLanguage(filePath: string): Language {
+export function detectLanguage(filePath: string): Language {
   const ext = extname(filePath)
   return EXT_MAP[ext] ?? 'unknown'
 }
@@ -112,11 +112,34 @@ function matchesGlobs(filePath: string, globs: string[]): boolean {
   return false
 }
 
+// Whether `relPath` (a directory) is worth descending into given a set of
+// scope prefixes (scope.dirs + scope.targetPaths): either it IS inside one of
+// them, or it's an ANCESTOR of one (so we must keep walking down to reach
+// it) — e.g. scope "src/agents/specialist" means we still need to enter
+// "src" and "src/agents" first.
+function isDirWithinOrAboveScope(relPath: string, scopePrefixes: string[]): boolean {
+  return scopePrefixes.some(
+    (p) => relPath === p || relPath.startsWith(p + '/') || p.startsWith(relPath + '/')
+  )
+}
+
+// Whether a FILE at `relPath` falls inside one of the scope prefixes (no
+// "ancestor" case — files are leaves, not something to descend further into).
+function isFileWithinScope(relPath: string, scopePrefixes: string[]): boolean {
+  return scopePrefixes.some((p) => relPath === p || relPath.startsWith(p + '/'))
+}
+
 async function walkDir(
   dir: string,
   ig: Ignore,
   projectRoot: string,
-  state: { visitedDirs: Set<string>; filesScanned: number }
+  state: { visitedDirs: Set<string>; filesScanned: number },
+  // scope.dirs + scope.targetPaths, when the caller knows the review is
+  // scoped to specific subtrees — lets us skip walking (and counting toward
+  // the 20000-file cap) directories the review will just filter out
+  // afterward anyway (ingest-004). Undefined/empty means "walk everything",
+  // same as before.
+  scopePrefixes?: string[]
 ): Promise<FileManifest[]> {
   const results: FileManifest[] = []
 
@@ -146,7 +169,14 @@ async function walkDir(
     if (ig.ignores(relPath)) continue
 
     if (entry.isDirectory()) {
-      const subResults = await walkDir(fullPath, ig, projectRoot, state)
+      if (
+        scopePrefixes &&
+        scopePrefixes.length > 0 &&
+        !isDirWithinOrAboveScope(relPath, scopePrefixes)
+      ) {
+        continue
+      }
+      const subResults = await walkDir(fullPath, ig, projectRoot, state, scopePrefixes)
       results.push(...subResults)
       continue
     }
@@ -155,6 +185,14 @@ async function walkDir(
     // symlinks — entry.isFile() is false for those, and we never want to
     // follow a symlinked file into a different location than its target logic.
     if (!entry.isFile()) continue
+
+    if (
+      scopePrefixes &&
+      scopePrefixes.length > 0 &&
+      !isFileWithinScope(relPath, scopePrefixes)
+    ) {
+      continue
+    }
 
     const language = detectLanguage(fullPath)
     if (language === 'unknown') continue
@@ -278,9 +316,21 @@ export async function walkProject(
 ): Promise<FileManifest[]> {
   const ig = await buildIgnoreFilter(projectRoot)
 
-  // 2. Start walk
+  // 2. Start walk — narrow scopes (targeted `palade review <dir>` runs) skip
+  // out-of-scope subtrees entirely instead of walking the whole project and
+  // filtering after, so an unrelated huge subtree (e.g. a vendored folder
+  // outside .paladeignore) can't trip the 20000-file cap on a narrow review
+  // (ingest-004). scope.files/globs aren't prefix-shaped, so they still only
+  // filter after the walk below.
+  const scopePrefixes = [...(scope.dirs ?? []), ...(scope.targetPaths ?? [])]
   const state = { visitedDirs: new Set<string>(), filesScanned: 0 }
-  let manifests = await walkDir(projectRoot, ig, projectRoot, state)
+  let manifests = await walkDir(
+    projectRoot,
+    ig,
+    projectRoot,
+    state,
+    scopePrefixes.length > 0 ? scopePrefixes : undefined
+  )
 
   // 3. Apply target / glob scoping (unless doing annotations only which scopes later)
   if (scope.dirs && scope.dirs.length > 0) {

@@ -85,9 +85,17 @@ export function estimateRunCost(
       (estimatedOutputTokens / 1_000_000) * primaryPrice.output
   }
 
-  // Synthesis takes findings as input, maybe 2000 tokens, output 1000
-  const synthesisInput = 2000
-  const synthesisOutput = 1000
+  // Synthesis reads the merged finding set, so its input size should track
+  // how many findings the swarm can plausibly produce rather than a flat
+  // guess — a big multi-agent run over hundreds of chunks generates far more
+  // findings than a handful of chunks reviewed by one agent (ingest-009).
+  // totalChunks*agentCount is a cheap proxy for that volume (every
+  // chunk/agent pair is a potential finding source); scale roughly linearly
+  // off it, clamped to a sane floor (matches the old flat guess for small
+  // runs) and a ceiling (avoid absurd estimates on huge runs).
+  const findingVolumeProxy = totalChunks * agentCount
+  const synthesisInput = Math.min(60_000, Math.max(2000, Math.round(findingVolumeProxy * 30)))
+  const synthesisOutput = Math.min(20_000, Math.max(1000, Math.round(findingVolumeProxy * 10)))
   let synthesisCost: number | null = null
   if (synthesisPrice) {
     synthesisCost =

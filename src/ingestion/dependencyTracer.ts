@@ -128,21 +128,56 @@ function extractLocalImports(content: string, filePath: string): string[] {
 
   if (filePath.endsWith('.py')) {
     // python fallback
-    const lines = content.split('\n')
+    //
+    // Join `from x import (\n    a,\n    b,\n)` continuation lines into the
+    // single-line form before scanning line-by-line, so the multi-line
+    // parenthesized form isn't invisible to the per-line regex below
+    // (ingest-008). Only "from ... import (...)" is valid with parens in
+    // Python — bare `import (...)` isn't syntax — so this is scoped to that
+    // shape.
+    const joined = content.replace(
+      /from\s+([\w.]*)\s+import\s*\(([^)]*)\)/gs,
+      (_m, mod: string, inner: string) => `from ${mod} import ${inner.replace(/\s*\n\s*/g, ' ')}`
+    )
+    const lines = joined.split('\n')
     for (const line of lines) {
       const pyRelativeMatch = line.match(/from\s+(\.+[\w.]*)\s+import\s+([\w*, ]+)/)
       if (pyRelativeMatch) {
         const modulePart = pyRelativeMatch[1]
         if (/^\.+$/.test(modulePart)) {
-          // Bare `from . import x, y` — the imported names are the modules
+          // Bare `from . import x, y` — the imported names are the modules.
+          // Each name may carry an `as alias` suffix (`from . import x as y`)
+          // which must be stripped before treating it as a module segment.
           for (const name of pyRelativeMatch[2].split(',')) {
-            const trimmed = name.trim()
+            const trimmed = name
+              .trim()
+              .split(/\s+as\s+/)[0]
+              .trim()
             if (trimmed && trimmed !== '*' && !imports.includes(modulePart + trimmed)) {
               imports.push(modulePart + trimmed)
             }
           }
         } else if (!imports.includes(modulePart)) {
           imports.push(modulePart)
+        }
+        continue
+      }
+
+      // Bare absolute import(s): `import a.b.c`, `import a.b.c as x`, or
+      // comma-separated `import a, b.c as d`. These have no leading '.' so
+      // they can't be distinguished from stdlib/third-party packages here —
+      // that's fine, resolveImport's package-import branch below only keeps
+      // ones that actually resolve to a file under projectRoot, so e.g.
+      // `import os` is harmless (nothing on disk matches "os").
+      const bareImportMatch = line.match(
+        /^\s*import\s+([\w.]+(?:\s+as\s+\w+)?(?:\s*,\s*[\w.]+(?:\s+as\s+\w+)?)*)/
+      )
+      if (bareImportMatch) {
+        for (const rawEntry of bareImportMatch[1].split(',')) {
+          const dottedPath = rawEntry.trim().split(/\s+as\s+/)[0].trim()
+          if (!dottedPath) continue
+          const slashPath = dottedPath.replace(/\./g, '/')
+          if (!imports.includes(slashPath)) imports.push(slashPath)
         }
       }
     }

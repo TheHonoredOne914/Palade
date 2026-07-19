@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import type { Annotation, FileManifest, CodeChunk } from './types.js'
+import type { Annotation, FileManifest } from './types.js'
 import type { AnnotationSummary, AgentFinding } from '../agents/base.js'
 
 // Directive prefix shared by every non-hash regex below: a `//` line
@@ -110,10 +110,7 @@ async function parseFileAsync(absolutePath: string, isHashComment: boolean): Pro
 
 // ── Phase 11: Annotation Summary ─────────────────────────────
 
-export function buildAnnotationSummary(
-  manifests: FileManifest[],
-  chunks: CodeChunk[]
-): AnnotationSummary {
+export function buildAnnotationSummary(manifests: FileManifest[]): AnnotationSummary {
   const reviewRequests: AnnotationSummary['reviewRequests'] = []
   const focusRequests: AnnotationSummary['focusRequests'] = []
   const ignoredFiles: string[] = []

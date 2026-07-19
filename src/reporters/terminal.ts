@@ -77,6 +77,7 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
   const severityGroups = groupBySeverity(ctx.findings)
   const criticalFindings = severityGroups.critical
   const highFindings = severityGroups.high
+  const mediumFindings = severityGroups.medium
 
   if (criticalFindings.length > 0) {
     lines.push(chalk.red.bold(`⚠ ${criticalFindings.length} Critical Finding(s):`))
@@ -96,6 +97,21 @@ export async function reportTerminal(ctx: ReporterContext): Promise<ReporterOutp
     }
     if (highFindings.length > 5) {
       lines.push(chalk.gray(`    ... and ${highFindings.length - 5} more`))
+    }
+    lines.push('')
+  }
+
+  // Medium findings previously had no dedicated section at all — only
+  // critical/high were listed individually, so a run with zero critical/high
+  // but many medium findings showed nothing beyond the category breakdown
+  // counts (rep-005). Mirrors the critical/high loops above (same ~5 cap).
+  if (mediumFindings.length > 0) {
+    lines.push(chalk.yellow(`⚠ ${mediumFindings.length} Medium Finding(s):`))
+    for (const f of mediumFindings.slice(0, 5)) {
+      lines.push(renderFinding(f))
+    }
+    if (mediumFindings.length > 5) {
+      lines.push(chalk.gray(`    ... and ${mediumFindings.length - 5} more`))
     }
     lines.push('')
   }
@@ -202,8 +218,15 @@ export function printDiffSummary(ctx: {
   headBranch: string
   hasCriticalIntroduced: boolean
   durationMs: number
+  /**
+   * Directory the diff reports were actually written to (config.output.dir).
+   * Defaults to the conventional '.palade/reports' only when the caller
+   * doesn't have a real path to pass — used to be a hardcoded literal
+   * regardless of the run's actual configured output dir (rep-009).
+   */
+  outputDir?: string
 }): string {
-  const { score, findingDiff, baseBranch, durationMs } = ctx
+  const { score, findingDiff, baseBranch, durationMs, outputDir = '.palade/reports' } = ctx
   const lines: string[] = []
 
   lines.push(chalk.gray('─'.repeat(50)))
@@ -255,7 +278,7 @@ export function printDiffSummary(ctx: {
   }
 
   lines.push('')
-  lines.push(chalk.dim(`  Report:  .palade/reports/diff-*`))
+  lines.push(chalk.dim(`  Report:  ${outputDir}/diff-*`))
   lines.push(chalk.gray('─'.repeat(50)))
   lines.push(chalk.dim(`  Total time: ${(durationMs / 1000).toFixed(1)}s`))
   lines.push('')

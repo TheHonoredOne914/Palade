@@ -41,7 +41,10 @@ After your <thinking> block, format your findings as a strict JSON array of obje
     "symbolName": "functionName",
     "tags": ["logic", "state", "edge-case"]
   }
-]`
+]
+
+If you find no issues: return an empty array [].
+Do not invent file paths. Only reference files shown in the context.`
 
     return prompt
   }

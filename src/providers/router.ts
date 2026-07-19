@@ -18,9 +18,17 @@ import { sanitizeErrorMessage } from '../utils/sanitize.js'
 // EVERY member dead over one bad key's fatal error — pool.ts tags thrown
 // errors with the exact member that threw (PROVIDER_POOL_SOURCE) so we can
 // scope the marking down to just that one instance instead.
+// Last real HTTP status observed when a provider instance was marked dead
+// from an auth error (401 vs 403 vs whatever the adapter actually saw) — so
+// the "every chain member already dead" branch below can report the real
+// status instead of hardcoding 401 for every provider regardless of what
+// actually killed it (prov-007).
+const lastAuthStatusByProvider = new WeakMap<IProvider, number>()
+
 function markResponsibleProviderDead(provider: IProvider, error: Error): void {
-  const source = (error as PoolSourceTaggedError)[PROVIDER_POOL_SOURCE]
-  ;(source ?? provider).markDead?.()
+  const source = (error as PoolSourceTaggedError)[PROVIDER_POOL_SOURCE] ?? provider
+  source.markDead?.()
+  lastAuthStatusByProvider.set(source, error instanceof AuthError ? error.status : 401)
 }
 
 export class AllProvidersExhaustedError extends Error {
@@ -66,6 +74,17 @@ export const PROVIDER_NAMES = [
 ] as const
 
 export type SupportedProviderName = (typeof PROVIDER_NAMES)[number]
+
+// Explicit provider preference order for fallback-chain construction
+// (getFallbackChain below) — kept as its own named constant rather than
+// implicitly relying on allProviders' Map insertion order (which
+// instantiateProviders happens to derive from PROVIDER_NAMES' iteration
+// order). PROVIDER_NAMES is the canonical "which providers exist" list;
+// FALLBACK_ORDER is "what order do we prefer them in when falling back" —
+// separating the two means reordering one doesn't silently reorder the
+// other. Currently identical to PROVIDER_NAMES, preserving today's effective
+// fallback priority unchanged (prov-005).
+const FALLBACK_ORDER: readonly SupportedProviderName[] = PROVIDER_NAMES
 
 const PROVIDER_FACTORIES: Record<
   SupportedProviderName,
@@ -313,10 +332,11 @@ export class FallbackProvider implements IProvider {
     // instead of grinding through further futile calls to a dead key
     // (providers-005).
     if (!attemptedAny && this.chain.every((p) => p.isDeadFromAuth?.() ?? false)) {
+      const lastMember = this.chain[this.chain.length - 1]
       throw new AuthError(
         `All ${this.chain.length} providers are already marked dead from auth errors earlier this session.`,
-        401,
-        this.chain[this.chain.length - 1].name
+        lastAuthStatusByProvider.get(lastMember) ?? 401,
+        lastMember.name
       )
     }
 
@@ -337,10 +357,10 @@ export class FallbackProvider implements IProvider {
 
 function getFallbackChain(excludeName: string): IProvider[] {
   const fallbacks: IProvider[] = []
-  for (const [name, provider] of allProviders) {
-    if (name !== excludeName) {
-      fallbacks.push(provider)
-    }
+  for (const name of FALLBACK_ORDER) {
+    if (name === excludeName) continue
+    const provider = allProviders.get(name)
+    if (provider) fallbacks.push(provider)
   }
   return fallbacks
 }

@@ -91,6 +91,23 @@ describe('cli/commands/settings setNestedValue', () => {
     expect(out).toContain('groq: 2')
   })
 
+  it('adds a comma after a single-line inline object that is the last property before insertion (cli-001)', () => {
+    // Mirrors the old apiKey.ts fallback template shape: `providers: {}` is a
+    // single-line self-closing object, and `score: { ... }` is the last
+    // top-level property with no trailing comma. Inserting a brand-new
+    // top-level section after it must not produce two adjacent properties
+    // without a separating comma.
+    const template = `export default {\n  providers: {},\n  output: { dir: '.palade/reports' }\n}\n`
+    const out = setNestedValue(template, 'score.badge', true)
+    const lines = out.split('\n')
+    const outputIdx = lines.findIndex((l) => l.includes("output: { dir: '.palade/reports' }"))
+    expect(outputIdx).toBeGreaterThan(0)
+    expect(lines[outputIdx].trimEnd().endsWith(',')).toBe(true)
+    expect(out).toContain('badge: true')
+    // must not duplicate a top-level "providers" key
+    expect((out.match(/providers:/g) || []).length).toBe(1)
+  })
+
   it('updates a deeply nested key (3 parts)', () => {
     const nested = `export default {
   providers: {

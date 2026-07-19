@@ -231,11 +231,16 @@ export function setNestedValue(content: string, dotPath: string, value: unknown)
       block.push(`${' '.repeat(insertIndent + 2 * depth)}},`)
     }
 
-    // Ensure previous non-blank, non-comment line ends with a comma.
+    // Ensure previous non-blank, non-comment line ends with a comma. A line
+    // ending in `}` is NOT automatically fine — that brace may be closing a
+    // single-line inline value (e.g. `output: { dir: 'x' }`) rather than the
+    // enclosing section itself, so it still needs a comma before we append a
+    // new sibling property after it. Only skip when it already has one, or
+    // when it's the just-opened `{` of an empty section (first child).
     for (let j = insertAt - 1; j >= 0; j--) {
       const prev = lines[j].trimEnd()
       if (prev && !prev.startsWith('//')) {
-        if (!prev.endsWith(',') && !prev.endsWith('{') && !prev.endsWith('}')) {
+        if (!prev.endsWith(',') && !prev.endsWith('{')) {
           lines[j] = lines[j].trimEnd() + ','
         }
         break
@@ -268,7 +273,17 @@ export async function saveConfigValue(
   try {
     content = await readFile(configPath, 'utf-8')
   } catch {
-    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {},\n  swarm: {\n    primary: 'opencode-zen',\n    synthesis: 'nvidia',\n    agentCount: 8\n  },\n  output: { dir: '.palade/reports', formats: ['html', 'json'], openBrowser: true, port: 4242 },\n  score: { historyFile: '.palade/history.json', badge: true, badgePath: 'palade-badge.svg' }\n}\n`
+    // NOTE: providers/swarm/output/score are deliberately multi-line (each
+    // `{` stays open past its line) rather than single-line self-closing
+    // objects — the brace-walker above only tracks a section as "open" while
+    // its key: value line's own `{`/`}` count leaves it unclosed, so a
+    // single-line `providers: {}` is invisible to path-tracking and the very
+    // first write would insert a duplicate top-level `providers` key with a
+    // missing comma instead of writing into this one (cli-001). primary/
+    // synthesis/agentCount are intentionally omitted so the config loader's
+    // provider auto-detection picks them, rather than this template
+    // hardcoding fixed swarm defaults that shadow it (cli-002).
+    content = `// palade.config.ts — managed by Palade TUI settings\nexport default {\n  providers: {\n  },\n  swarm: {\n  },\n  output: {\n    dir: '.palade/reports',\n    formats: ['html', 'json'],\n    openBrowser: true,\n    port: 4242\n  },\n  score: {\n    historyFile: '.palade/history.json',\n    badge: true,\n    badgePath: 'palade-badge.svg'\n  }\n}\n`
   }
 
   content = setNestedValue(content, dotPath, value)

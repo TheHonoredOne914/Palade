@@ -34,11 +34,21 @@ export interface ScoreReport {
   matches: MatchResult[]
 }
 
+// Whole-segment suffix match instead of plain string endsWith — the old
+// character-level endsWith cross-credited unrelated same-named-tail files
+// (e.g. claim "src/oauth.ts" vs defect "auth.ts": "oauth.ts" ends with the
+// literal characters "auth.ts", but they're different files) (scorer-004).
 function fileMatches(claimFile: string, defectFile: string): boolean {
   if (claimFile === defectFile) return true
-  const a = claimFile.replace(/\\/g, '/')
-  const b = defectFile.replace(/\\/g, '/')
-  return a.endsWith(b) || b.endsWith(a)
+  const a = claimFile.replace(/\\/g, '/').split('/').filter(Boolean)
+  const b = defectFile.replace(/\\/g, '/').split('/').filter(Boolean)
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a]
+  if (shorter.length === 0) return false
+  const offset = longer.length - shorter.length
+  for (let i = 0; i < shorter.length; i++) {
+    if (shorter[i] !== longer[offset + i]) return false
+  }
+  return true
 }
 
 function matchDefect(claim: AgentClaim, defects: Defect[], tolerance: number): Defect | undefined {

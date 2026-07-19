@@ -26,6 +26,7 @@ import {
 } from './specialist/testIntelligence.js'
 import { PRAGMATISM_WARNING, PRAGMATISM_FOCUS } from './specialist/pragmatism.js'
 import { LOGIC_WARNING, LOGIC_FOCUS } from './specialist/logic.js'
+import { BUILTIN_NAMES } from './registry.js'
 
 /**
  * Economy-mode analyzer: runs ALL specialist domains in a single provider call
@@ -100,6 +101,21 @@ export const DEFAULT_DOMAINS: DomainSpec[] = [
     focus: 'over-engineering, premature abstractions, unneeded configurability, YAGNI violations',
   },
 ]
+
+// DEFAULT_DOMAINS is a parallel source of truth to registry.ts's
+// BUILTIN_AGENTS — it can't just be derived from the registry because it
+// carries label/focus prose the registry doesn't have. That means the two
+// CAN silently drift (a built-in agent added to the registry with no
+// matching DomainSpec here would just be missing from economy mode with no
+// signal). Fail fast at import time instead (agents-002).
+const missingDomains = BUILTIN_NAMES.filter(
+  (name) => !DEFAULT_DOMAINS.some((d) => d.name === name)
+)
+if (missingDomains.length > 0) {
+  throw new Error(
+    `[combined.ts] DEFAULT_DOMAINS is missing an entry for built-in agent(s): ${missingDomains.join(', ')} — economy mode would silently skip ${missingDomains.length === 1 ? 'this domain' : 'these domains'}. Add a DomainSpec for each in combined.ts.`
+  )
+}
 
 // Anti-false-positive guardrail block for each built-in domain, sourced
 // VERBATIM from the matching specialist/*.ts prompt (imported above) rather
@@ -254,14 +270,28 @@ export class CombinedAnalyzer implements IAgent {
 // only for roots that differ entirely from the canonical key, where no
 // amount of whitespace/case normalization would help ('Architect' ≠
 // 'architecture').
-const AGENT_NAME_ALIASES: Record<string, string> = { architect: 'architecture' }
+// 'logiccorrectness' handles a model emitting the section label "Logic &
+// Correctness" verbatim instead of the instructed agentName "logic" — the
+// extra word "Correctness" means no amount of separator-stripping alone
+// would make normalizeAgentName's output equal "logic" (agents-005).
+const AGENT_NAME_ALIASES: Record<string, string> = {
+  architect: 'architecture',
+  logiccorrectness: 'logic',
+}
 
-/** Strip whitespace/hyphens/underscores and lowercase, for fuzzy domain-name matching. */
+/**
+ * Strip every non-alphanumeric character (whitespace, hyphens, underscores,
+ * ampersands, etc.) and lowercase, for fuzzy domain-name matching. Used to
+ * only strip whitespace/hyphens/underscores, which left an '&' (e.g. a model
+ * emitting the label "Logic & Correctness" instead of the instructed
+ * agentName "logic") in the normalized string — a mismatch against every
+ * canonical name that dropped the finding as unrecognized (agents-005).
+ */
 function normalizeAgentName(name: string): string {
   return name
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]+/g, '')
+    .replace(/[^a-z0-9]+/g, '')
 }
 
 export function attributeFindings(

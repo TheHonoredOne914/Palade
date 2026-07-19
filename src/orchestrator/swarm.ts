@@ -22,7 +22,7 @@ import { expandProviderShares } from '../config/loader.js'
 import { isFatalAuthError } from '../providers/errorClassification.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 import { applyLineIgnores } from '../ingestion/annotationParser.js'
-import { ReviewCancelledError } from '../errors/types.js'
+import { ReviewCancelledError, SwarmTimeoutError } from '../errors/types.js'
 
 export async function runSwarm(
   allChunks: CodeChunk[],
@@ -151,10 +151,10 @@ export async function runSwarm(
   // standard dispatch above isn't left clamped at economy caps for agents
   // that aren't CombinedAnalyzer (orchestrator-101).
   const softTokenLimit = usingCombinedAnalyzer
-    ? Math.min(options.softTokenLimit ?? Infinity, ECONOMY_SOFT_TOKEN_CAP)
+    ? Math.min(options.softTokenLimit ?? Infinity, options.economySoftTokenCap ?? ECONOMY_SOFT_TOKEN_CAP)
     : options.softTokenLimit
   const hardChunkLimit = usingCombinedAnalyzer
-    ? Math.min(options.hardChunkLimit ?? Infinity, ECONOMY_HARD_CHUNK_CAP)
+    ? Math.min(options.hardChunkLimit ?? Infinity, options.economyHardChunkCap ?? ECONOMY_HARD_CHUNK_CAP)
     : options.hardChunkLimit
 
   const memory = new AgentMemory()
@@ -182,6 +182,10 @@ export async function runSwarm(
   // in-flight provider calls are cancelled instead of running to completion
   // and burning quota on a review that is about to throw anyway.
   const runAbort = new AbortController()
+
+  // Counts agents that have finished (successfully or not) — read by the
+  // optional whole-run timeout below to report how far the swarm got.
+  let completedAgentCount = 0
 
   // Run agents concurrently — rate-limit handling is done at the provider
   // layer (fetchWithRetry + FallbackProvider), not serialized here. Batch
@@ -371,13 +375,38 @@ export async function runSwarm(
         )
       )
     }
+    completedAgentCount++
   })
 
   // Use allSettled instead of all: if one agent hits a fatal auth error and
   // re-throws, Promise.all would reject immediately, discarding the findings
   // from agents that were still in-flight or already succeeded. allSettled
   // waits for every agent to finish, then we collect results below.
-  const agentResults = await Promise.allSettled(agentPromises)
+  //
+  // Optional whole-run deadline (options.wholeRunTimeoutMs), distinct from
+  // the per-batch agentTimeoutMs above — undefined by default (disabled),
+  // opt-in only, so existing callers/tests that don't set it see no behavior
+  // change. Wires SwarmTimeoutError to a real throw site instead of it being
+  // a defined-but-never-thrown class (rep-012).
+  let agentResults: PromiseSettledResult<void>[]
+  if (options.wholeRunTimeoutMs) {
+    const wholeRunTimeoutMs = options.wholeRunTimeoutMs
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        runAbort.abort()
+        reject(new SwarmTimeoutError(completedAgentCount, agents.length, wholeRunTimeoutMs))
+      }, wholeRunTimeoutMs)
+      timeoutHandle.unref?.()
+    })
+    try {
+      agentResults = await Promise.race([Promise.allSettled(agentPromises), timeoutPromise])
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+    }
+  } else {
+    agentResults = await Promise.allSettled(agentPromises)
+  }
   for (const result of agentResults) {
     // Agent-level rejections (fatal auth / cancelled) are already handled
     // inside each agent promise — they record partial findings before throwing.
@@ -413,7 +442,7 @@ export async function runSwarm(
   const finalFindings = [...mergedFindings]
 
   if (!options.noVerdict) {
-    const conflicts = detectConflicts(mergedFindings)
+    const conflicts = detectConflicts(mergedFindings, { windowLines: options.nearMatchWindowLines })
     // Conflicts used to be arbitrated one at a time (await inside a for-of
     // loop), so N conflicts meant N sequential LLM round-trips stacking up
     // pure latency at the end of the run. Arbitration calls are independent

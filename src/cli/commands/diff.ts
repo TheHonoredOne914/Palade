@@ -110,14 +110,14 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
     }
 
     const manifests = await walkProject(projectRoot, scope)
-    const chunks = await chunkFiles(manifests)
+    const chunks = await chunkFiles(manifests, config.swarm.hardChunkLimit)
 
     // Build the annotation summary before running the swarm (not after) so
     // @palade-ignored files/lines are excluded from the review itself rather
     // than filtered out of findings post-hoc — filtering only the final
     // findings list let ignored content leak into the executive summary and
     // cross-agent penalties, which can't be filtered after the fact.
-    const annotationSummary = buildAnnotationSummary(manifests, chunks)
+    const annotationSummary = buildAnnotationSummary(manifests)
     const ignoredFileSet = new Set(
       annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, ''))
     )
@@ -398,7 +398,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
             const baseScope: ScopeOptions = { projectRoot: baseTempDir, files: writtenPaths }
             const baseManifests = await walkProject(baseTempDir, baseScope)
             if (baseManifests.length > 0) {
-              const baseChunks = await chunkFiles(baseManifests)
+              const baseChunks = await chunkFiles(baseManifests, config.swarm.hardChunkLimit)
               const baseContext: AgentContext = {
                 projectLanguages: (await detectLanguages(baseTempDir, baseScope)).primary,
                 totalFiles: baseManifests.length,
@@ -469,6 +469,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
         headBranch,
         hasCriticalIntroduced,
         durationMs: swarmResult.durationMs,
+        outputDir: config.output.dir,
       })
     )
 

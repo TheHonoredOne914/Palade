@@ -647,6 +647,7 @@
           {{SCORE}}
         </div>
         <div class="score-details">
+          <div class="score-grade-label" style="font-weight:600;">Grade: {{SCORE_GRADE}}</div>
           <div class="delta {{DELTA_CLASS}}">
             {{DELTA_TEXT}}
           </div>
@@ -664,6 +665,7 @@
     <div class="card">
       <h2>Executive Summary</h2>
       <div class="summary-text">{{EXECUTIVE_SUMMARY}}</div>
+      {{PROVIDER_FALLBACK_NOTE}}
     </div>
     
     <div class="card">

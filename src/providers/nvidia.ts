@@ -1,7 +1,11 @@
 import { DEFAULT_DEADLINE_MS } from './base.js'
 import { OpenAICompatibleProvider, type OpenAICompatibleConfig } from './openaiCompatible.js'
 
-const CONFIG: OpenAICompatibleConfig = {
+// Exported so config/models.test.ts can assert config/models.ts's
+// PROVIDER_BASE_URLS entry for this provider matches this adapter's real
+// default instead of the two hand-duplicated literals silently drifting
+// apart (cli-006).
+export const CONFIG: OpenAICompatibleConfig = {
   name: 'nvidia',
   label: 'NVIDIA',
   defaultModel: 'minimaxai/minimax-m3',

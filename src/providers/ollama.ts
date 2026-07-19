@@ -32,16 +32,23 @@ export default class OllamaProvider implements IProvider {
     if (this.dead) {
       throw new Error('Ollama provider marked dead for this session')
     }
-    return this.limiter(() =>
-      this.doComplete(req, req.maxTokens ?? 4096, 0, Date.now() + this.deadlineMs)
-    )
+    return this.limiter(() => {
+      const startingMaxTokens = req.maxTokens ?? 4096
+      // Retry-token ceiling scaled off this call's own starting maxTokens (4x,
+      // matching openaiCompatible.ts) instead of stopping the doubling early —
+      // a fixed shared ceiling could cap a caller-requested large maxTokens
+      // below even its own starting point (prov-002).
+      const retryCeiling = startingMaxTokens * 4
+      return this.doComplete(req, startingMaxTokens, 0, Date.now() + this.deadlineMs, retryCeiling)
+    })
   }
 
   private async doComplete(
     req: CompletionRequest,
     maxTokens: number,
     attempt: number,
-    deadline: number
+    deadline: number,
+    retryCeiling: number
   ): Promise<CompletionResponse> {
     const start = performance.now()
 
@@ -86,16 +93,30 @@ export default class OllamaProvider implements IProvider {
       }
 
       const data = await res.json()
+
+      // A 200 OK with a missing/malformed "message" is not a legitimate empty
+      // completion — surface it as a distinguishable error instead of
+      // silently defaulting content/tokens to ''/0 (matching
+      // openaiCompatible.ts's malformed-"choices" guard) (prov-001).
+      if (
+        data === null ||
+        typeof data !== 'object' ||
+        (data.message !== undefined && typeof data.message !== 'object')
+      ) {
+        throw new Error('Ollama error: malformed response body — missing or invalid "message"')
+      }
+
       const end = performance.now()
       const content = data.message?.content ?? ''
       const outputTokens = data.eval_count ?? 0
 
       // If content is empty but tokens were used, the model consumed its whole
-      // budget thinking — retry with more tokens (cap at 32768), same pattern as
-      // every other adapter (groq/cerebras/nvidia/openrouter/opencode-zen).
+      // budget thinking — retry with more tokens, same pattern as every other
+      // adapter (groq/cerebras/nvidia/openrouter/opencode-zen).
       if (shouldRetryEmptyContent(content, outputTokens, attempt)) {
-        const newMax = nextRetryMaxTokens(maxTokens)
-        if (newMax > maxTokens) return this.doComplete(req, newMax, attempt + 1, deadline)
+        const newMax = nextRetryMaxTokens(maxTokens, retryCeiling)
+        if (newMax > maxTokens)
+          return this.doComplete(req, newMax, attempt + 1, deadline, retryCeiling)
       }
 
       return {

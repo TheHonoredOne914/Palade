@@ -118,18 +118,13 @@ function shouldMerge(a: AgentFinding, b: AgentFinding, opts: NearMatchOptions = 
 
   if (sameFile || bothFileless) {
     if (a.lineStart !== undefined && b.lineStart !== undefined) {
-      if (a.lineStart === b.lineStart) {
-        // Same-agent findings on the exact same line only need the looser
-        // same-agent bar; cross-agent findings must clear the stricter
-        // cross-agent threshold isNearMatch enforces for every other pair —
-        // this branch used to apply the loose 0.4 bar regardless of agent,
-        // bypassing that threshold for the same-line case.
-        const threshold = a.agentName === b.agentName ? sameAgentThreshold : crossAgentThreshold
-        if (jaccardSimilarity(a.title, b.title) > threshold) return true
-      }
-      // Nearby lines: only merge when the titles actually describe the same
-      // issue — proximity alone collapses unrelated findings and loses one of
-      // them.
+      // Same line is just the windowLines=0 case of "nearby lines" — isNearMatch's
+      // window (60 lines by default) already covers exact-line matches with the
+      // identical threshold selection, so a dedicated same-line branch ahead of
+      // it was unreachable dead code (whatever made it return true would already
+      // make isNearMatch return true) (orch-005). Only merge when the titles
+      // actually describe the same issue — proximity alone collapses unrelated
+      // findings and loses one of them.
       if (isNearMatch(a, b, opts)) return true
     } else if (a.lineStart === undefined && b.lineStart === undefined) {
       // Both file-level findings (e.g. "God object", "circular dependency")
