@@ -612,9 +612,7 @@ Reply strictly YES or NO.`,
       // consistent with the other fail-safe branches in this function
       // (agents-105).
       console.warn(
-        chalk.yellow(
-          `  [${f.agentName}] Verifier reply unparseable, keeping finding: ${f.title}`
-        )
+        chalk.yellow(`  [${f.agentName}] Verifier reply unparseable, keeping finding: ${f.title}`)
       )
       return f
     } catch (err) {
