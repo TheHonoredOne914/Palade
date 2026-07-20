@@ -71,7 +71,7 @@ export class CustomAgent implements IAgent {
         if (typeof penalty === 'number') f.scorePenalty = penalty
       }
       annotateComplexity(findings, chunks)
-      return verifyCriticalHighFindings(findings, chunks, provider, context, signal)
+      return await verifyCriticalHighFindings(findings, chunks, provider, context, signal)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err

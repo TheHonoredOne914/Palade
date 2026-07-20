@@ -11,6 +11,7 @@ import type { AgentFinding, AgentContext, IAgent } from '../../agents/base.js'
 import { getAgentsForMode } from '../../agents/registry.js'
 import { loadCustomAgents } from '../../agents/custom/loader.js'
 import { applyEconomyRouting, applyEconomyLimits } from '../../orchestrator/economy.js'
+import { CombinedAnalyzer } from '../../agents/combined.js'
 import { theme } from '../../ui/theme.js'
 import { formatDriftAlert } from '../../ui/layout.js'
 import { CliExitError } from '../../errors/types.js'
@@ -265,8 +266,13 @@ class WatchController {
 
       const allFindings: AgentFinding[] = []
       let hasErrors = false
+      // this.watchAgents was already routed once by applyEconomyRouting() in
+      // createWatchCommand(); derive the clamp signal from its actual output
+      // rather than the raw economyMode flag, so the two decisions can't
+      // disagree when routing fell back to standard dispatch (orchestrator-101).
+      const usingCombinedAnalyzer = this.watchAgents.some((a) => a instanceof CombinedAnalyzer)
       const { softTokenLimit, hardChunkLimit } = applyEconomyLimits(
-        !!this.config.swarm.economyMode,
+        usingCombinedAnalyzer,
         this.config.swarm.softTokenLimit,
         this.config.swarm.hardChunkLimit
       )

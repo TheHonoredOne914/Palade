@@ -25,8 +25,8 @@
     "semantic_hash": ""
   },
   "src/agents/base.ts": {
-    "mtime": 1784433106.4994113,
-    "ast_hash": "7d105b3e9f74c58849787ab3653ac844",
+    "mtime": 1784506427.0736988,
+    "ast_hash": "619e82b04905b2134b7051f4b848f6e2",
     "semantic_hash": ""
   },
   "src/agents/combined.analyze.test.ts": {
@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "src/agents/combined.ts": {
-    "mtime": 1784433106.4994113,
-    "ast_hash": "8d3616292eae867a94ae0e7398da8da7",
+    "mtime": 1784506432.773699,
+    "ast_hash": "9cac7768a796980270345276c04c81f8",
     "semantic_hash": ""
   },
   "src/agents/custom/agent.analyze.test.ts": {
@@ -50,8 +50,8 @@
     "semantic_hash": ""
   },
   "src/agents/custom/agent.ts": {
-    "mtime": 1784429260.409876,
-    "ast_hash": "1644805a071445c8760ce739a9efdab7",
+    "mtime": 1784506433.6256993,
+    "ast_hash": "3fb4de10f8f5f5c3b7b912db639240f9",
     "semantic_hash": ""
   },
   "src/agents/custom/custom.test.ts": {
@@ -210,8 +210,8 @@
     "semantic_hash": ""
   },
   "src/cli/commands/watch.ts": {
-    "mtime": 1784433106.4994113,
-    "ast_hash": "4b696389c6dea01b6955389d1637902c",
+    "mtime": 1784506468.7417014,
+    "ast_hash": "a1d2234b56fe845003684d01abdac95a",
     "semantic_hash": ""
   },
   "src/cli/flags.ts": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "src/providers/ollama.ts": {
-    "mtime": 1783733682.8718305,
-    "ast_hash": "bbf82015bc662972107a5d62ffc0840b",
+    "mtime": 1784506491.8577027,
+    "ast_hash": "357c5f03f7e7cf6484b2c257c22cdfe0",
     "semantic_hash": ""
   },
   "src/providers/opencode-zen.ts": {
@@ -615,8 +615,8 @@
     "semantic_hash": ""
   },
   "src/scorer/history.ts": {
-    "mtime": 1783825029.0580595,
-    "ast_hash": "a51949dcf78ea1f9db03cc4c28035d0a",
+    "mtime": 1784506575.2577076,
+    "ast_hash": "f80c29904305e8040c3304d7375d430c",
     "semantic_hash": ""
   },
   "src/scorer/types.ts": {
@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "src/tui/components/SettingsPanel.tsx": {
-    "mtime": 1784433106.5034113,
-    "ast_hash": "fadce32e95cfcf1e9233c8623cd4f8f3",
+    "mtime": 1784506501.2577033,
+    "ast_hash": "2c0fe4ebb63612ccb3417dde961d57f3",
     "semantic_hash": ""
   },
   "src/tui/hooks/useCommandHistory.ts": {
@@ -840,8 +840,8 @@
     "semantic_hash": ""
   },
   "src/orchestrator/economy.ts": {
-    "mtime": 1784433106.4994113,
-    "ast_hash": "a678bc13a686334e00a0305178a7e132",
+    "mtime": 1784506460.3257008,
+    "ast_hash": "05763f600ec3c3ef5d7ac949229d73e5",
     "semantic_hash": ""
   },
   "src/providers/openaiCompatible.ts": {
