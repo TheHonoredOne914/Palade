@@ -598,12 +598,23 @@ Reply strictly YES or NO.`,
       if (lastMatch?.[1].toUpperCase() === 'YES') {
         return f
       }
-      console.log(
-        chalk.yellow(
-          `  [${f.agentName}] Dropped false positive during self-consistency check: ${f.title}`
+      if (lastMatch?.[1].toUpperCase() === 'NO') {
+        console.log(
+          chalk.yellow(
+            `  [${f.agentName}] Dropped false positive during self-consistency check: ${f.title}`
+          )
         )
+        return null
+      }
+      // Neither a standalone YES nor NO was found — the reply was ambiguous
+      // or unparseable. Treating "couldn't verify" the same as "confirmed
+      // false positive" would silently drop real findings; keep it instead,
+      // consistent with the other fail-safe branches in this function
+      // (agents-105).
+      console.warn(
+        chalk.yellow(`  [${f.agentName}] Verifier reply unparseable, keeping finding: ${f.title}`)
       )
-      return null
+      return f
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') throw err
       console.warn(
@@ -699,7 +710,7 @@ export abstract class BaseSpecialistAgent implements IAgent {
       }
       annotateComplexity(findings, chunks)
 
-      return verifyCriticalHighFindings(findings, chunks, provider, context, signal)
+      return await verifyCriticalHighFindings(findings, chunks, provider, context, signal)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return []
       throw err

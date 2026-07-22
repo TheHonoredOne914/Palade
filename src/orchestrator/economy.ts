@@ -27,16 +27,25 @@ export function applyEconomyRouting(agents: IAgent[], economyMode: boolean): IAg
   return [new CombinedAnalyzer(activeDomains), ...customAgents]
 }
 
+// Takes usingCombinedAnalyzer — whether applyEconomyRouting() actually swapped
+// in a CombinedAnalyzer — rather than the raw economyMode flag. economyMode
+// alone doesn't guarantee CombinedAnalyzer is in play (applyEconomyRouting
+// falls back to standard per-agent dispatch when <= 1 built-in agent is
+// active), so clamping on the raw flag would tighten softTokenLimit/
+// hardChunkLimit for agents that aren't CombinedAnalyzer and were never
+// meant to receive economy-sized batches (orchestrator-101). Callers should
+// derive usingCombinedAnalyzer from applyEconomyRouting's actual output,
+// e.g. `agents.some((a) => a instanceof CombinedAnalyzer)`.
 export function applyEconomyLimits(
-  economyMode: boolean,
+  usingCombinedAnalyzer: boolean,
   softTokenLimit?: number,
   hardChunkLimit?: number
 ): { softTokenLimit?: number; hardChunkLimit?: number } {
   return {
-    softTokenLimit: economyMode
+    softTokenLimit: usingCombinedAnalyzer
       ? Math.min(softTokenLimit ?? Infinity, ECONOMY_SOFT_TOKEN_CAP)
       : softTokenLimit,
-    hardChunkLimit: economyMode
+    hardChunkLimit: usingCombinedAnalyzer
       ? Math.min(hardChunkLimit ?? Infinity, ECONOMY_HARD_CHUNK_CAP)
       : hardChunkLimit,
   }

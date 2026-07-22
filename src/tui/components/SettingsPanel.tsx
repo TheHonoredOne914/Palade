@@ -316,7 +316,12 @@ export function SettingsPanel({
             (sum, [pid, val]) => (pid === id ? sum : sum + (val ?? 0)),
             0
           )
-          const maxForThis = Math.max(0, agentCount - othersTotal)
+          // Bound against the SAVED/persisted agentCount, not the live
+          // agentCount state — the user can bump 'agents' without pressing
+          // Enter (unsaved), then navigate to 'share' and would otherwise be
+          // allowed to persist providerShares whose sum exceeds the
+          // actually-persisted-to-disk swarm.agentCount (tui-00X).
+          const maxForThis = Math.max(0, savedAgentCount - othersTotal)
           return { ...prev, [id]: Math.min(maxForThis, (prev[id] ?? 0) + 1) }
         })
         return

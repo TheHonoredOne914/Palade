@@ -203,7 +203,36 @@ function sleep(ms: number): Promise<void> {
 // defeating acquireLock for every future appendEntry() call.
 const STALE_LOCK_MS = 30_000
 
-async function acquireLock(historyPath: string): Promise<string | null> {
+// Each acquisition writes a token unique to THIS acquisition (not just this
+// process's pid, which would be indistinguishable from a prior acquisition by
+// the same process) into the lockfile, and every removal — stale eviction or
+// normal release — verifies the file still contains that same token before
+// unlinking. Without this, a critical section that runs longer than
+// STALE_LOCK_MS (slow disk/NFS, not just a crash) can have its lock evicted
+// by another process as "stale"; when the original slow holder eventually
+// finishes and releases, an unconditional path-based unlink would delete the
+// NEW holder's live lock instead of its own, letting a third process acquire
+// while the second still believes it holds exclusive access (scorer-00X).
+let lockTokenCounter = 0
+function makeLockToken(): string {
+  lockTokenCounter += 1
+  return `${process.pid}-${Date.now()}-${lockTokenCounter}-${Math.random().toString(36).slice(2)}`
+}
+
+function readLockToken(lockPath: string): string | null {
+  try {
+    return readFileSync(lockPath, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+interface LockHandle {
+  lockPath: string
+  token: string
+}
+
+async function acquireLock(historyPath: string): Promise<LockHandle | null> {
   const dir = dirname(historyPath)
   try {
     mkdirSync(dir, { recursive: true })
@@ -213,16 +242,29 @@ async function acquireLock(historyPath: string): Promise<string | null> {
   const lockPath = `${historyPath}.lock`
   const maxAttempts = 50 // ~1s total wait
   for (let i = 0; i < maxAttempts; i++) {
+    const token = makeLockToken()
     try {
-      writeFileSync(lockPath, String(process.pid), { flag: 'wx' })
-      return lockPath
+      writeFileSync(lockPath, token, { flag: 'wx' })
+      return { lockPath, token }
     } catch {
       try {
         const stat = statSync(lockPath)
         if (Date.now() - stat.mtimeMs > STALE_LOCK_MS) {
-          // Stale lock from a crashed process — force-remove so the next
-          // attempt (or this loop's next iteration) can acquire it cleanly.
-          unlinkSync(lockPath)
+          // Stale lock from a crashed (or pathologically slow) process —
+          // force-remove so the next attempt can acquire it cleanly. Re-read
+          // the content immediately before unlinking and only remove it if
+          // it's still the same token we just found stale, narrowing the
+          // window where the original holder finishes and refreshes/replaces
+          // it between our stat and our unlink.
+          const staleToken = readLockToken(lockPath)
+          const recheckStat = statSync(lockPath)
+          if (
+            staleToken !== null &&
+            recheckStat.mtimeMs === stat.mtimeMs &&
+            Date.now() - recheckStat.mtimeMs > STALE_LOCK_MS
+          ) {
+            unlinkSync(lockPath)
+          }
           continue
         }
       } catch {
@@ -240,9 +282,16 @@ async function acquireLock(historyPath: string): Promise<string | null> {
   return null
 }
 
-function releaseLock(lockPath: string): void {
+function releaseLock(handle: LockHandle): void {
   try {
-    unlinkSync(lockPath)
+    // Only remove the lockfile if it still holds the exact token THIS
+    // acquisition wrote. If it holds a different token, another process
+    // evicted us as stale and acquired its own lock in the meantime — that
+    // lock is live and must not be deleted out from under it.
+    const current = readLockToken(handle.lockPath)
+    if (current === handle.token) {
+      unlinkSync(handle.lockPath)
+    }
   } catch {
     // already gone — nothing to clean up
   }
@@ -253,8 +302,8 @@ export async function appendEntry(
   entry: ScoreHistoryEntry,
   maxEntries: number = MAX_HISTORY_ENTRIES
 ): Promise<ScoreHistoryEntry[]> {
-  const lockPath = await acquireLock(historyPath)
-  if (!lockPath) {
+  const lockHandle = await acquireLock(historyPath)
+  if (!lockHandle) {
     // Never acquired the lock (still held by another live process after
     // acquireLock's own ~1s retry budget) — a read-modify-write here would
     // race whichever process holds it and could silently clobber its write,
@@ -281,7 +330,7 @@ export async function appendEntry(
     // from the next readHistory() once the retention cap kicks in.
     return trimEntries(existing, maxEntries)
   } finally {
-    if (lockPath) releaseLock(lockPath)
+    if (lockHandle) releaseLock(lockHandle)
   }
 }
 
