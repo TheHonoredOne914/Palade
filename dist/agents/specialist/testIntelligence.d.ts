@@ -1,0 +1,7 @@
+import { type AgentName, BaseSpecialistAgent } from '../base.js';
+export declare const TEST_INTELLIGENCE_WARNING = "CRITICAL CONTEXT WARNING: You are reviewing PARTIAL chunks of a codebase. You do not have the full test suite or coverage maps. Only flag LOCALLY obvious testing gaps (e.g. a complex conditional branch that clearly lacks a fallback, or highly coupled I/O logic that is inherently untestable). Do NOT claim \"zero test coverage\" for a module just because tests aren't in the current chunk.";
+export declare const TEST_INTELLIGENCE_FOCUS = "Additional test intelligence focus:\n- Critical business logic with zero test coverage\n- Tests that mock everything and assert nothing meaningful\n- Missing edge case tests on validation functions\n- Test files that import but never call the functions under test\n- Async functions tested synchronously\n\nCode is testable if any of these are true:\n1. Can be unit-tested in isolation\n2. Can be tested via public API (integration test)\n3. Is tested end-to-end (even if not in isolation)\n\nOnly flag as untestable if none of the above apply.\nBefore claiming code is untested, consult the FILES WITH TEST COVERAGE section of REPOSITORY CONTEXT \u2014 files listed there have test importers and must not be reported as untested.";
+export declare class TestIntelligenceAgent extends BaseSpecialistAgent {
+    name: AgentName;
+    protected getSystemPrompt(): string;
+}

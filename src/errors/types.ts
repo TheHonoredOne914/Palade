@@ -19,7 +19,7 @@ export class WorkspaceTooLargeError extends Error {
 export class NoProvidersError extends Error {
   constructor() {
     super(
-      'No LLM providers available. Set at least one API key:\n  GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY, or OPENCODE_ZEN_API_KEY'
+      'No LLM providers available. Set at least one API key:\n  GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY, or OPENCODE_ZEN_API_KEY\n\n  For local development, you can also use Ollama:\n    1. Install Ollama: https://ollama.ai\n    2. Pull a model: ollama pull codellama:13b\n    3. Start Ollama: ollama serve\n    4. Run palade with: OLLAMA_MODEL=codellama:13b npx palade review'
     )
     this.name = 'NoProvidersError'
   }

@@ -1,0 +1,243 @@
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Box, useApp, useInput, Text, Static } from 'ink';
+import { Header } from './components/Header.js';
+import { OutputLineItem } from './components/OutputPane.js';
+import { CommandInput } from './components/CommandInput.js';
+import { Autocomplete } from './components/Autocomplete.js';
+import { SettingsPanel } from './components/SettingsPanel.js';
+import { PROVIDERS, readCurrentKeys } from '../config/apiKey.js';
+import { loadConfig } from '../config/loader.js';
+import { useOutputStream } from './hooks/useOutputStream.js';
+import { useCommandRunner } from './hooks/useCommandRunner.js';
+import { useCommandHistory } from './hooks/useCommandHistory.js';
+import { mountOutputAdapter, unmountOutputAdapter } from './outputAdapter.js';
+const RAW_MODE_SUPPORTED = !!process.stdin.isTTY &&
+    typeof process.stdin.setRawMode === 'function';
+function SafeInputHandler({ status, showSettings, showAutocomplete, onCtrlC, onAbort, onUp, onDown, onCloseSettings, onNextProvider, onPrevProvider, }) {
+    useInput((input, key) => {
+        if (key.escape) {
+            if (showSettings) {
+                onCloseSettings();
+                return;
+            }
+        }
+        if (key.ctrl && input === 'c') {
+            if (status === 'running') {
+                onAbort();
+                return;
+            }
+            if (showSettings) {
+                onCloseSettings();
+                return;
+            }
+            onCtrlC();
+            return;
+        }
+        // Tab cycles providers in settings — TextInput does NOT capture Tab
+        if (showSettings && key.tab) {
+            if (key.shift) {
+                onPrevProvider();
+            }
+            else {
+                onNextProvider();
+            }
+            return;
+        }
+        if (!showSettings && !showAutocomplete && status !== 'running') {
+            if (key.upArrow)
+                onUp();
+            if (key.downArrow)
+                onDown();
+        }
+    });
+    return null;
+}
+export function App({ config, providerStatus, projectRoot, version, configError, noProvider, }) {
+    const { exit } = useApp();
+    const [inputValue, setInputValue] = useState('');
+    const [showAutocomplete, setShowAutocomplete] = useState(false);
+    const [status, setStatus] = useState('idle');
+    const [showSettings, setShowSettings] = useState(false);
+    const [settingsProviderIdx, setSettingsProviderIdx] = useState(0);
+    const [settingsKeys, setSettingsKeys] = useState({});
+    const [settingsSwarmPrimary, setSettingsSwarmPrimary] = useState(config?.swarm?.primary ?? 'opencode-zen');
+    const [settingsSwarmSynthesis, setSettingsSwarmSynthesis] = useState(config?.swarm?.synthesis ?? 'nvidia');
+    const [settingsModels, setSettingsModels] = useState({});
+    const [settingsAgentCount, setSettingsAgentCount] = useState(config?.swarm?.agentCount ?? 8);
+    const [settingsProviderShares, setSettingsProviderShares] = useState(config?.swarm?.providerShares ?? {});
+    const [liveProviderStatus, setLiveProviderStatus] = useState(providerStatus);
+    const [noProviderDismissed, setNoProviderDismissed] = useState(false);
+    const { lines, appendLine, appendLines, clearOutput, clearNonce } = useOutputStream();
+    const { pushToHistory, navigateHistory } = useCommandHistory();
+    const abortRef = useRef(null);
+    const openSettings = useCallback(() => {
+        // Re-read keys + config fresh each time so edits from a prior settings
+        // session (or `palade settings --set`) show up without a restart.
+        Promise.all([readCurrentKeys(projectRoot), loadConfig().catch(() => undefined)])
+            .then(([keys, freshConfig]) => {
+            setSettingsKeys(keys);
+            if (freshConfig) {
+                setSettingsSwarmPrimary(freshConfig.swarm.primary);
+                setSettingsSwarmSynthesis(freshConfig.swarm.synthesis);
+                setSettingsAgentCount(freshConfig.swarm.agentCount);
+                setSettingsProviderShares(freshConfig.swarm.providerShares ?? {});
+                const models = {};
+                for (const p of PROVIDERS) {
+                    const m = freshConfig.providers[p.id]?.model;
+                    if (m)
+                        models[p.id] = m;
+                }
+                setSettingsModels(models);
+            }
+            setShowSettings(true);
+        })
+            .catch(() => setShowSettings(true));
+    }, [projectRoot]);
+    const { dispatch } = useCommandRunner({
+        config,
+        projectRoot,
+        appendLine,
+        appendLines,
+        clearOutput,
+        setStatus,
+        onExit: exit,
+        onSettingsOpen: openSettings,
+        getAbortSignal: () => abortRef.current?.signal,
+    });
+    useEffect(() => {
+        mountOutputAdapter(appendLine);
+        return () => {
+            unmountOutputAdapter();
+        };
+    }, [appendLine]);
+    // Auto-open settings on first render when no provider is configured
+    useEffect(() => {
+        if (noProvider) {
+            readCurrentKeys(projectRoot)
+                .then((keys) => {
+                setSettingsKeys(keys);
+                setShowSettings(true);
+            })
+                .catch(() => setShowSettings(true));
+        }
+    }, []); // intentionally only on mount
+    // Read live status/showSettings via refs rather than effect deps — this
+    // handler is only registered once, so a SIGINT arriving in the gap between
+    // a status change and React committing the re-render can no longer see a
+    // stale value and misfire (e.g. calling exit() while a swarm is actually
+    // still running, orphaning it instead of aborting it).
+    const statusRef = useRef(status);
+    statusRef.current = status;
+    const showSettingsRef = useRef(showSettings);
+    showSettingsRef.current = showSettings;
+    useEffect(() => {
+        const handler = () => {
+            if (showSettingsRef.current) {
+                setShowSettings(false);
+                return;
+            }
+            if (statusRef.current === 'running') {
+                abortRef.current?.abort();
+                abortRef.current = null;
+                appendLine({ type: 'warn', text: '  Interrupted.' });
+                setStatus('idle');
+            }
+            else {
+                exit();
+            }
+        };
+        process.on('SIGINT', handler);
+        return () => {
+            process.off('SIGINT', handler);
+        };
+    }, [exit, appendLine]);
+    const handleSubmit = useCallback((value) => {
+        if (showAutocomplete)
+            return; // Let Autocomplete handle Enter key
+        const trimmed = value.trim();
+        if (!trimmed)
+            return;
+        // Accept with or without leading slash
+        const cmd = trimmed.startsWith('/') ? trimmed : '/' + trimmed;
+        if (cmd === '/settings') {
+            openSettings();
+            setInputValue('');
+            setShowAutocomplete(false);
+            return;
+        }
+        pushToHistory(cmd);
+        appendLine({ type: 'input', text: cmd });
+        setInputValue('');
+        setShowAutocomplete(false);
+        abortRef.current = new AbortController();
+        dispatch(cmd);
+    }, [dispatch, pushToHistory, appendLine, openSettings, showAutocomplete]);
+    const handleChange = useCallback((value) => {
+        setInputValue(value);
+        setShowAutocomplete(value.startsWith('/') && value.length > 1);
+    }, []);
+    const handleHistoryNav = useCallback((dir) => {
+        const prev = navigateHistory(dir);
+        if (prev !== null)
+            setInputValue(prev);
+    }, [navigateHistory]);
+    const handleSettingsClose = useCallback((message) => {
+        setShowSettings(false);
+        if (message)
+            appendLine({ type: 'output', text: '  ' + message });
+        // Re-read env to update provider circles and dismiss no-provider banner.
+        // Driven from the shared PROVIDERS list (config/apiKey.ts) instead of a
+        // hand-typed 5-key object, so every provider — including ollama, which
+        // is keyless and was previously missing from this object even though
+        // the "did anything change" check below already looked for its env
+        // vars — gets a status dot (uicli-003).
+        const nextStatus = {};
+        for (const p of PROVIDERS) {
+            nextStatus[p.id] =
+                p.id === 'ollama'
+                    ? !!(process.env['OLLAMA_MODEL'] || process.env['OLLAMA_BASE_URL'])
+                    : !!process.env[p.env];
+        }
+        const hasKey = Object.values(nextStatus).some(Boolean);
+        if (hasKey) {
+            setLiveProviderStatus(nextStatus);
+            setNoProviderDismissed(true);
+        }
+    }, [appendLine]);
+    const handleNextProvider = useCallback(() => {
+        setSettingsProviderIdx((i) => (i + 1) % PROVIDERS.length);
+    }, []);
+    const handlePrevProvider = useCallback(() => {
+        setSettingsProviderIdx((i) => (i - 1 + PROVIDERS.length) % PROVIDERS.length);
+    }, []);
+    const handleKeySaved = useCallback((providerId, key) => {
+        setSettingsKeys((prev) => ({ ...prev, [providerId]: key }));
+    }, []);
+    return (_jsxs(_Fragment, { children: [RAW_MODE_SUPPORTED && (_jsx(SafeInputHandler, { status: status, showSettings: showSettings, showAutocomplete: showAutocomplete, onCtrlC: exit, onAbort: () => {
+                    abortRef.current?.abort();
+                    abortRef.current = null;
+                    appendLine({ type: 'warn', text: '  Interrupted.' });
+                    setStatus('idle');
+                }, onUp: () => handleHistoryNav('up'), onDown: () => handleHistoryNav('down'), onCloseSettings: () => setShowSettings(false), onNextProvider: handleNextProvider, onPrevProvider: handlePrevProvider })), showSettings ? (_jsx(Box, { flexDirection: "column", marginY: 1, children: _jsx(SettingsPanel, { projectRoot: projectRoot, selectedProviderIdx: settingsProviderIdx, existingKeys: settingsKeys, swarmPrimary: settingsSwarmPrimary, swarmSynthesis: settingsSwarmSynthesis, swarmAgentCount: settingsAgentCount, providerShares: settingsProviderShares, currentModels: settingsModels, onKeySaved: handleKeySaved, onClose: handleSettingsClose }) })) : (_jsx(Static, { items: lines, children: (line, i) => {
+                    if (line.type === 'header') {
+                        return (_jsxs(Box, { flexDirection: "column", children: [_jsx(Header, { providerStatus: liveProviderStatus, projectRoot: projectRoot, version: version }), configError && (_jsxs(Box, { borderStyle: "single", borderColor: "#F59E0B", paddingX: 1, marginX: 1, marginBottom: 1, children: [_jsxs(Text, { color: "#F59E0B", bold: true, children: ["\u26A0 Config:", ' '] }), _jsx(Text, { color: "#D1D5DB", children: configError })] })), noProvider && !noProviderDismissed && (_jsxs(Box, { borderStyle: "round", borderColor: "#EF4444", paddingX: 1, marginX: 1, marginBottom: 1, flexDirection: "column", children: [_jsx(Text, { color: "#EF4444", bold: true, children: "\u26A0 No AI provider configured" }), _jsxs(Text, { color: "#D1D5DB", children: ['  ', "Set a key in the Settings panel that just opened, or export an env var:"] }), _jsxs(Text, { color: "#6EE7B7", children: ['  ', "GROQ_API_KEY OPENROUTER_API_KEY CEREBRAS_API_KEY NVIDIA_API_KEY"] }), _jsxs(Text, { color: "#9CA3AF", children: ['  ', "Then press Esc and run /review to start reviewing code."] })] }))] }, line.id ?? i));
+                    }
+                    return _jsx(OutputLineItem, { line: line }, line.id ?? i);
+                } }, clearNonce)), !showSettings && showAutocomplete && (_jsx(Autocomplete, { input: inputValue, projectRoot: projectRoot, onSelect: (val) => {
+                    if (val === '/settings') {
+                        openSettings();
+                        setInputValue('');
+                        setShowAutocomplete(false);
+                        return;
+                    }
+                    if (val) {
+                        setInputValue(val);
+                        if (val.endsWith(' ')) {
+                            setShowAutocomplete(true);
+                            return;
+                        }
+                    }
+                    setShowAutocomplete(false);
+                } })), !showSettings && (_jsx(CommandInput, { value: inputValue, onChange: handleChange, onSubmit: handleSubmit, isRunning: status === 'running' }))] }));
+}

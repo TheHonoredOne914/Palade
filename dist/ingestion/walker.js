@@ -1,0 +1,345 @@
+import { readdir, stat, readFile, realpath } from 'node:fs/promises';
+import { join, relative, extname, normalize, dirname } from 'node:path';
+import ignore from 'ignore';
+import { parseFile } from './annotationParser.js';
+import { WorkspaceTooLargeError } from '../errors/types.js';
+import { extractImportSpecifiers } from './importExtractor.js';
+const DEFAULT_IGNORES = [
+    'node_modules',
+    'dist',
+    'build',
+    '.git',
+    '*.lock',
+    '*.min.js',
+    '*.min.css',
+    'coverage',
+    '.palade',
+];
+const EXT_MAP = {
+    '.ts': 'typescript',
+    '.tsx': 'typescript',
+    '.mts': 'typescript',
+    '.js': 'javascript',
+    '.jsx': 'javascript',
+    '.mjs': 'javascript',
+    '.cjs': 'javascript',
+    '.c': 'c',
+    '.h': 'c',
+    '.cpp': 'cpp',
+    '.cc': 'cpp',
+    '.hpp': 'cpp',
+    '.py': 'python',
+    '.go': 'go',
+    '.rs': 'rust',
+    '.java': 'java',
+    '.cs': 'csharp',
+    '.rb': 'ruby',
+    '.php': 'php',
+    '.swift': 'swift',
+    '.kt': 'kotlin',
+    '.dart': 'dart',
+};
+function detectLanguage(filePath) {
+    const ext = extname(filePath);
+    return EXT_MAP[ext] ?? 'unknown';
+}
+// Converts a glob pattern containing `**` (matches zero or more path segments)
+// anywhere in the pattern — not just as a trailing `/**` — into a RegExp. `*`
+// matches within a single path segment (no `/`); `**` matches across segment
+// boundaries, including zero segments (so "src/**/*.ts" matches "src/x.ts").
+function globToRegex(pattern) {
+    let re = '';
+    for (let i = 0; i < pattern.length; i++) {
+        if (pattern[i] === '*' && pattern[i + 1] === '*') {
+            // Consume a "**" segment together with an adjacent "/" on either side
+            // so "src/**/*.ts" (and a leading "**/*.ts") don't require a literal
+            // empty segment — "**/" matches zero or more path segments.
+            if ((i === 0 || pattern[i - 1] === '/') && pattern[i + 2] === '/') {
+                re += '(?:.*/)?';
+                i += 2; // skip trailing '/'
+            }
+            else {
+                re += '.*';
+                i += 1;
+            }
+        }
+        else if (pattern[i] === '*') {
+            re += '[^/]*';
+        }
+        else if (pattern[i] === '?') {
+            re += '[^/]';
+        }
+        else {
+            re += pattern[i].replace(/[.+^${}()|[\]\\]/g, '\\$&');
+        }
+    }
+    return new RegExp(`^${re}$`);
+}
+function matchesGlobs(filePath, globs) {
+    for (const pattern of globs) {
+        // Recursive globs (`**` anywhere in the pattern) need real segment-aware
+        // matching — handle them with a compiled regex instead of the simpler
+        // substring heuristics below, which can't express "zero or more path
+        // segments".
+        if (pattern.includes('**')) {
+            if (globToRegex(pattern).test(filePath))
+                return true;
+            continue;
+        }
+        // *.ext — suffix match (e.g. "*.service.ts" matches "src/x.service.ts")
+        if (pattern.startsWith('*.')) {
+            const suffix = pattern.slice(1); // keep the leading "."
+            if (filePath.endsWith(suffix))
+                return true;
+            continue;
+        }
+        // dir/* or dir/ — prefix match on a path segment boundary
+        if (pattern.endsWith('/*') || pattern.endsWith('/')) {
+            const prefix = pattern.replace(/\/?\*?$/, '/');
+            if (filePath.startsWith(prefix) || filePath.includes('/' + prefix))
+                return true;
+            continue;
+        }
+        // Literal match (covers "src/foo.ts" and bare directory names like "auth" —
+        // for the latter, match files INSIDE the directory, not just the exact path)
+        if (filePath === pattern ||
+            filePath.endsWith('/' + pattern) ||
+            filePath.startsWith(pattern + '/') ||
+            filePath.includes('/' + pattern + '/'))
+            return true;
+    }
+    return false;
+}
+async function walkDir(dir, ig, projectRoot, state) {
+    const results = [];
+    // Resolve the canonical path of this directory so we can detect cycles.
+    // A symlink loop (common under node_modules / tooling caches) would otherwise
+    // recurse until the stack overflows.
+    let realDir;
+    try {
+        realDir = await realpath(dir);
+    }
+    catch {
+        return results;
+    }
+    if (state.visitedDirs.has(realDir))
+        return results;
+    state.visitedDirs.add(realDir);
+    let entries;
+    try {
+        entries = await readdir(dir, { withFileTypes: true });
+    }
+    catch {
+        return results;
+    }
+    for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        const relPath = relative(projectRoot, fullPath).split('\\').join('/');
+        if (ig.ignores(relPath))
+            continue;
+        if (entry.isDirectory()) {
+            const subResults = await walkDir(fullPath, ig, projectRoot, state);
+            results.push(...subResults);
+            continue;
+        }
+        // Skip symlinks pointing to non-files (sockets, pipes, etc.) and dangling
+        // symlinks — entry.isFile() is false for those, and we never want to
+        // follow a symlinked file into a different location than its target logic.
+        if (!entry.isFile())
+            continue;
+        const language = detectLanguage(fullPath);
+        if (language === 'unknown')
+            continue;
+        let fileStat;
+        try {
+            fileStat = await stat(fullPath);
+        }
+        catch {
+            continue;
+        }
+        state.filesScanned++;
+        if (state.filesScanned > 20000) {
+            throw new WorkspaceTooLargeError(20000);
+        }
+        if (fileStat.size > 2 * 1024 * 1024) {
+            // Skip files > 2MB to prevent memory exhaustion. Previously silent —
+            // log it so a large file's total loss of review coverage is visible,
+            // mirroring chunker.ts's TRUNCATED coverage-loss log (ing-002).
+            console.warn(`[walker] Skipping ${relPath} (${fileStat.size} bytes) — exceeds the 2MB size guard. This file will NOT be reviewed.`);
+            continue;
+        }
+        let content;
+        try {
+            content = await readFile(fullPath, 'utf-8');
+        }
+        catch {
+            continue;
+        }
+        const linesOfCode = content.split('\n').length;
+        const importedPaths = extractImportSpecifiers(content, fullPath);
+        const importCount = importedPaths.length;
+        // Hash-comment languages (python, ruby) use `#`-style @palade annotations;
+        // everything else falls back to `//`-style JS regexes in annotationParser.
+        const isHashComment = language === 'python' || language === 'ruby';
+        const annotations = await parseFile(fullPath, isHashComment);
+        results.push({
+            path: relPath,
+            absolutePath: fullPath,
+            language,
+            sizeBytes: fileStat.size,
+            linesOfCode,
+            annotations,
+            lastModified: fileStat.mtime,
+            importCount,
+            _rawImports: importedPaths,
+        });
+    }
+    return results;
+}
+export async function detectLanguages(projectRoot, scope) {
+    const manifests = await walkProject(projectRoot, scope);
+    const langs = [
+        ...new Set(manifests.map((m) => m.language).filter((l) => l !== 'unknown')),
+    ];
+    const primary = (langs.length > 0 ? langs : ['typescript']);
+    const isFirstClass = primary.includes('typescript') || primary.includes('javascript');
+    return {
+        primary,
+        isFirstClass,
+    };
+}
+export async function buildIgnoreFilter(projectRoot) {
+    const ig = ignore();
+    for (const pattern of DEFAULT_IGNORES) {
+        ig.add(pattern);
+    }
+    try {
+        let ignoreContent = '';
+        try {
+            ignoreContent = await readFile(join(projectRoot, '.palade', 'ignore'), 'utf-8');
+        }
+        catch {
+            ignoreContent = await readFile(join(projectRoot, '.paladeignore'), 'utf-8');
+        }
+        const customRules = ignoreContent
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line && !line.startsWith('#'));
+        for (const rule of customRules) {
+            ig.add(rule.replace(/\r/g, ''));
+        }
+    }
+    catch {
+        // .palade/ignore not found — use defaults only
+    }
+    try {
+        const gitignoreContent = await readFile(join(projectRoot, '.gitignore'), 'utf-8');
+        const gitRules = gitignoreContent
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line && !line.startsWith('#'));
+        for (const rule of gitRules) {
+            ig.add(rule.replace(/\r/g, ''));
+        }
+    }
+    catch {
+        // .gitignore not found — continue
+    }
+    return ig;
+}
+export async function walkProject(projectRoot, scope) {
+    const ig = await buildIgnoreFilter(projectRoot);
+    // 2. Start walk
+    const state = { visitedDirs: new Set(), filesScanned: 0 };
+    let manifests = await walkDir(projectRoot, ig, projectRoot, state);
+    // 3. Apply target / glob scoping (unless doing annotations only which scopes later)
+    if (scope.dirs && scope.dirs.length > 0) {
+        manifests = manifests.filter((m) => scope.dirs.some((d) => m.path === d || m.path.startsWith(d + '/')));
+    }
+    if (scope.files && scope.files.length > 0) {
+        const fileSet = new Set(scope.files);
+        manifests = manifests.filter((m) => fileSet.has(m.path));
+    }
+    if (scope.globs && scope.globs.length > 0) {
+        manifests = manifests.filter((m) => matchesGlobs(m.path, scope.globs));
+    }
+    if (scope.targetPaths && scope.targetPaths.length > 0) {
+        manifests = manifests.filter((m) => scope.targetPaths.some((t) => m.path === t || m.path.startsWith(t + '/')));
+    }
+    // annotationsOnly filter
+    if (scope.annotationsOnly) {
+        manifests = manifests.filter((m) => m.annotations.some((a) => a.type !== 'ignore'));
+    }
+    // Sort by path
+    manifests.sort((a, b) => a.path.localeCompare(b.path));
+    try {
+        const { execSync } = await import('node:child_process');
+        // --relative makes the reported paths relative to cwd (projectRoot)
+        // instead of the repo root — without it, a monorepo subdirectory
+        // projectRoot would get repo-root-relative paths that never match
+        // manifests' projectRoot-relative m.path, leaving churnCount at 0 for
+        // every file.
+        const gitLog = execSync('git log --name-only --relative --pretty=format:', {
+            cwd: projectRoot,
+            encoding: 'utf-8',
+            maxBuffer: 10 * 1024 * 1024, // 10 MB — repos with extensive history can exceed the 1 MB default
+        });
+        const churnMap = new Map();
+        for (const line of gitLog.split('\n')) {
+            const trimmed = line.trim();
+            if (trimmed) {
+                churnMap.set(trimmed, (churnMap.get(trimmed) || 0) + 1);
+            }
+        }
+        for (const m of manifests) {
+            m.churnCount = churnMap.get(m.path) || 0;
+        }
+    }
+    catch {
+        // Ignored
+    }
+    // Build importer map
+    const pathMap = new Map();
+    for (const m of manifests) {
+        pathMap.set(m.path, m);
+        m.importers = [];
+    }
+    for (const m of manifests) {
+        const rawImports = m._rawImports ?? [];
+        for (const raw of rawImports) {
+            if (raw.startsWith('.')) {
+                // relative import
+                const resolved = normalize(join(dirname(m.path), raw)).replace(/\\/g, '/');
+                // Try exact match, then common extensions and index files
+                const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+                let target = pathMap.get(resolved);
+                for (const ext of extensions) {
+                    if (target)
+                        break;
+                    target = pathMap.get(resolved + ext);
+                }
+                // ESM TypeScript convention: an `./x.js` specifier refers to `x.ts` on
+                // disk — without this, importers stays empty for every ESM-style TS
+                // repo (this one included), silently zeroing the centrality signal.
+                if (!target) {
+                    const stripped = resolved.replace(/\.[cm]?jsx?$/, '');
+                    if (stripped !== resolved) {
+                        target = pathMap.get(stripped + '.ts') ?? pathMap.get(stripped + '.tsx');
+                    }
+                }
+                for (const ext of extensions) {
+                    if (target)
+                        break;
+                    target = pathMap.get(resolved + '/index' + ext);
+                }
+                if (target && target.importers) {
+                    if (!target.importers.includes(m.path)) {
+                        target.importers.push(m.path);
+                    }
+                }
+            }
+        }
+        delete m._rawImports;
+    }
+    return manifests;
+}

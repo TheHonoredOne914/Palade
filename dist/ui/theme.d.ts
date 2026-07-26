@@ -1,0 +1,30 @@
+export declare const theme: {
+    readonly primary: import("chalk").ChalkInstance;
+    readonly primaryBold: import("chalk").ChalkInstance;
+    readonly accent: import("chalk").ChalkInstance;
+    readonly dim: import("chalk").ChalkInstance;
+    readonly muted: import("chalk").ChalkInstance;
+    readonly success: import("chalk").ChalkInstance;
+    readonly warning: import("chalk").ChalkInstance;
+    readonly error: import("chalk").ChalkInstance;
+    readonly info: import("chalk").ChalkInstance;
+    readonly critical: import("chalk").ChalkInstance;
+    readonly high: import("chalk").ChalkInstance;
+    readonly medium: import("chalk").ChalkInstance;
+    readonly low: import("chalk").ChalkInstance;
+    readonly infoSev: import("chalk").ChalkInstance;
+    readonly bold: import("chalk").ChalkInstance;
+    readonly white: import("chalk").ChalkInstance;
+    readonly whiteBold: import("chalk").ChalkInstance;
+    readonly scoreGreen: import("chalk").ChalkInstance;
+    readonly scoreYellow: import("chalk").ChalkInstance;
+    readonly scoreOrange: import("chalk").ChalkInstance;
+    readonly scoreRed: import("chalk").ChalkInstance;
+};
+export declare const SCORE_THRESHOLDS: {
+    readonly excellent: 90;
+    readonly good: 80;
+    readonly warning: 60;
+    readonly poor: 40;
+};
+export declare function scoreTheme(score: number): import("chalk").ChalkInstance;

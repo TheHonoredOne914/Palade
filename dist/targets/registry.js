@@ -1,0 +1,181 @@
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { TargetDefinitionSchema } from './schema.js';
+const NPM_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search';
+const NPM_REGISTRY_URL = 'https://registry.npmjs.org';
+const REGISTRY_TIMEOUT_MS = 5000;
+const TARGETS_FILE = join('.palade', 'palade.targets.ts');
+async function fetchWithTimeout(url, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { signal: controller.signal });
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+export async function searchTargets(query) {
+    const params = new URLSearchParams({
+        text: query,
+        size: '20',
+    });
+    let res;
+    try {
+        res = await fetchWithTimeout(`${NPM_SEARCH_URL}?${params.toString()}`, REGISTRY_TIMEOUT_MS);
+    }
+    catch {
+        console.warn('[registry] npm registry search timed out or failed');
+        return [];
+    }
+    if (!res.ok) {
+        console.warn(`[registry] npm search returned ${res.status}`);
+        return [];
+    }
+    let data;
+    try {
+        data = await res.json();
+    }
+    catch {
+        return [];
+    }
+    const obj = data;
+    const objects = obj.objects;
+    if (!objects)
+        return [];
+    const results = [];
+    for (const entry of objects) {
+        const pkg = entry.package;
+        if (!pkg)
+            continue;
+        if (typeof pkg.name !== 'string')
+            continue;
+        const hasPaladeKeyword = Array.isArray(pkg.keywords) &&
+            pkg.keywords.some((k) => k === 'palade-target' || k === 'palade-targets');
+        if (!pkg.name.startsWith('palade-target-') &&
+            !pkg.name.startsWith('@palade-targets/') &&
+            !hasPaladeKeyword)
+            continue;
+        results.push({
+            name: pkg.name,
+            description: typeof pkg.description === 'string' ? pkg.description : '',
+            version: typeof pkg.version === 'string' ? pkg.version : '0.0.0',
+            keywords: Array.isArray(pkg.keywords) ? pkg.keywords : [],
+        });
+    }
+    return results;
+}
+export async function getTargetFromRegistry(packageName) {
+    let res;
+    try {
+        res = await fetchWithTimeout(`${NPM_REGISTRY_URL}/${encodeURIComponent(packageName)}/latest`, REGISTRY_TIMEOUT_MS);
+    }
+    catch {
+        console.warn(`[registry] Failed to fetch ${packageName} from npm`);
+        return null;
+    }
+    if (!res.ok) {
+        console.warn(`[registry] Package ${packageName} not found (${res.status})`);
+        return null;
+    }
+    let data;
+    try {
+        data = await res.json();
+    }
+    catch {
+        return null;
+    }
+    const pkg = data;
+    const paladeTarget = pkg.paladeTarget;
+    if (!paladeTarget) {
+        console.warn(`[registry] ${packageName} does not contain a "paladeTarget" field`);
+        return null;
+    }
+    const name = paladeTarget.name;
+    const description = paladeTarget.description;
+    const entry = paladeTarget.entry;
+    const focus = paladeTarget.focus;
+    const scope = paladeTarget.scope;
+    if (typeof name !== 'string' || typeof description !== 'string') {
+        console.warn(`[registry] ${packageName} paladeTarget missing required fields`);
+        return null;
+    }
+    const built = {
+        name,
+        description,
+        entry: typeof entry === 'string' ? entry : Array.isArray(entry) ? entry : '.',
+        focus: Array.isArray(focus) ? focus : undefined,
+        scope: scope && typeof scope === 'object' ? scope : undefined,
+    };
+    // Validate before handing it to appendTargetToFile — an invalid target
+    // (e.g. an empty entry array) would otherwise get written to
+    // palade.targets.ts, report "installed" to the user, and then be silently
+    // dropped later by loadTargets' own schema parse.
+    const validated = TargetDefinitionSchema.safeParse(built);
+    if (!validated.success) {
+        console.warn(`[registry] ${packageName} paladeTarget failed validation: ${validated.error.issues.map((i) => i.message).join(', ')}`);
+        return null;
+    }
+    return validated.data;
+}
+export function appendTargetToFile(projectRoot, target) {
+    const filePath = resolve(projectRoot, TARGETS_FILE);
+    if (!existsSync(filePath)) {
+        console.warn(`[registry] ${TARGETS_FILE} not found. Run palade init first.`);
+        return;
+    }
+    const esc = (s) => s
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t');
+    const entryStr = Array.isArray(target.entry)
+        ? JSON.stringify(target.entry)
+        : `'${esc(target.entry)}'`;
+    const lines = [];
+    lines.push(`{`);
+    lines.push(`  name: '${esc(target.name)}',`);
+    lines.push(`  description: '${esc(target.description)}',`);
+    lines.push(`  entry: ${entryStr},`);
+    if (target.focus && target.focus.length > 0) {
+        lines.push(`  focus: ${JSON.stringify(target.focus)},`);
+    }
+    if (target.scope) {
+        lines.push(`  scope: ${JSON.stringify(target.scope)},`);
+    }
+    lines.push(`},`);
+    const snippet = '\n' + lines.join('\n  ');
+    const content = readFileSync(filePath, 'utf-8');
+    const closingIndex = content.lastIndexOf(']');
+    if (closingIndex === -1) {
+        console.warn(`[registry] Could not find closing ']' in ${TARGETS_FILE}`);
+        return;
+    }
+    // Ensure the last entry before the closing bracket has a trailing comma.
+    // Trailing //-comment lines and blank lines (e.g. the scaffold template's
+    // commented-out examples) must be ignored, and an inline trailing comment
+    // on the last code line (e.g. `},  // note`) must be stripped before
+    // checking — otherwise a comma gets inserted after comment/blank text
+    // instead of after the real last token, creating an array hole (`[, {...}]`).
+    const beforeCloseLines = content.slice(0, closingIndex).trimEnd().split('\n');
+    let lastContentLine = null;
+    while (beforeCloseLines.length > 0) {
+        const withoutComment = beforeCloseLines[beforeCloseLines.length - 1]
+            .replace(/\/\/.*$/, '')
+            .trim();
+        if (withoutComment === '') {
+            beforeCloseLines.pop();
+            continue;
+        }
+        lastContentLine = withoutComment;
+        break;
+    }
+    const needsComma = lastContentLine !== null &&
+        !lastContentLine.endsWith(',') &&
+        !lastContentLine.endsWith('[') &&
+        !lastContentLine.endsWith('{');
+    const commaPrefix = needsComma ? ',' : '';
+    const updated = content.slice(0, closingIndex) + commaPrefix + snippet + '\n' + content.slice(closingIndex);
+    writeFileSync(filePath, updated, 'utf-8');
+}

@@ -1,0 +1,115 @@
+import { estimateTokens } from './chunker.js';
+import { scheduleBatches } from '../orchestrator/scheduler.js';
+const PRICING_TABLE = {
+    'opencode-zen:deepseek-v4-flash-free': { input: 0, output: 0 },
+    'groq:llama-3.3-70b-versatile': { input: 0.59, output: 0.79 }, // assuming default groq model
+    'groq:llama-3.1-8b-instant': { input: 0.05, output: 0.08 },
+    'cerebras:llama3.1-8b': { input: 0.1, output: 0.1 },
+    'cerebras:llama-3.3-70b': { input: 0.6, output: 0.6 },
+    'cerebras:gpt-oss-120b': { input: 0.25, output: 0.69 },
+    'openrouter:deepseek/deepseek-r1': { input: 0.55, output: 2.19 },
+    'openrouter:nvidia/nemotron-3-super-120b-a12b:free': { input: 0, output: 0 },
+    'nvidia:minimaxai/minimax-m3': { input: 0.0, output: 0.0 }, // free tier example
+    'ollama:': { input: 0, output: 0 },
+};
+function lookupPrice(key) {
+    const hit = PRICING_TABLE[key];
+    if (hit)
+        return hit;
+    // Free-tier models not in the catalog are still $0 — providers mark them
+    // with a "-free"/":free" model-name suffix (e.g. mimo-v2.5-free,
+    // cohere/north-mini-code:free). Without this, any uncatalogued free model
+    // reported "No known pricing" on dry runs.
+    if (/[-:]free$/.test(key))
+        return { input: 0, output: 0 };
+    return undefined;
+}
+function getProviderModelKey(providerName, providerConfig) {
+    if (providerName === 'ollama')
+        return 'ollama:';
+    if (providerName === 'opencode-zen')
+        return `opencode-zen:${providerConfig?.model || 'deepseek-v4-flash-free'}`;
+    if (providerName === 'groq')
+        return `groq:${providerConfig?.model || 'llama-3.3-70b-versatile'}`;
+    if (providerName === 'cerebras')
+        return `cerebras:${providerConfig?.model || 'gpt-oss-120b'}`;
+    if (providerName === 'openrouter')
+        return `openrouter:${providerConfig?.model || 'openrouter/free'}`;
+    if (providerName === 'nvidia')
+        return `nvidia:${providerConfig?.model || 'minimaxai/minimax-m3'}`;
+    return `${providerName}:${providerConfig?.model || 'unknown'}`;
+}
+export function estimateRunCost(chunks, config, customAgentCount = 0) {
+    const totalChunks = chunks.length;
+    // Reuse the shared chars/4 token estimation formula instead of
+    // reimplementing it here (see chunker.ts's estimateTokens).
+    const totalInputTokens = chunks.reduce((sum, chunk) => {
+        return sum + estimateTokens(chunk.content);
+    }, 0);
+    const agentCount = (config.swarm.economyMode ? 1 : config.swarm.agentCount) + customAgentCount;
+    // The swarm doesn't send 1 LLM call per chunk per agent — scheduleBatches
+    // groups chunks into batches first, and each agent makes one call per
+    // batch (see orchestrator/swarm.ts). Derive the invocation count from the
+    // real batching logic so the estimate isn't inflated relative to actual
+    // cost.
+    const totalBatches = scheduleBatches(chunks).length;
+    const totalAgentInvocations = totalBatches * agentCount;
+    // Assume ~400 output tokens per agent invocation
+    const estimatedOutputTokens = totalAgentInvocations * 400;
+    const estimatedTotalTokens = totalInputTokens * agentCount + estimatedOutputTokens;
+    const primaryName = config.swarm.primary || 'opencode-zen';
+    const synthesisName = config.swarm.synthesis || primaryName;
+    const primaryConfig = config.providers?.[primaryName];
+    const synthesisConfig = config.providers?.[synthesisName];
+    const primaryKey = getProviderModelKey(primaryName, primaryConfig);
+    const synthesisKey = getProviderModelKey(synthesisName, synthesisConfig);
+    const primaryPrice = lookupPrice(primaryKey);
+    const synthesisPrice = lookupPrice(synthesisKey);
+    let primaryCost = null;
+    if (primaryPrice) {
+        primaryCost =
+            ((totalInputTokens * agentCount) / 1_000_000) * primaryPrice.input +
+                (estimatedOutputTokens / 1_000_000) * primaryPrice.output;
+    }
+    // Synthesis takes findings as input, maybe 2000 tokens, output 1000
+    const synthesisInput = 2000;
+    const synthesisOutput = 1000;
+    let synthesisCost = null;
+    if (synthesisPrice) {
+        synthesisCost =
+            (synthesisInput / 1_000_000) * synthesisPrice.input +
+                (synthesisOutput / 1_000_000) * synthesisPrice.output;
+    }
+    const costMap = {};
+    costMap[primaryName] = primaryCost;
+    if (synthesisName === primaryName) {
+        // Merge independently computed costs — a known synthesis price should
+        // never be discarded just because the primary price was unknown (or vice versa).
+        if (primaryCost !== null || synthesisCost !== null) {
+            costMap[synthesisName] = (primaryCost ?? 0) + (synthesisCost ?? 0);
+        }
+        else {
+            costMap[synthesisName] = null;
+        }
+    }
+    else {
+        costMap[synthesisName] = synthesisCost;
+    }
+    let warningLevel = 'low';
+    if (estimatedTotalTokens > 200_000) {
+        warningLevel = 'high';
+    }
+    else if (estimatedTotalTokens > 50_000) {
+        warningLevel = 'medium';
+    }
+    return {
+        totalChunks,
+        totalInputTokens,
+        agentCount,
+        totalAgentInvocations,
+        estimatedOutputTokens,
+        estimatedTotalTokens,
+        estimatedCostUsd: costMap,
+        warningLevel,
+    };
+}
