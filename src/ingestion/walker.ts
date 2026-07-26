@@ -352,7 +352,7 @@ export async function walkProject(
         // relative import
         const resolved = normalize(join(dirname(m.path), raw)).replace(/\\/g, '/')
         // Try exact match, then common extensions and index files
-        const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
+        const extensions = ['.ts', '.tsx', '.mjs', '.mts', '.js', '.jsx', '.cjs', '.cts']
         let target = pathMap.get(resolved)
         for (const ext of extensions) {
           if (target) break
@@ -362,7 +362,7 @@ export async function walkProject(
         // disk — without this, importers stays empty for every ESM-style TS
         // repo (this one included), silently zeroing the centrality signal.
         if (!target) {
-          const stripped = resolved.replace(/\.[cm]?jsx?$/, '')
+          const stripped = resolved.replace(/\.[cm]?[jt]sx?$/, '')
           if (stripped !== resolved) {
             target = pathMap.get(stripped + '.ts') ?? pathMap.get(stripped + '.tsx')
           }

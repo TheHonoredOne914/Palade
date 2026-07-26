@@ -51,11 +51,13 @@ function getIdentifierTerms(chunk: CodeChunk): Set<string> {
 
 function expectedTestBases(filePath: string): string[] {
   const base = withoutExtension(filePath)
+  const srcBase = base.replace(/\/src\//, '/test/')
+  const testsBase = base.replace(/\/src\//, '/tests/')
   return [
     `${base}.test`,
     `${base}.spec`,
-    `${base.replace(/\/src\//, '/test/')}.test`,
-    `${base.replace(/\/src\//, '/tests/')}.test`,
+    ...(srcBase !== base ? [`${srcBase}.test`] : []),
+    ...(testsBase !== base ? [`${testsBase}.test`] : []),
   ].map(toPosix)
 }
 

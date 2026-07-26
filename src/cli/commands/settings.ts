@@ -41,7 +41,7 @@ export async function settingsCommand(opts: SettingsOptions): Promise<void> {
     return
   }
 
-  if (!opts.set && !opts.list && !opts.init) {
+  if ((!opts.set || opts.set.length === 0) && !opts.list && !opts.init) {
     await interactiveSettings(projectRoot)
     return
   }

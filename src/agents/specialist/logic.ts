@@ -29,19 +29,22 @@ ${LOGIC_FOCUS}
 Before outputting any JSON, you MUST write a <thinking> block to trace data flow, analyze edge cases, and justify your logic. 
 At the end of your <thinking> block, perform a Self-Critique: ask yourself if there are any conditions where the code is actually safe or if you might be hallucinating. If the code is safe, drop the finding.
 
-After your <thinking> block, format your findings as a strict JSON array of objects with this schema:
-[
-  {
-    "severity": "critical" | "high" | "medium" | "low" | "info",
-    "title": "Short title of the logic bug",
-    "description": "Detailed explanation of why the logic is flawed and how it breaks.",
-    "filePath": "path/to/file.ts",
-    "lineStart": 10,
-    "lineEnd": 12,
-    "symbolName": "functionName",
-    "tags": ["logic", "state", "edge-case"]
-  }
-]`
+After your <thinking> block, return ONLY a valid JSON array of findings. No other text.
+
+Each finding must match this exact schema:
+{
+  "severity": "critical" | "high" | "medium" | "low" | "info",
+  "title": "Short title of the logic bug, max 10 words",
+  "description": "2-4 sentences. Be specific. Explain the logic flaw clearly.",
+  "filePath": "relative/path/to/file.ts",
+  "lineStart": 10,
+  "lineEnd": 12,
+  "symbolName": "functionName (optional)",
+  "tags": ["logic", "state", "edge-case"]
+}
+
+If you find no issues: return an empty array [].
+Do not invent file paths. Only reference files shown in the context.`
 
     return prompt
   }

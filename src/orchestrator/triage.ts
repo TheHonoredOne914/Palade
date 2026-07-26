@@ -165,7 +165,7 @@ export async function triageFiles(
         }
         for (const chunk of matching) {
           if (seenChunkIds.has(chunk.id)) continue
-          if (tokensUsed + chunk.tokenCount > budget) break
+          if (tokensUsed + chunk.tokenCount > budget) continue
           selected.push(chunk)
           seenChunkIds.add(chunk.id)
           tokensUsed += chunk.tokenCount
@@ -173,11 +173,9 @@ export async function triageFiles(
       }
 
       if (selected.length > 0) {
-        // Automatically append imported sibling files (blast radius expansion)
         const selectedPaths = new Set(selected.map((c) => c.filePath))
         for (const m of manifests) {
           if (m.importers && m.importers.length > 0 && !selectedPaths.has(m.path)) {
-            // Check if any of its importers were selected
             const hasSelectedImporter = m.importers.some((imp) => {
               return selected.some((c) => c.filePath === imp || c.filePath.endsWith('/' + imp))
             })
@@ -185,7 +183,7 @@ export async function triageFiles(
               const matchingChunks = allChunks.filter((c) => c.filePath === m.path)
               for (const chunk of matchingChunks) {
                 if (seenChunkIds.has(chunk.id)) continue
-                if (tokensUsed + chunk.tokenCount > budget) break
+                if (tokensUsed + chunk.tokenCount > budget) continue
                 selected.push(chunk)
                 seenChunkIds.add(chunk.id)
                 tokensUsed += chunk.tokenCount
@@ -254,7 +252,7 @@ function heuristicSelect(
     if (tokensUsed >= budget) break
     const matching = allChunks.filter((c) => c.filePath === path)
     for (const chunk of matching) {
-      if (tokensUsed + chunk.tokenCount > budget) break
+      if (tokensUsed + chunk.tokenCount > budget) continue
       selected.push(chunk)
       tokensUsed += chunk.tokenCount
     }
