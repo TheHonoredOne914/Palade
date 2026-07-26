@@ -1,0 +1,415 @@
+import chalk from 'chalk';
+import { GroqProvider } from './groq.js';
+import { CerebrasProvider } from './cerebras.js';
+import { NoProvidersError, AuthError } from '../errors/types.js';
+import { isFatalAuthError } from './errorClassification.js';
+import { NvidiaProvider } from './nvidia.js';
+import { OpenRouterProvider } from './openrouter.js';
+import { OpenCodeZenProvider } from './opencode-zen.js';
+import OllamaProvider from './ollama.js';
+import { ProviderPool, PROVIDER_POOL_SOURCE } from './pool.js';
+import { sanitizeErrorMessage } from '../utils/sanitize.js';
+// Marks the specific provider instance responsible for a fatal error dead,
+// rather than the chain entry itself. When `provider` is a ProviderPool
+// wrapping several keys, calling `provider.markDead?.()` directly would mark
+// EVERY member dead over one bad key's fatal error — pool.ts tags thrown
+// errors with the exact member that threw (PROVIDER_POOL_SOURCE) so we can
+// scope the marking down to just that one instance instead.
+function markResponsibleProviderDead(provider, error) {
+    const source = error[PROVIDER_POOL_SOURCE];
+    (source ?? provider).markDead?.();
+}
+export class AllProvidersExhaustedError extends Error {
+    attempts;
+    constructor(attempts) {
+        super(`All ${attempts.length} providers failed. See .attempts for details.`);
+        this.attempts = attempts;
+        this.name = 'AllProvidersExhaustedError';
+    }
+}
+// Single source of truth for the set of provider names Palade supports —
+// previously duplicated as the createProviderInstances switch's case labels
+// AND instantiateProviders' loop array, which could (and did) drift apart if
+// one was updated without the other (providers-007). PROVIDER_FACTORIES is a
+// Record keyed by this exact tuple, so TypeScript enforces that every name
+// here has a matching factory (and vice versa) at compile time.
+export const PROVIDER_NAMES = [
+    'opencode-zen',
+    'nvidia',
+    'groq',
+    'cerebras',
+    'openrouter',
+    'ollama',
+];
+const PROVIDER_FACTORIES = {
+    groq: (key, cfg) => new GroqProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs),
+    cerebras: (key, cfg) => new CerebrasProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs),
+    nvidia: (key, cfg) => new NvidiaProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs),
+    openrouter: (key, cfg) => new OpenRouterProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs, cfg.referer, cfg.title),
+    'opencode-zen': (key, cfg) => new OpenCodeZenProvider(key, cfg.model, cfg.maxConcurrency, cfg.baseUrl, cfg.timeoutMs),
+    // Ollama is keyless — `key` (an empty-string apiKey placeholder, see
+    // instantiateProviders' usable check) is intentionally unused here.
+    ollama: (_key, cfg) => new OllamaProvider(cfg.model, cfg.baseUrl, cfg.maxConcurrency, cfg.timeoutMs),
+};
+function createProviderInstances(name, cfg) {
+    const allKeys = cfg.apiKeys?.length ? cfg.apiKeys : [cfg.apiKey];
+    return allKeys.map((key) => PROVIDER_FACTORIES[name](key, cfg));
+}
+function instantiateProviders(providers) {
+    const map = new Map();
+    for (const name of PROVIDER_NAMES) {
+        const cfg = providers[name];
+        // Ollama is keyless — a configured entry is enough. All other providers
+        // need a non-empty apiKey.
+        const usable = name === 'ollama' ? Boolean(cfg) : cfg && 'apiKey' in cfg && cfg.apiKey;
+        if (cfg && usable) {
+            const instances = createProviderInstances(name, cfg);
+            if (instances.length === 1) {
+                map.set(name, instances[0]);
+            }
+            else if (instances.length > 1) {
+                map.set(name, new ProviderPool(name, instances));
+            }
+        }
+    }
+    return map;
+}
+let assignment = null;
+let allProviders = new Map();
+export class FallbackProvider {
+    chain;
+    _fallbackCount = 0;
+    _totalCount = 0;
+    // Per-role call counters, so a single FallbackProvider instance shared
+    // across multiple roles (e.g. when no dedicated triage provider is
+    // configured and triageWithFallback IS primaryWithFallback — see
+    // initRouter's providers-005 note below) can still report separate stats
+    // for calls made in the 'triage' role vs the 'primary' role, instead of
+    // folding triage calls into the primary totals above.
+    roleStats = new Map();
+    constructor(primary, fallbacks) {
+        this.chain = [primary, ...fallbacks];
+    }
+    get name() {
+        return this.chain[0].name;
+    }
+    get model() {
+        return this.chain[0].model;
+    }
+    /** Number of calls that fell back to a non-primary provider. */
+    get fallbackCount() {
+        return this._fallbackCount;
+    }
+    /** Total calls attempted. */
+    get totalCount() {
+        return this._totalCount;
+    }
+    /** Record one call's outcome under `role`, for role-separated stats (providers-005). */
+    recordRoleCall(role, usedFallback) {
+        const stats = this.roleStats.get(role) ?? { total: 0, fallbacks: 0 };
+        stats.total++;
+        if (usedFallback)
+            stats.fallbacks++;
+        this.roleStats.set(role, stats);
+    }
+    getRoleStats(role) {
+        return this.roleStats.get(role) ?? { total: 0, fallbacks: 0 };
+    }
+    async complete(req) {
+        // Try primary provider first, fall back on error
+        this._totalCount++;
+        let lastError;
+        const primaryProvider = this.chain[0];
+        const attempts = [];
+        // If every provider we actually invoked this call failed with an
+        // auth-classified error, the whole run is doomed regardless of which
+        // provider we try next — surface that as an AuthError so swarm.ts's
+        // isFatalAuthError can abort the run instead of exhausting retries on a
+        // dead API key. attemptedAny guards against an all-skipped chain (every
+        // member already marked dead) reporting a false auth failure.
+        let attemptedAny = false;
+        let allAttemptsAuthLike = true;
+        let lastAuthLikeError;
+        for (let i = 0; i < this.chain.length; i++) {
+            const provider = this.chain[i];
+            // Check the provider instance's own dead flag rather than a chain-local
+            // Set — the same instance can be wrapped by multiple FallbackProvider
+            // chains (e.g. router.ts's primary and synthesis chains), so
+            // dead/exhausted state must live on the shared instance to stay in
+            // sync across chains. Uses the dedicated isDead() (not isAvailable(),
+            // which can be false for unrelated reasons, e.g. a live connectivity
+            // probe) so this only skips providers explicitly marked dead this
+            // session.
+            if (provider.isDead?.()) {
+                // Distinguish the two reasons a provider can be marked dead, mirroring
+                // isDeadFromAuth()'s distinct auth-specific signal used elsewhere in
+                // this file (providers-001) — a provider dead from a 401/403 didn't
+                // necessarily also hit its quota.
+                attempts.push({
+                    provider: provider.name,
+                    finalError: provider.isDeadFromAuth?.()
+                        ? 'skipped — marked dead earlier this session (auth error)'
+                        : 'skipped — marked dead earlier this session (hard quota limit)',
+                });
+                continue;
+            }
+            try {
+                const response = await provider.complete(req);
+                if (provider !== primaryProvider) {
+                    this._fallbackCount++;
+                    return { ...response, provider: provider.name, model: provider.model };
+                }
+                return response;
+            }
+            catch (err) {
+                lastError = err instanceof Error ? err : new Error(String(err));
+                // Cancellation, not a genuine provider failure — every adapter
+                // already propagates a real AbortError when req.signal fires (see
+                // fetchWithRetry in base.ts), so surface it as-is immediately instead
+                // of recording it as a failed attempt and either retrying the next
+                // provider in the chain (pointless — the caller has already stopped
+                // caring about this call) or falling through to AllProvidersExhaustedError/
+                // AuthError below, which would silently swallow the abort and break
+                // the "return [] on AbortError" cancellation contract relied on by
+                // agents/base.ts, combined.ts, and synthesis.ts.
+                if (lastError.name === 'AbortError') {
+                    throw lastError;
+                }
+                attempts.push({
+                    provider: provider.name,
+                    finalError: sanitizeErrorMessage(lastError.message),
+                });
+                attemptedAny = true;
+                if (isFatalAuthError(lastError)) {
+                    lastAuthLikeError = lastError;
+                }
+                else {
+                    allAttemptsAuthLike = false;
+                }
+                // Quota-tagged errors and auth errors are mutually exclusive by
+                // construction (isFatalAuthError only matches 401/403-classified
+                // errors, never the quota/429 path), so no separate "isFatal (quota)"
+                // guard is needed here — adapters already self-mark quota-dead
+                // providers via tagQuotaError()/dailyLimitExhausted before throwing
+                // (providers-001), so the only case router.ts needs to handle here is
+                // the auth one below.
+                if (isFatalAuthError(lastError)) {
+                    // A 401/403 means the key itself is invalid — unlike the quota case
+                    // above, isAvailable() is a quota-only check and can never detect
+                    // this, so gating on "stillAvailable" would never mark the provider
+                    // dead and it would be retried as primary on every subsequent call
+                    // for the rest of the run. Mark it dead unconditionally instead —
+                    // scoped to the specific member that threw (see
+                    // markResponsibleProviderDead) so a single bad key's auth failure
+                    // doesn't take down its healthy pool siblings.
+                    markResponsibleProviderDead(provider, lastError);
+                    console.warn(chalk.red(`[router] provider ${provider.name} marked as DEAD (auth error)`));
+                }
+                // Default to trying the next provider regardless of error type — an
+                // error on this provider (e.g. a bad key) doesn't mean every other
+                // provider in the chain will fail the same way, so give them a
+                // chance before giving up entirely.
+                if (i < this.chain.length - 1) {
+                    console.warn(chalk.yellow(`[router] provider ${provider.name} failed, trying next`));
+                    console.warn(chalk.dim(`         → ${sanitizeErrorMessage(lastError.message.split('\n')[0].slice(0, 120))}`));
+                }
+                else {
+                    // Last in chain — surface the real error so users can diagnose
+                    console.warn(chalk.red(`[router] provider ${provider.name} failed: ${sanitizeErrorMessage(lastError.message.split('\n')[0].slice(0, 200))}`));
+                }
+                continue;
+            }
+        }
+        if (attemptedAny && allAttemptsAuthLike) {
+            const status = lastAuthLikeError instanceof AuthError ? lastAuthLikeError.status : 401;
+            const providerName = lastAuthLikeError instanceof AuthError
+                ? lastAuthLikeError.providerName
+                : this.chain[this.chain.length - 1].name;
+            throw new AuthError(`All ${attempts.length} providers failed with auth errors. ` +
+                attempts.map((a) => `${a.provider}: ${a.finalError}`).join(' | '), status, providerName);
+        }
+        // Every chain member was already marked dead before this call even
+        // started (e.g. from a concurrent call moments earlier), so the loop
+        // above skipped them all via isDead() and attemptedAny stayed false.
+        // If that dead state is uniformly auth-caused, the run is just as doomed
+        // as if we'd attempted and failed this call — surface AuthError so
+        // swarm.ts's isFatalAuthError check triggers a fast run-wide abort
+        // instead of grinding through further futile calls to a dead key
+        // (providers-005).
+        if (!attemptedAny && this.chain.every((p) => p.isDeadFromAuth?.() ?? false)) {
+            throw new AuthError(`All ${this.chain.length} providers are already marked dead from auth errors earlier this session.`, 401, this.chain[this.chain.length - 1].name);
+        }
+        throw new AllProvidersExhaustedError(attempts);
+    }
+    async isAvailable() {
+        // Check if ANY provider in the chain is available — checking only the
+        // primary (chain[0]) makes the entire FallbackProvider appear dead when
+        // the primary is down (e.g. daily quota exhausted) even though fallbacks
+        // could still serve requests.
+        for (const p of this.chain) {
+            if (await p.isAvailable())
+                return true;
+        }
+        return false;
+    }
+}
+function getFallbackChain(excludeName) {
+    const fallbacks = [];
+    for (const [name, provider] of allProviders) {
+        if (name !== excludeName) {
+            fallbacks.push(provider);
+        }
+    }
+    return fallbacks;
+}
+export async function initRouter(config) {
+    activeConfig = config;
+    allProviders = instantiateProviders(config.providers);
+    // Per-agent FallbackProvider cache keyed off the previous call's provider
+    // instances (see getProvider()'s cacheKey lookup below) — a second
+    // initRouter() call rebuilds allProviders from scratch, so stale cache
+    // entries here would keep wrapping now-dead/replaced provider instances
+    // instead of the freshly instantiated ones (providers-001).
+    agentAssignments.clear();
+    const names = Array.from(allProviders.keys());
+    const availability = await Promise.all(names.map((n) => allProviders.get(n).isAvailable()));
+    // Assign primary
+    let primary;
+    const preferredPrimary = config.swarm.primary;
+    if (allProviders.has(preferredPrimary) && availability[names.indexOf(preferredPrimary)]) {
+        primary = allProviders.get(preferredPrimary);
+    }
+    else {
+        for (let i = 0; i < names.length; i++) {
+            if (availability[i]) {
+                primary = allProviders.get(names[i]);
+                break;
+            }
+        }
+    }
+    if (!primary) {
+        throw new NoProvidersError();
+    }
+    // Assign synthesis
+    let synthesis;
+    const preferredSynthesis = config.swarm.synthesis;
+    if (allProviders.has(preferredSynthesis) && availability[names.indexOf(preferredSynthesis)]) {
+        synthesis = allProviders.get(preferredSynthesis);
+    }
+    else {
+        synthesis = primary;
+    }
+    // Wrap with fallback
+    const primaryWithFallback = new FallbackProvider(primary, getFallbackChain(primary.name));
+    const synthesisWithFallback = new FallbackProvider(synthesis, getFallbackChain(synthesis.name));
+    // Assign triage: an explicit cheap/fast tier if configured and available,
+    // otherwise reuse the already-wrapped primary chain rather than building a
+    // redundant fallback chain around the same provider.
+    //
+    // (providers-005): when no dedicated triage provider is configured,
+    // triageWithFallback IS primaryWithFallback (the same FallbackProvider
+    // instance). getProvider() below wraps every returned provider with
+    // withRoleStats(), which records each call under the role it was actually
+    // requested as (via FallbackProvider.recordRoleCall) — so getFallbackStats()
+    // can still report separate primary/triage totals even when they share the
+    // same underlying instance, instead of triage calls silently folding into
+    // the primary counters.
+    const preferredTriage = config.swarm.triage;
+    let triageWithFallback = primaryWithFallback;
+    if (preferredTriage &&
+        allProviders.has(preferredTriage) &&
+        availability[names.indexOf(preferredTriage)]) {
+        const triage = allProviders.get(preferredTriage);
+        triageWithFallback = new FallbackProvider(triage, getFallbackChain(triage.name));
+    }
+    const result = {
+        primary: primaryWithFallback,
+        synthesis: synthesisWithFallback,
+        triage: triageWithFallback,
+    };
+    assignment = result;
+    return result;
+}
+let activeConfig = null;
+const agentAssignments = new Map();
+/**
+ * Wrap a provider so every complete() call made through this reference is
+ * attributed to `role` in the underlying FallbackProvider's role-tagged
+ * counters (see FallbackProvider.recordRoleCall) — this is what lets
+ * getFallbackStats() separate triage calls from primary calls even when
+ * initRouter() assigned the very same FallbackProvider instance to both
+ * roles (providers-005). A no-op for non-FallbackProvider instances (e.g. a
+ * bare adapter never wrapped with fallbacks).
+ */
+function withRoleStats(provider, role) {
+    if (!(provider instanceof FallbackProvider))
+        return provider;
+    // FallbackProvider itself never implements markDead/isDead (nothing calls
+    // them ON a FallbackProvider — router.ts's fatal-error handling always
+    // marks the specific underlying chain member dead, via
+    // markResponsibleProviderDead), so this wrapper only needs to forward the
+    // members FallbackProvider actually has.
+    return {
+        name: provider.name,
+        model: provider.model,
+        isAvailable: () => provider.isAvailable(),
+        async complete(req) {
+            const primaryName = provider.name;
+            const response = await provider.complete(req);
+            provider.recordRoleCall(role, response.provider !== primaryName);
+            return response;
+        },
+    };
+}
+/**
+ * Overwrite the per-agent provider routing table getProvider() reads. Used by
+ * swarm.ts to re-expand config.swarm.providerShares against the ACTUAL agent
+ * roster for this run once getAgentsForMode() has resolved it — the
+ * config-load-time expansion (config/loader.ts's expandProviderShares) has no
+ * idea which mode will run, so it assumes the standard-mode agent list, which
+ * modes with agentOverrides (onboard, ghost) don't follow (providers-002).
+ */
+export function updateAgentProviders(agentProviders) {
+    if (!activeConfig)
+        return;
+    activeConfig.swarm.agentProviders = agentProviders;
+}
+export function getProvider(role, agentName) {
+    if (!assignment || !activeConfig) {
+        throw new Error('Router not initialized. Call initRouter() first.');
+    }
+    if (role === 'primary' && agentName && activeConfig.swarm.agentProviders?.[agentName]) {
+        const overrideName = activeConfig.swarm.agentProviders[agentName];
+        // Check if we already cached a FallbackProvider for this agent
+        const cacheKey = `${agentName}:${overrideName}`;
+        if (agentAssignments.has(cacheKey)) {
+            return withRoleStats(agentAssignments.get(cacheKey), role);
+        }
+        // Create a new FallbackProvider starting with the requested override
+        const provider = allProviders.get(overrideName);
+        if (provider) {
+            const pWithFallback = new FallbackProvider(provider, getFallbackChain(provider.name));
+            agentAssignments.set(cacheKey, pWithFallback);
+            return withRoleStats(pWithFallback, role);
+        }
+        // If the provider doesn't exist or isn't configured, fall through to primary
+        console.warn(chalk.yellow(`[router] Warning: agent '${agentName}' requested provider '${overrideName}' but it is not configured. Falling back to primary.`));
+    }
+    if (role === 'primary')
+        return withRoleStats(assignment.primary, role);
+    if (role === 'synthesis')
+        return withRoleStats(assignment.synthesis, role);
+    return withRoleStats(assignment.triage, role);
+}
+export function getFallbackStats() {
+    if (!assignment)
+        return null;
+    const p = assignment.primary;
+    const s = assignment.synthesis;
+    const t = assignment.triage;
+    return {
+        primary: p instanceof FallbackProvider ? p.getRoleStats('primary') : { total: 0, fallbacks: 0 },
+        synthesis: s instanceof FallbackProvider ? s.getRoleStats('synthesis') : { total: 0, fallbacks: 0 },
+        triage: t instanceof FallbackProvider ? t.getRoleStats('triage') : { total: 0, fallbacks: 0 },
+    };
+}

@@ -1,0 +1,292 @@
+import { useCallback } from 'react';
+import { COMMAND_REGISTRY } from '../commands/registry.js';
+import { reviewCommand } from '../../cli/commands/review.js';
+import { diffCommand } from '../../cli/commands/diff.js';
+import { VALUE_FLAGS } from '../../cli/flags.js';
+import { scoreCommand } from '../../cli/commands/score.js';
+import { initCommand } from '../../cli/commands/init.js';
+import { decisionsCommand } from '../../cli/commands/decisions.js';
+import { runTargetsSearch, runTargetsAdd, runTargetsGenerate, runTargetsList, } from '../../cli/commands/targets.js';
+import { CliExitError } from '../../errors/types.js';
+import { formatErrorMessages } from '../../errors/handler.js';
+function printHelp(commandName, appendLines) {
+    if (commandName) {
+        const cmd = COMMAND_REGISTRY.find((c) => c.name === commandName);
+        if (!cmd) {
+            appendLines([{ type: 'error', text: `No help for unknown command: /${commandName}` }]);
+            return;
+        }
+        appendLines([
+            { type: 'divider', text: '' },
+            { type: 'output', text: `  /${cmd.name}  —  ${cmd.description}` },
+            { type: 'dim', text: `  Usage:   ${cmd.usage}` },
+            { type: 'dim', text: `  Examples:` },
+            ...cmd.examples.map((e) => ({ type: 'dim', text: `    ${e}` })),
+            { type: 'divider', text: '' },
+        ]);
+        return;
+    }
+    appendLines([
+        { type: 'divider', text: '' },
+        { type: 'output', text: '  PALADE — Available Commands' },
+        { type: 'divider', text: '' },
+        ...COMMAND_REGISTRY.map((cmd) => ({
+            type: 'output',
+            text: `  /${cmd.name.padEnd(14)} ${cmd.args ? (cmd.args + ' ').padEnd(28) : ''.padEnd(28)} ${cmd.description}`,
+        })),
+        { type: 'divider', text: '' },
+        { type: 'dim', text: '  Type /help <command> for detailed usage.' },
+        { type: 'dim', text: '  ↑↓ arrow keys navigate command history.' },
+        { type: 'dim', text: '  Type / to see autocomplete suggestions.' },
+        { type: 'divider', text: '' },
+    ]);
+}
+export function useCommandRunner(opts) {
+    const dispatch = useCallback(async (raw) => {
+        if (!raw.startsWith('/')) {
+            opts.appendLine({
+                type: 'error',
+                text: `Commands must start with /   Try /help`,
+            });
+            return;
+        }
+        const parts = raw.slice(1).trim().split(/\s+/);
+        const commandName = parts[0].toLowerCase();
+        const rest = parts.slice(1);
+        const known = COMMAND_REGISTRY.find((c) => c.name === commandName);
+        if (!known) {
+            opts.appendLine({ type: 'error', text: `Unknown command: /${commandName}` });
+            opts.appendLine({
+                type: 'dim',
+                text: `Type /help to see available commands.`,
+            });
+            return;
+        }
+        function flag(name) {
+            const idx = rest.indexOf(`--${name}`);
+            if (idx === -1)
+                return undefined;
+            const next = rest[idx + 1];
+            // If next arg is another flag or doesn't exist, flag has no value
+            if (!next || next.startsWith('--'))
+                return undefined;
+            return next;
+        }
+        function hasFlag(name) {
+            return rest.includes(`--${name}`);
+        }
+        // Collects the value of every occurrence of a repeatable `--name value`
+        // flag (e.g. multiple `--file <path>` pairs).
+        function flagAll(name) {
+            const values = [];
+            rest.forEach((r, i) => {
+                if (r === `--${name}`) {
+                    const next = rest[i + 1];
+                    if (next && !next.startsWith('--'))
+                        values.push(next);
+                }
+            });
+            return values;
+        }
+        // Only these flags consume a value. Excluding the token after ANY `--`
+        // flag would swallow positionals following boolean flags (e.g.
+        // `/review --pick src/foo.ts` losing its path).
+        const positional = rest.filter((r, i) => {
+            if (r.startsWith('--'))
+                return false;
+            const prev = rest[i - 1];
+            return !(prev?.startsWith('--') && VALUE_FLAGS.has(prev.slice(2)));
+        });
+        // Capture this dispatch's abort signal so the finally block can tell
+        // whether it is still the active command (a newer dispatch replaces the
+        // controller) — otherwise an aborted command's late rejection resets the
+        // status to idle while the NEXT command is still running.
+        const runSignal = opts.getAbortSignal?.();
+        opts.setStatus('running');
+        try {
+            switch (commandName) {
+                case 'review': {
+                    const path = positional[0];
+                    await reviewCommand(path ?? undefined, {
+                        target: flag('target'),
+                        allTargets: hasFlag('all-targets'),
+                        dir: flag('dir'),
+                        file: flagAll('file'),
+                        glob: flag('glob'),
+                        mode: flag('mode') ?? 'standard',
+                        annotations: hasFlag('annotations'),
+                        pick: hasFlag('pick'),
+                        depth: (() => {
+                            const d = flag('depth') ? parseInt(flag('depth'), 10) : 1;
+                            return Number.isNaN(d) ? 1 : d;
+                        })(),
+                        format: flag('format'),
+                        open: hasFlag('no-open') ? false : hasFlag('open') ? true : undefined,
+                        quiet: hasFlag('quiet'),
+                        tui: true,
+                        dryRun: hasFlag('dry-run'),
+                        economy: hasFlag('economy') ? true : undefined,
+                        exhaustive: hasFlag('exhaustive'),
+                        strictTriage: hasFlag('strict-triage'),
+                        noVerdict: hasFlag('no-verdict'),
+                        signal: runSignal,
+                    });
+                    break;
+                }
+                case 'diff': {
+                    await diffCommand({
+                        base: flag('base') ?? 'main',
+                        ci: hasFlag('ci'),
+                        strictTriage: hasFlag('strict-triage'),
+                        signal: runSignal,
+                        tui: true,
+                    });
+                    break;
+                }
+                case 'watch': {
+                    opts.appendLines([
+                        { type: 'error', text: 'The watch daemon cannot be run inside the interactive TUI.' },
+                        {
+                            type: 'output',
+                            text: 'Please open a separate terminal window and run: palade watch',
+                        },
+                    ]);
+                    break;
+                }
+                case 'score': {
+                    await scoreCommand({ history: hasFlag('history'), signal: runSignal });
+                    break;
+                }
+                case 'decisions': {
+                    const action = positional[0];
+                    const slug = positional[1];
+                    const days = flag('days');
+                    await decisionsCommand(action, slug, { days: days ? parseInt(days, 10) : undefined });
+                    break;
+                }
+                case 'settings': {
+                    if (hasFlag('set') || hasFlag('init') || hasFlag('list')) {
+                        opts.appendLine({
+                            type: 'error',
+                            text: '  --set/--init/--list are not supported in the interactive TUI.',
+                        });
+                        opts.appendLine({
+                            type: 'dim',
+                            text: '  Run `palade settings` with those flags from a regular terminal instead.',
+                        });
+                    }
+                    else if (opts.onSettingsOpen) {
+                        opts.onSettingsOpen();
+                    }
+                    else {
+                        opts.appendLine({
+                            type: 'warn',
+                            text: '  Type /settings in the TUI to open settings.',
+                        });
+                    }
+                    break;
+                }
+                case 'init': {
+                    // hasFlag('y') can never match — hasFlag only tests for the
+                    // literal `--y` double-dash token, never the short `-y` form, so
+                    // this half of the check was dead. Dropped rather than adding
+                    // short-flag support, which would require touching the shared
+                    // tokenizer/flag-parsing helper used by every other command.
+                    await initCommand({ yes: hasFlag('yes'), signal: runSignal, tui: true });
+                    break;
+                }
+                case 'targets': {
+                    const sub = positional[0];
+                    if (sub === 'search') {
+                        opts.appendLine({
+                            type: 'output',
+                            text: `Searching for "${positional[1] ?? ''}"...`,
+                        });
+                        await runTargetsSearch(positional[1] ?? '', runSignal);
+                    }
+                    else if (sub === 'add') {
+                        // CLI's `targets add <package>` requires the argument (commander
+                        // errors out on a missing one) — mirror that here instead of
+                        // silently calling runTargetsAdd('', ...), which just fails
+                        // deeper inside with a confusing "package does not export a
+                        // valid paladeTarget" message (cli-006).
+                        const pkg = positional[1];
+                        if (!pkg) {
+                            opts.appendLine({
+                                type: 'error',
+                                text: '  Usage: /targets add <package>',
+                            });
+                        }
+                        else {
+                            await runTargetsAdd(pkg, runSignal);
+                        }
+                    }
+                    else if (sub === 'generate') {
+                        // The TUI tokenizer splits on whitespace, so re-join the query words
+                        const query = positional.slice(1).join(' ');
+                        if (!query) {
+                            opts.appendLine({
+                                type: 'error',
+                                text: '  Usage: /targets generate <description>',
+                            });
+                        }
+                        else {
+                            await runTargetsGenerate(query, runSignal);
+                        }
+                    }
+                    else if (sub === undefined || sub === 'list') {
+                        await runTargetsList(runSignal);
+                    }
+                    else {
+                        // An unrecognized subcommand used to silently fall through to
+                        // `list`, which looks like the typo succeeded — surface it as
+                        // an error instead (cli-010).
+                        opts.appendLine({
+                            type: 'error',
+                            text: `  Unknown targets action "${sub}". Try: search, add, generate, list.`,
+                        });
+                    }
+                    break;
+                }
+                case 'clear': {
+                    opts.clearOutput();
+                    opts.setStatus('idle');
+                    return;
+                }
+                case 'help': {
+                    printHelp(positional[0], opts.appendLines);
+                    break;
+                }
+                case 'exit': {
+                    opts.appendLine({ type: 'dim', text: 'Goodbye.' });
+                    setTimeout(opts.onExit, 300);
+                    break;
+                }
+            }
+        }
+        catch (err) {
+            // A CliExitError with code 0 is an intentional "successful" early
+            // exit (e.g. `diff` finding no changed files) — not a real failure,
+            // so it shouldn't render as a trailing red error line.
+            if (err instanceof CliExitError && err.exitCode === 0) {
+                if (err.message) {
+                    opts.appendLine({ type: 'dim', text: err.message });
+                }
+            }
+            else {
+                for (const line of formatErrorMessages(err)) {
+                    if (!line)
+                        continue;
+                    opts.appendLine({ type: 'error', text: line });
+                }
+            }
+        }
+        finally {
+            const current = opts.getAbortSignal?.();
+            if (runSignal === undefined || current === undefined || current === runSignal) {
+                opts.setStatus('idle');
+            }
+        }
+    }, [opts]);
+    return { dispatch };
+}

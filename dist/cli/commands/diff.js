@@ -1,0 +1,416 @@
+import { loadConfig } from '../../config/loader.js';
+import { initRouter } from '../../providers/router.js';
+import { walkProject, detectLanguages } from '../../ingestion/walker.js';
+import { chunkFiles, estimateTokens, splitLargeChunk, MAX_TOKENS } from '../../ingestion/chunker.js';
+import { buildKeywordIndex, getKeywordContext } from '../../ingestion/keywordIndex.js';
+import { buildRetrievedContext } from '../../ingestion/contextPacks.js';
+import { estimateTotalTokens } from '../../orchestrator/scheduler.js';
+import { mergeContexts } from '../../orchestrator/pipeline.js';
+import { runSwarm } from '../../orchestrator/swarm.js';
+import { calculateScore } from '../../scorer/calculator.js';
+import { appendEntry } from '../../scorer/history.js';
+import { reportJson } from '../../reporters/json.js';
+import { writeHtmlReport, startLocalServer } from '../../reporters/html.js';
+import { reportMarkdown } from '../../reporters/markdown.js';
+import { isGitRepo, getCurrentBranch, getChangedFiles, getBaseScore, getMergeBase, getFileContentAtRef, } from '../../diff/git.js';
+import { compareFindings, rankIntroducedFindings } from '../../diff/comparator.js';
+import { checkDecisionDrift } from '../../orchestrator/verdict.js';
+import { printDiffBanner, printDiffSummary } from '../../reporters/terminal.js';
+import { theme } from '../../ui/theme.js';
+import { loadCustomAgents } from '../../agents/custom/loader.js';
+import { askConfirm } from '../../ui/prompt.js';
+import { buildAnnotationSummary } from '../../ingestion/annotationParser.js';
+import { readOptionalProjectDoc } from '../../config/docs.js';
+import { renderBadge, getBadgeData } from '../../scorer/badge.js';
+import { CliExitError, ReviewCancelledError } from '../../errors/types.js';
+import chalk from 'chalk';
+import { mkdirSync, existsSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { join, basename, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+function injectContextAndSplit(chunks) {
+    const keywordIndex = buildKeywordIndex(chunks);
+    const contextPrefixes = chunks.map((chunk) => mergeContexts(buildRetrievedContext(chunk, chunks), getKeywordContext(chunk, keywordIndex)));
+    const enriched = chunks.map((chunk, i) => {
+        const contextPrefix = contextPrefixes[i];
+        if (contextPrefix) {
+            return {
+                ...chunk,
+                contextPrefix,
+                tokenCount: estimateTokens(contextPrefix + chunk.content),
+            };
+        }
+        return chunk;
+    });
+    return enriched.flatMap((chunk) => {
+        if ((chunk.tokenCount ?? estimateTokens(chunk.content)) > MAX_TOKENS) {
+            return splitLargeChunk(chunk);
+        }
+        return [chunk];
+    });
+}
+function throwIfAborted(signal) {
+    if (signal?.aborted) {
+        throw new CliExitError(1);
+    }
+}
+export async function diffCommand(opts) {
+    const projectRoot = process.cwd();
+    const base = opts.base ?? 'main';
+    try {
+        if (!(await isGitRepo(projectRoot))) {
+            console.error(theme.error('  Not a git repository. palade diff requires git.'));
+            throw new CliExitError(1);
+        }
+        const config = await loadConfig();
+        await initRouter(config);
+        throwIfAborted(opts.signal);
+        // Load custom agents
+        const customAgentDefs = await loadCustomAgents(projectRoot);
+        const headBranch = await getCurrentBranch(projectRoot);
+        console.log(theme.dim(`  Comparing ${headBranch} → ${base}...`));
+        const changedFiles = await getChangedFiles(base, projectRoot);
+        if (changedFiles.length === 0) {
+            console.log(theme.success(`  ✓ No changed files vs ${base}`));
+            throw new CliExitError(0);
+        }
+        const additions = changedFiles.reduce((s, f) => s + f.additions, 0);
+        const deletions = changedFiles.reduce((s, f) => s + f.deletions, 0);
+        console.log(theme.dim(`  ${changedFiles.length} changed files (+${additions} / -${deletions})`));
+        const driftWarnings = await checkDecisionDrift(projectRoot, changedFiles);
+        for (const warning of driftWarnings) {
+            console.log(chalk.red(`\n  ⚠ DRIFT  ${warning}`));
+            let override = true;
+            if (!opts.tui) {
+                override = await askConfirm(chalk.yellow('  Override?'), false);
+            }
+            else {
+                console.log(theme.dim('  Drift override prompt skipped in TUI mode.'));
+            }
+            if (!override) {
+                console.error(theme.error('\n  ✗ Drift blocked by user.'));
+                throw new CliExitError(1);
+            }
+        }
+        const nonDeleted = changedFiles.filter((f) => f.status !== 'deleted');
+        const scope = {
+            projectRoot,
+            files: nonDeleted.map((f) => f.path),
+        };
+        const manifests = await walkProject(projectRoot, scope);
+        const chunks = await chunkFiles(manifests);
+        // Build the annotation summary before running the swarm (not after) so
+        // @palade-ignored files/lines are excluded from the review itself rather
+        // than filtered out of findings post-hoc — filtering only the final
+        // findings list let ignored content leak into the executive summary and
+        // cross-agent penalties, which can't be filtered after the fact.
+        const annotationSummary = buildAnnotationSummary(manifests, chunks);
+        const ignoredFileSet = new Set(annotationSummary.ignoredFiles.map((f) => f.replace(/^\.?\/+/, '')));
+        let activeChunks = chunks.filter((c) => !ignoredFileSet.has(c.filePath.replace(/^\.?\/+/, '')));
+        activeChunks = injectContextAndSplit(activeChunks);
+        console.log(theme.dim(`  Chunking: ${manifests.length} files → ${activeChunks.length} chunks (~${estimateTotalTokens(activeChunks).toLocaleString('en-US')} tokens)`));
+        console.log(printDiffBanner({
+            projectName: basename(projectRoot),
+            headBranch,
+            baseBranch: base,
+            changedCount: changedFiles.length,
+            additions,
+            deletions,
+        }));
+        const diffContext = {
+            baseBranch: base,
+            headBranch,
+            changedFiles,
+        };
+        const context = {
+            projectLanguages: (await detectLanguages(projectRoot, scope)).primary,
+            totalFiles: manifests.length,
+            totalChunks: activeChunks.length,
+            mode: 'standard',
+            diffContext,
+            includeSkills: config.swarm.includeSkills,
+        };
+        // Load the same logic spec / agent constitution that the shared review
+        // pipeline (orchestrator/pipeline.ts) injects into AgentContext, so
+        // `diff` reviews respect the same project conventions as `review` does.
+        const specPath = config.swarm.specPath ?? 'palade.spec.md';
+        const specDoc = readOptionalProjectDoc(projectRoot, specPath);
+        if (specDoc.status === 'ok') {
+            context.spec = specDoc.content;
+            console.log(theme.dim(`  Loaded logic spec from ${specPath}`));
+        }
+        else if (specDoc.status === 'error') {
+            console.log(chalk.yellow(`  Failed to read spec file: ${specPath}`));
+        }
+        const constitutionPath = config.swarm.constitutionPath ?? '.palade/constitution.md';
+        const constitutionDoc = readOptionalProjectDoc(projectRoot, constitutionPath);
+        if (constitutionDoc.status === 'ok') {
+            context.constitution = constitutionDoc.content;
+            console.log(theme.dim(`  Loaded agent constitution from ${constitutionPath}`));
+        }
+        else if (constitutionDoc.status === 'error') {
+            console.log(chalk.yellow(`  Failed to read constitution file: ${constitutionPath}`));
+        }
+        const agentCount = config.swarm.agentCount;
+        let completedAgents = 0;
+        throwIfAborted(opts.signal);
+        console.log(theme.dim('  Starting analysis...'));
+        // Triage should rank/consider the same file set the swarm actually
+        // reviews — a manifest for an @palade-ignored file would otherwise still
+        // compete for the token budget even though its chunks are dropped above.
+        const triageManifests = manifests.filter((m) => !ignoredFileSet.has(m.path.replace(/^\.?\/+/, '')));
+        let swarmResult;
+        try {
+            swarmResult = await runSwarm(activeChunks, context, {
+                onAgentStart: (name) => {
+                    console.log(theme.dim(`  [${completedAgents}/${agentCount}] ${name} agent analyzing...`));
+                },
+                onAgentComplete: (name, findings, durationMs) => {
+                    completedAgents++;
+                    console.log(theme.dim(`  [${completedAgents}/${agentCount}] ${name} complete (${findings} findings, ${(durationMs / 1000).toFixed(1)}s)`));
+                },
+                onSynthesisStart: () => {
+                    console.log(theme.dim('  Synthesizing cross-agent findings...'));
+                },
+                onSynthesisComplete: (durationMs) => {
+                    console.log(theme.dim(`  Synthesis complete (${(durationMs / 1000).toFixed(1)}s)`));
+                },
+                onVerdictDetected: (filePath, sideA, sideB) => {
+                    console.log(theme.dim(`  Conflict detected: ${sideA} vs ${sideB} in ${filePath}`));
+                },
+                onVerdictDecided: (decision, confidence) => {
+                    console.log(theme.success(`  ✓ Verdict decided (${confidence}% confidence)`));
+                },
+                timeoutMs: config.swarm.timeoutMs,
+                maxReviewTokens: config.swarm.maxReviewTokens,
+                customAgents: customAgentDefs,
+                agentCount: config.swarm.agentCount,
+                providerShares: config.swarm.providerShares,
+                economyMode: config.swarm.economyMode,
+                // A large diff used to hard-abort the whole run the moment triage
+                // dropped any file for the token budget, unlike `review` (which
+                // defaults to false and only halts with --strict-triage). Default
+                // to the same lenient behavior; opt in with --strict-triage.
+                strictTriage: opts.strictTriage ?? false,
+                noVerdict: false,
+                maxConcurrentBatches: config.swarm.maxConcurrentBatches,
+                softTokenLimit: config.swarm.softTokenLimit,
+                hardChunkLimit: config.swarm.hardChunkLimit,
+                maxSynthesisFindings: config.swarm.maxSynthesisFindings,
+                synthesisTimeoutMs: config.swarm.synthesisTimeoutMs,
+                decisionsRetentionLimit: config.swarm.decisionsRetentionLimit,
+                ignoredLines: annotationSummary.ignoredLines,
+                signal: opts.signal,
+                severityWeights: config.score.severityWeights,
+            }, triageManifests);
+            console.log(theme.success(`  Analysis complete — ${swarmResult.findings.length} findings in ${(swarmResult.durationMs / 1000).toFixed(1)}s`));
+        }
+        catch (err) {
+            console.error(theme.error(`  Analysis failed: ${err instanceof Error ? err.message : String(err)}`));
+            // A fatal auth error still carries whatever findings were collected
+            // before it was thrown (see swarm.ts's partialFindings attachment) —
+            // surface that so the user knows the run wasn't a total loss
+            // (orchestrator-003).
+            const partialFindings = err?.partialFindings;
+            if (Array.isArray(partialFindings) && partialFindings.length > 0) {
+                console.warn(theme.warning(`  ⚠ ${partialFindings.length} finding(s) were collected before the fatal error and were discarded.`));
+            }
+            throw err;
+        }
+        if (swarmResult.fallbackStats) {
+            const fs = swarmResult.fallbackStats;
+            const pFallbacks = fs.primary.fallbacks;
+            const sFallbacks = fs.synthesis.fallbacks;
+            if (pFallbacks > 0 || sFallbacks > 0) {
+                const parts = [];
+                if (pFallbacks > 0)
+                    parts.push(`primary: ${pFallbacks}/${fs.primary.total} calls used fallback`);
+                if (sFallbacks > 0)
+                    parts.push(`synthesis: ${sFallbacks}/${fs.synthesis.total} calls used fallback`);
+                console.log(chalk.yellow(`  ⚠ ${parts.join(' | ')}`));
+            }
+        }
+        const historyPath = join(projectRoot, config.score.historyFile);
+        const baseScore = await getBaseScore(base, historyPath, projectRoot);
+        const scoreResult = calculateScore(swarmResult.findings, swarmResult.crossAgentFindings, baseScore, {
+            severityWeights: config.score.severityWeights,
+            crossAgentPenalty: config.score.crossAgentPenalty,
+            complexityPenalties: config.score.complexityPenalties,
+            penaltyCaps: config.score.penaltyCaps,
+        }, swarmResult.agentsRun?.filter((a) => !swarmResult.failedCategories?.includes(a)));
+        const updatedHistory = await appendEntry(historyPath, {
+            timestamp: new Date().toISOString(),
+            runId: swarmResult.runId,
+            score: scoreResult.score,
+            breakdown: scoreResult.breakdown,
+            delta: scoreResult.delta,
+            // Distinguish changed-files-only scores from full-repo `review` scores
+            // so trend/baseline lookups don't mix the two.
+            kind: 'diff',
+        }, config.score.maxHistoryEntries);
+        // Regenerate the score badge the same way `review` does, so it doesn't
+        // go stale after a `diff` run.
+        if (config.score.badge) {
+            const badgeSvg = renderBadge(getBadgeData(scoreResult.score));
+            const badgePath = join(projectRoot, config.score.badgePath);
+            const badgeDir = dirname(badgePath);
+            if (!existsSync(badgeDir))
+                mkdirSync(badgeDir, { recursive: true });
+            writeFileSync(badgePath, badgeSvg, 'utf-8');
+        }
+        // Compute real base-branch findings so the "resolved" (fixed since base)
+        // comparator path is actually reachable, not just "introduced". Scoped to
+        // only the modified changed files (added files have no base version, and
+        // deleted files aren't reviewable on either side) to keep the extra scan
+        // proportional to the size of this diff rather than the whole project.
+        // `undefined` means the base-branch scan never ran (no merge-base, no
+        // modified files, provider error, etc.) — compareFindings falls back to
+        // scoping head findings to the diff's added lines in that case. `[]` means
+        // the scan DID run and legitimately found zero issues, in which case every
+        // in-scope head finding is genuinely introduced.
+        let baseFindings = undefined;
+        try {
+            const mergeBase = await getMergeBase(base, projectRoot);
+            const modifiedFiles = changedFiles.filter((f) => f.status === 'modified');
+            if (mergeBase && modifiedFiles.length > 0) {
+                const baseTempDir = mkdtempSync(join(tmpdir(), 'palade-diff-base-'));
+                try {
+                    const writtenPaths = [];
+                    for (const f of modifiedFiles) {
+                        // Renamed/copied files (git status R/C) don't exist at the
+                        // merge-base under their new `f.path` — look them up at their
+                        // pre-rename path so their base-branch findings are found instead
+                        // of every finding in the file reading as newly introduced.
+                        const oldContent = getFileContentAtRef(mergeBase, f.oldPath ?? f.path, projectRoot);
+                        if (oldContent === null)
+                            continue;
+                        const dest = join(baseTempDir, f.path);
+                        if (!dest.startsWith(baseTempDir)) {
+                            throw new Error(`Path traversal attempt detected in git changed files: ${f.path}`);
+                        }
+                        mkdirSync(dirname(dest), { recursive: true });
+                        writeFileSync(dest, oldContent, 'utf-8');
+                        writtenPaths.push(f.path);
+                    }
+                    if (writtenPaths.length > 0) {
+                        console.log(theme.dim(`  Scanning ${base} @ ${mergeBase.slice(0, 8)} for resolved findings...`));
+                        const baseScope = { projectRoot: baseTempDir, files: writtenPaths };
+                        const baseManifests = await walkProject(baseTempDir, baseScope);
+                        if (baseManifests.length > 0) {
+                            const baseChunks = injectContextAndSplit(await chunkFiles(baseManifests));
+                            const baseContext = {
+                                projectLanguages: (await detectLanguages(baseTempDir, baseScope)).primary,
+                                totalFiles: baseManifests.length,
+                                totalChunks: baseChunks.length,
+                                mode: 'standard',
+                                includeSkills: config.swarm.includeSkills,
+                                spec: context.spec,
+                                constitution: context.constitution,
+                            };
+                            const baseSwarmResult = await runSwarm(baseChunks, baseContext, {
+                                timeoutMs: config.swarm.timeoutMs,
+                                maxReviewTokens: config.swarm.maxReviewTokens,
+                                customAgents: customAgentDefs,
+                                agentCount: config.swarm.agentCount,
+                                economyMode: config.swarm.economyMode,
+                                providerShares: config.swarm.providerShares,
+                                maxConcurrentBatches: config.swarm.maxConcurrentBatches,
+                                severityWeights: config.score.severityWeights,
+                                projectRoot: baseTempDir,
+                                noSynthesis: true,
+                                softTokenLimit: config.swarm.softTokenLimit,
+                                hardChunkLimit: config.swarm.hardChunkLimit,
+                                signal: opts.signal,
+                                onVerdictDetected: (filePath, sideA, sideB) => {
+                                    console.log(theme.dim(`  [base] Conflict: ${sideA} vs ${sideB} in ${filePath}`));
+                                },
+                                onVerdictDecided: (decision, confidence) => {
+                                    console.log(theme.success(`  ✓ [base] Verdict decided (${confidence}% confidence)`));
+                                },
+                            }, baseManifests);
+                            baseFindings = baseSwarmResult.findings;
+                        }
+                    }
+                }
+                finally {
+                    rmSync(baseTempDir, { recursive: true, force: true });
+                }
+            }
+        }
+        catch (err) {
+            // Base-branch scan is best-effort — if it fails for any reason (no
+            // merge-base, git errors, provider errors), fall back to reporting only
+            // "introduced" findings rather than failing the whole diff run.
+            console.log(chalk.yellow(`  ⚠ Base branch scan failed, resolved findings will not be reported: ${err instanceof Error ? err.message : String(err)}`));
+            baseFindings = undefined;
+        }
+        const findingDiff = compareFindings(swarmResult.findings, baseFindings, changedFiles);
+        const rankedIntroduced = rankIntroducedFindings(findingDiff.introduced);
+        findingDiff.introduced = rankedIntroduced;
+        const hasCriticalIntroduced = rankedIntroduced.some((f) => f.severity === 'critical');
+        console.log(printDiffSummary({
+            score: scoreResult,
+            findingDiff,
+            changedFiles,
+            baseBranch: base,
+            headBranch,
+            hasCriticalIntroduced,
+            durationMs: swarmResult.durationMs,
+        }));
+        const outputDir = join(projectRoot, config.output.dir);
+        if (!existsSync(outputDir))
+            mkdirSync(outputDir, { recursive: true });
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const branchSlug = headBranch.replace(/[^a-zA-Z0-9-]/g, '-');
+        const reportName = `diff-${dateStr}-${branchSlug}`;
+        const reporterCtx = {
+            score: scoreResult,
+            swarm: swarmResult,
+            synthesis: swarmResult.synthesis,
+            findings: swarmResult.findings,
+            crossAgentFindings: swarmResult.crossAgentFindings,
+            history: updatedHistory,
+            config: {
+                projectName: basename(projectRoot),
+                runTimestamp: new Date().toISOString(),
+            },
+        };
+        const formats = config.output.formats;
+        if (formats.includes('json')) {
+            const jsonPath = join(outputDir, `${reportName}.json`);
+            reportJson(reporterCtx, jsonPath);
+            console.log(theme.success(`  JSON: ${jsonPath}`));
+        }
+        if (formats.includes('html')) {
+            const htmlPath = join(outputDir, `${reportName}.html`);
+            writeHtmlReport(reporterCtx, htmlPath);
+            console.log(theme.success(`  HTML: ${htmlPath}`));
+            if (config.output.openBrowser) {
+                startLocalServer(htmlPath, config.output.port, { openBrowser: true });
+            }
+        }
+        if (formats.includes('md')) {
+            const mdPath = join(outputDir, `${reportName}.md`);
+            reportMarkdown(reporterCtx, mdPath);
+            console.log(theme.success(`  Markdown: ${mdPath}`));
+        }
+        if (opts.ci && hasCriticalIntroduced) {
+            console.error(theme.error('\n  ✗ Critical findings introduced. Blocking.'));
+            throw new CliExitError(1);
+        }
+    }
+    catch (err) {
+        // CliExitError is an intentional exit signal — pass it through untouched.
+        // Its message (if any) has already been printed at the throw site.
+        if (err instanceof CliExitError)
+            throw err;
+        if (err instanceof ReviewCancelledError) {
+            console.log(chalk.dim('\n  Diff review cancelled — no score or report generated.'));
+            throw new CliExitError(0);
+        }
+        console.error(theme.error(`\nDiff review failed: ${err.message}`));
+        if (err.stack && process.env.DEBUG === 'palade') {
+            console.error(chalk.gray(err.stack));
+        }
+        throw new CliExitError(1);
+    }
+}
