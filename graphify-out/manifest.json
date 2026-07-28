@@ -25,8 +25,8 @@
     "semantic_hash": ""
   },
   "src/agents/base.ts": {
-    "mtime": 1784506427.0736988,
-    "ast_hash": "619e82b04905b2134b7051f4b848f6e2",
+    "mtime": 1784506770.3937192,
+    "ast_hash": "02905060039f89fc83bfb21f3c9cd8ca",
     "semantic_hash": ""
   },
   "src/agents/combined.analyze.test.ts": {
@@ -135,8 +135,8 @@
     "semantic_hash": ""
   },
   "src/benchmark/groundTruth.ts": {
-    "mtime": 1783646602.279955,
-    "ast_hash": "46d00e81e71a8504f1d6ce65c51ec13b",
+    "mtime": 1785226725.1797523,
+    "ast_hash": "75949f8b61d64534680e26cebbc145c7",
     "semantic_hash": ""
   },
   "src/benchmark/harness.test.ts": {
@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "src/benchmark/scorer.ts": {
-    "mtime": 1783948415.0187573,
-    "ast_hash": "89493d75b2cac68d2d14b3b916b4e192",
+    "mtime": 1785226730.8677523,
+    "ast_hash": "69656750bba8af4c74827bbc9690b123",
     "semantic_hash": ""
   },
   "src/cli/commands/decisions.ts": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "src/providers/ollama.ts": {
-    "mtime": 1784506491.8577027,
-    "ast_hash": "357c5f03f7e7cf6484b2c257c22cdfe0",
+    "mtime": 1785226629.6957545,
+    "ast_hash": "5af0b92c88f35bc2a742176ff9bb5b7e",
     "semantic_hash": ""
   },
   "src/providers/opencode-zen.ts": {

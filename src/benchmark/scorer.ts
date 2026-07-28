@@ -83,6 +83,17 @@ export function scoreAgent(
     if (defect.category === 'real-bug') {
       matches.push({ claim, defect, outcome: 'tp', reason: `Matched real bug ${defect.id}.` })
       foundRealBugIds.add(defect.id)
+    } else if (defect.category === 'fixed-bug') {
+      // Was a genuine real-bug entry, confirmed fixed by a prior audit round.
+      // The location still acts as a trap — flagging it again means the agent
+      // is reporting a symptom that no longer exists — but it must NOT count
+      // toward recall (foundRealBugIds), unlike a live 'real-bug' match.
+      matches.push({
+        claim,
+        defect,
+        outcome: 'fp',
+        reason: `Matched fixed-bug ${defect.id} (was a real bug, already fixed by a prior audit round — no longer live).`,
+      })
     } else {
       matches.push({
         claim,

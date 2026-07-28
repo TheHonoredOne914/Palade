@@ -136,6 +136,20 @@ export default class OllamaProvider implements IProvider {
       ) {
         throw new OllamaNotRunningError()
       }
+      // Our own deadline firing surfaces as a generic AbortError with no
+      // 'timeout' text, which router.ts's FallbackProvider.complete() would
+      // otherwise treat as caller-initiated cancellation (skipping all
+      // remaining fallback providers) — rethrow with distinguishing text,
+      // but only when the deadline (not the caller's own signal) is what
+      // fired, matching openaiCompatible.ts's doComplete() guard.
+      if (
+        err instanceof Error &&
+        err.name === 'AbortError' &&
+        timeoutSignal.aborted &&
+        !req.signal?.aborted
+      ) {
+        throw new Error(`${this.name} provider timeout — request exceeded deadline`)
+      }
       throw err
     }
   }

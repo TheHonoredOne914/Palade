@@ -1,7 +1,7 @@
-# Graph Report - Palade  (2026-07-20)
+# Graph Report - Palade  (2026-07-28)
 
 ## Corpus Check
-- 168 files · ~109,564 words
+- 168 files · ~109,878 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `819a60b9`
+- Built from commit: `f599ce34`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -309,12 +309,12 @@ Cohesion: 0.38
 Nodes (3): AgentFinding, AgentMemory, Conflict
 
 ### Community 77 - "Community 77"
-Cohesion: 0.28
-Nodes (13): initCommand(), applySets(), formatValue(), initConfig(), interactiveSettings(), parseValue(), settingsCommand(), SettingsOptions (+5 more)
+Cohesion: 0.26
+Nodes (14): initCommand(), applySets(), formatValue(), initConfig(), interactiveSettings(), parseValue(), settingsCommand(), SettingsOptions (+6 more)
 
 ### Community 91 - "Community 91"
-Cohesion: 0.24
-Nodes (11): BUILTIN_NAMES, isProviderConfigured(), buildEnvConfig(), collectKeys(), expandProviderShares(), formatZodError(), loadConfig(), PaladeConfigSchema (+3 more)
+Cohesion: 0.25
+Nodes (10): BUILTIN_NAMES, isProviderConfigured(), buildEnvConfig(), collectKeys(), expandProviderShares(), formatZodError(), loadConfig(), __dirname (+2 more)
 
 ### Community 93 - "Community 93"
 Cohesion: 0.24
