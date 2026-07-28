@@ -35,7 +35,7 @@ export const SCHEDULER_DEFECTS: Defect[] = [
     category: 'fixed-bug',
     hypothesis: 'Recursion depth cap can return an oversized chunk.',
     reality:
-      'WAS CONFIRMED, NOW FIXED (orchestrator-002). splitToLimit used to return [chunk] verbatim once depth > 10; it now calls hardTruncateChunk to guarantee the emitted chunk is under hardChunkLimit (see scheduler.ts\'s splitToLimit depth-cap branch). No longer a live defect — kept as a false-positive trap.',
+      "WAS CONFIRMED, NOW FIXED (orchestrator-002). splitToLimit used to return [chunk] verbatim once depth > 10; it now calls hardTruncateChunk to guarantee the emitted chunk is under hardChunkLimit (see scheduler.ts's splitToLimit depth-cap branch). No longer a live defect — kept as a false-positive trap.",
     fromReport: true,
   },
   {
@@ -48,7 +48,7 @@ export const SCHEDULER_DEFECTS: Defect[] = [
     hypothesis:
       'chunk.tokenCount includes chunk.contextPrefix, but splitChunk only divides chunk.content; contextPrefix is re-prepended to both halves and never split.',
     reality:
-      "WAS CONFIRMED, NOW FIXED (orchestrator-001). splitChunk now drops contextPrefix entirely when prefixTokens alone would meet/exceed hardChunkLimit, instead of re-prepending an unsplittable prefix to both halves. No longer a live defect — kept as a false-positive trap.",
+      'WAS CONFIRMED, NOW FIXED (orchestrator-001). splitChunk now drops contextPrefix entirely when prefixTokens alone would meet/exceed hardChunkLimit, instead of re-prepending an unsplittable prefix to both halves. No longer a live defect — kept as a false-positive trap.',
     fromReport: false,
   },
   {
