@@ -34,7 +34,7 @@ function lookupPrice(key: string): { input: number; output: number } | undefined
   // with a "-free"/":free" model-name suffix (e.g. mimo-v2.5-free,
   // cohere/north-mini-code:free). Without this, any uncatalogued free model
   // reported "No known pricing" on dry runs.
-  if (/[-:]free$/.test(key)) return { input: 0, output: 0 }
+  if (/[-:\/]free$/.test(key)) return { input: 0, output: 0 }
   return undefined
 }
 

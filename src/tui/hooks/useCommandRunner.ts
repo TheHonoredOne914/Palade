@@ -75,7 +75,16 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
         return
       }
 
-      const parts = raw.slice(1).trim().split(/\s+/)
+      const trimmed = raw.slice(1).trim()
+      const parts: string[] = []
+      let current = ''
+      let inQuote = false
+      for (const ch of trimmed) {
+        if (ch === '"') { inQuote = !inQuote; continue }
+        if (ch === ' ' && !inQuote) { if (current) { parts.push(current); current = '' }; continue }
+        current += ch
+      }
+      if (current) parts.push(current)
       const commandName = parts[0].toLowerCase()
       const rest = parts.slice(1)
 

@@ -48,6 +48,7 @@
     "mem:install": "npx claude-mem install --provider claude",
     "mem:start": "npx claude-mem start",
     "mem:status": "npx claude-mem status",
+    "prepare": "node -e \"process.exit(require('fs').existsSync('src') ? 0 : 1)\" && npm run build",
     "prepublishOnly": "npm run clean && npm run build && npm run format:check && npm test"
   },
   "dependencies": {

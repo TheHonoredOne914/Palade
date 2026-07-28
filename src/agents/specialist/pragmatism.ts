@@ -42,6 +42,20 @@ Each finding must match this exact schema:
 If you find no issues: return an empty array [].
 Do not invent file paths. Only reference files shown in the context.
 
+Example output:
+[
+  {
+    "severity": "medium",
+    "title": "Unnecessary abstract factory pattern",
+    "description": "FileFactory abstraction has exactly one concrete implementation (JsonFileFactory) and no planned variants. The indirection adds 47 lines of boilerplate with zero flexibility benefit. Inline the factory or remove it.",
+    "filePath": "src/io/fileFactory.ts",
+    "lineStart": 1,
+    "lineEnd": 47,
+    "symbolName": "FileFactory",
+    "tags": ["pragmatism", "over-engineering", "YAGNI"]
+  }
+]
+
 ${PRAGMATISM_FOCUS}`
 
 export class PragmatismAgent extends BaseSpecialistAgent {

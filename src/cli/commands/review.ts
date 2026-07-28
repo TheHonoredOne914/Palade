@@ -22,7 +22,7 @@ import type { AgentName } from '../../agents/base.js'
 import type { ResolvedTarget, SwarmResult } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
-import { detectLanguages } from '../../ingestion/walker.js'
+import { detectLanguages, walkProject } from '../../ingestion/walker.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync, statSync, writeFileSync } from 'node:fs'
 import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'node:path'
@@ -128,8 +128,13 @@ export async function reviewCommand(
   let singleFile: string | undefined
   const pathStat = statSync(resolvedPath)
   if (pathStat.isFile()) {
-    projectRoot = dirname(resolvedPath)
     singleFile = basename(resolvedPath)
+    let dir = dirname(resolvedPath)
+    while (dir !== dirname(dir)) {
+      if (existsSync(join(dir, 'package.json')) || existsSync(join(dir, '.git'))) break
+      dir = dirname(dir)
+    }
+    projectRoot = dir
   } else {
     projectRoot = resolvedPath
   }
@@ -245,9 +250,7 @@ export async function reviewCommand(
     opts.pick = false
   }
   if (opts.pick) {
-    const allManifests = await import('../../ingestion/walker.js').then((m) =>
-      m.walkProject(projectRoot, { projectRoot })
-    )
+    const allManifests = await walkProject(projectRoot, { projectRoot })
     const selectedPaths = await launchPicker(projectRoot, allManifests)
     if (selectedPaths.length === 0) {
       console.log(theme.dim('  No files selected.'))

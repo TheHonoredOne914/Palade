@@ -17,15 +17,11 @@ export async function launchTUI(): Promise<void> {
   process.env.PALADE_TUI = '1'
 
   const { existsSync } = await import('node:fs')
-  const hasAnyEnvKey = [
-    'GROQ_API_KEY',
-    'OPENROUTER_API_KEY',
-    'CEREBRAS_API_KEY',
-    'NVIDIA_API_KEY',
-    'OPENCODE_ZEN_API_KEY',
-    'OLLAMA_MODEL',
-    'OLLAMA_BASE_URL',
-  ].some((k) => !!process.env[k])
+  const { PROVIDERS } = await import('../config/apiKey.js')
+  const hasAnyEnvKey = PROVIDERS.some((p) => {
+    if (p.id === 'ollama') return !!(process.env.OLLAMA_MODEL || process.env.OLLAMA_BASE_URL)
+    return !!process.env[p.env]
+  })
 
   let config
   const providerStatus: Record<string, boolean> = {}
