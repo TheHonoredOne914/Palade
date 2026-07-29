@@ -23,6 +23,7 @@ import type { ResolvedTarget, SwarmResult } from '../../orchestrator/types.js'
 import { resolveSymbol } from '../../ingestion/symbolResolver.js'
 import { CliExitError, ReviewCancelledError } from '../../errors/types.js'
 import { detectLanguages, walkProject } from '../../ingestion/walker.js'
+import { ReportFormatSchema } from '../../config/schema.js'
 import chalk from 'chalk'
 import { mkdirSync, existsSync, statSync, writeFileSync } from 'node:fs'
 import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'node:path'
@@ -30,11 +31,10 @@ import { join, basename, dirname, isAbsolute, resolve, relative, sep } from 'nod
 // Local execution (no API keys required):
 //   OLLAMA_MODEL=codellama:13b npx palade review --target src/
 
-// Keep in sync with the report formats review.ts actually knows how to write
-// out below (json/html/md) — this mirrors config/schema.ts's
-// `output.formats` enum, which is what config.output.formats.join(',') falls
-// back to when --format isn't passed.
-const VALID_REPORT_FORMATS = ['json', 'html', 'md']
+// Derived from config/schema.ts's own ReportFormatSchema instead of a second
+// hand-typed literal array — the two used to list the same three formats
+// independently, which could (and did) drift apart (clihui-003).
+const VALID_REPORT_FORMATS = ReportFormatSchema.options
 
 interface ReviewOptions {
   target?: string
@@ -80,7 +80,9 @@ export async function reviewCommand(
       .split(',')
       .map((f) => f.trim())
       .filter(Boolean)
-    const invalidFormats = requestedFormats.filter((f) => !VALID_REPORT_FORMATS.includes(f))
+    const invalidFormats = requestedFormats.filter(
+      (f) => !(VALID_REPORT_FORMATS as readonly string[]).includes(f)
+    )
     if (invalidFormats.length > 0) {
       console.error(
         chalk.red(
@@ -110,6 +112,20 @@ export async function reviewCommand(
     const parts = rawPath.split('::')
     rawPath = parts[0]
     symbolFilter = parts[1]
+  }
+
+  // --depth only has an effect when tracing a resolved symbol's local
+  // dependencies below — without a ::symbol filter it's silently ignored.
+  // commander registers a default of 1, so opts.depth is always defined;
+  // check argv directly (same pattern as isQuiet/isTuiCommand in
+  // cli/index.ts) to tell "user explicitly passed --depth" from "unset,
+  // defaulted to 1" (clihui-004).
+  if (!symbolFilter && process.argv.includes('--depth')) {
+    console.log(
+      theme.warning(
+        '  --depth has no effect without a ::symbol filter (e.g. "src/foo.ts::myFunction") — ignoring.'
+      )
+    )
   }
 
   const resolvedPath = rawPath
@@ -420,6 +436,9 @@ export async function reviewCommand(
         synthesisTimeoutMs: config.swarm.synthesisTimeoutMs,
         decisionsRetentionLimit: config.swarm.decisionsRetentionLimit,
         severityWeights: config.score.severityWeights,
+        nearMatchWindowLines: config.swarm.nearMatchWindowLines,
+        nearMatchSameAgentThreshold: config.swarm.nearMatchSameAgentThreshold,
+        nearMatchCrossAgentThreshold: config.swarm.nearMatchCrossAgentThreshold,
       },
       target: resolvedTarget,
       dryRunConfig: opts.dryRun ? config : undefined,

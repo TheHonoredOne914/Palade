@@ -28,7 +28,7 @@ import { loadCustomAgents } from '../../agents/custom/loader.js'
 import { askConfirm } from '../../ui/prompt.js'
 import { buildAnnotationSummary } from '../../ingestion/annotationParser.js'
 import { readOptionalProjectDoc } from '../../config/docs.js'
-import { renderBadge, getBadgeData } from '../../scorer/badge.js'
+import { ReportFormatSchema } from '../../config/schema.js'
 import type { ScopeOptions, CodeChunk } from '../../ingestion/types.js'
 import type { SwarmResult } from '../../orchestrator/types.js'
 import type { AgentContext, AgentFinding, AgentName, DiffContext } from '../../agents/base.js'
@@ -38,12 +38,19 @@ import { mkdirSync, existsSync, writeFileSync, mkdtempSync, rmSync } from 'node:
 import { join, basename, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 
+// Mirrors review.ts's own VALID_REPORT_FORMATS, both derived from
+// config/schema.ts's ReportFormatSchema so the two command's validation
+// can't drift apart (clihui-003/clihui-006).
+const VALID_REPORT_FORMATS = ReportFormatSchema.options
+
 interface DiffOpts {
   base?: string
   ci?: boolean
   signal?: AbortSignal
   tui?: boolean
   strictTriage?: boolean
+  /** Output formats: html,json,md (default: from config) — mirrors review's --format. */
+  format?: string
 }
 
 function injectContextAndSplit(chunks: CodeChunk[]): CodeChunk[] {
@@ -79,6 +86,27 @@ function throwIfAborted(signal?: AbortSignal): void {
 export async function diffCommand(opts: DiffOpts): Promise<void> {
   const projectRoot = process.cwd()
   const base = opts.base ?? 'main'
+
+  // Validate --format up front, before running the (potentially expensive
+  // and slow) swarm review — mirrors review.ts's own up-front check
+  // (clihui-006).
+  if (opts.format) {
+    const requestedFormats = opts.format
+      .split(',')
+      .map((f) => f.trim())
+      .filter(Boolean)
+    const invalidFormats = requestedFormats.filter(
+      (f) => !(VALID_REPORT_FORMATS as readonly string[]).includes(f)
+    )
+    if (invalidFormats.length > 0) {
+      console.error(
+        theme.error(
+          `  Invalid --format value${invalidFormats.length > 1 ? 's' : ''}: ${invalidFormats.join(', ')}. Valid options: ${VALID_REPORT_FORMATS.join(', ')}`
+        )
+      )
+      throw new CliExitError(1)
+    }
+  }
 
   try {
     if (!(await isGitRepo(projectRoot))) {
@@ -262,6 +290,9 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
           ignoredLines: annotationSummary.ignoredLines,
           signal: opts.signal,
           severityWeights: config.score.severityWeights,
+          nearMatchWindowLines: config.swarm.nearMatchWindowLines,
+          nearMatchSameAgentThreshold: config.swarm.nearMatchSameAgentThreshold,
+          nearMatchCrossAgentThreshold: config.swarm.nearMatchCrossAgentThreshold,
         },
         triageManifests
       )
@@ -334,15 +365,13 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       config.score.maxHistoryEntries
     )
 
-    // Regenerate the score badge the same way `review` does, so it doesn't
-    // go stale after a `diff` run.
-    if (config.score.badge) {
-      const badgeSvg = renderBadge(getBadgeData(scoreResult.score))
-      const badgePath = join(projectRoot, config.score.badgePath)
-      const badgeDir = dirname(badgePath)
-      if (!existsSync(badgeDir)) mkdirSync(badgeDir, { recursive: true })
-      writeFileSync(badgePath, badgeSvg, 'utf-8')
-    }
+    // Badge regeneration is intentionally SKIPPED for diff-kind runs. Unlike
+    // `review`, this score is computed only over changed files — writing it
+    // over the repo-wide badge.svg replaced the last full-review badge with a
+    // diff-scoped one that doesn't represent the whole codebase, so the badge
+    // silently went stale/misleading after every `diff` run (scorer-004).
+    // Report/json/md output above is unaffected; only the badge write is
+    // skipped here.
 
     // Compute real base-branch findings so the "resolved" (fixed since base)
     // comparator path is actually reachable, not just "introduced". Scoped to
@@ -412,6 +441,9 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
                   softTokenLimit: config.swarm.softTokenLimit,
                   hardChunkLimit: config.swarm.hardChunkLimit,
                   signal: opts.signal,
+                  nearMatchWindowLines: config.swarm.nearMatchWindowLines,
+                  nearMatchSameAgentThreshold: config.swarm.nearMatchSameAgentThreshold,
+                  nearMatchCrossAgentThreshold: config.swarm.nearMatchCrossAgentThreshold,
                   onVerdictDetected: (filePath: string, sideA: string, sideB: string): void => {
                     console.log(theme.dim(`  [base] Conflict: ${sideA} vs ${sideB} in ${filePath}`))
                   },
@@ -481,7 +513,7 @@ export async function diffCommand(opts: DiffOpts): Promise<void> {
       },
     }
 
-    const formats = config.output.formats
+    const formats = (opts.format ?? config.output.formats.join(',')).split(',').map((f) => f.trim())
 
     if (formats.includes('json')) {
       const jsonPath = join(outputDir, `${reportName}.json`)

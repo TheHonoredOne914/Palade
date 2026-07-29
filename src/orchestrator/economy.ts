@@ -3,8 +3,38 @@ import type { IAgent, AgentName } from '../agents/base.js'
 import { CustomAgent } from '../agents/custom/agent.js'
 import { CombinedAnalyzer, DEFAULT_DOMAINS } from '../agents/combined.js'
 import { ECONOMY_SOFT_TOKEN_CAP, ECONOMY_HARD_CHUNK_CAP } from './scheduler.js'
+import { expandProviderShares } from '../config/loader.js'
+import { updateAgentProviders } from '../providers/router.js'
 
-export function applyEconomyRouting(agents: IAgent[], economyMode: boolean): IAgent[] {
+/**
+ * Applies economy-mode agent collapsing AND (when providerShares is given)
+ * the declarative provider-share remap, in one shared place — swarm.ts used
+ * to duplicate this exact remap logic inline (expand shares against the
+ * pre-collapse roster, call updateAgentProviders, then re-map onto
+ * 'combined' after collapsing) with its own copy that watch.ts's call site
+ * never got, so economy mode silently ignored config.swarm.providerShares
+ * whenever this function (not swarm.ts's inline copy) was the one routing
+ * (orchestrator-001).
+ */
+export function applyEconomyRouting(
+  agents: IAgent[],
+  economyMode: boolean,
+  providerShares?: Record<string, number>
+): IAgent[] {
+  // Expand + apply provider shares against the pre-collapse roster BEFORE any
+  // economy-mode collapsing below — economy mode's own CombinedAnalyzer name
+  // ('combined') doesn't exist yet at this point, so this always targets the
+  // real per-domain agent names.
+  let expandedAgentProviders: Record<string, string> | undefined
+  if (providerShares && Object.keys(providerShares).length > 0) {
+    expandedAgentProviders = expandProviderShares(
+      providerShares,
+      agents.length,
+      agents.map((a) => a.name)
+    )
+    updateAgentProviders(expandedAgentProviders)
+  }
+
   if (!economyMode) return agents
   const builtInAgents = agents.filter((a) => !(a instanceof CustomAgent))
   const customAgents = agents.filter((a) => a instanceof CustomAgent)
@@ -24,6 +54,25 @@ export function applyEconomyRouting(agents: IAgent[], economyMode: boolean): IAg
     const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
     return defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
   })
+
+  // The share expansion above was keyed by the pre-collapse specialist names
+  // (security, architecture, ...) — CombinedAnalyzer replaces all of them
+  // with a single agent named 'combined', so those entries are now orphaned
+  // and getProvider('primary', 'combined') would never find an override,
+  // silently falling back to swarm.primary regardless of configured shares.
+  // Re-map onto 'combined' directly: pick the plurality provider (largest
+  // configured share; ties keep the first configured key, since Array#sort
+  // is stable) so economy mode still respects at least one meaningfully-
+  // chosen provider. Merge with (rather than replace) the prior expansion so
+  // custom agents' own entries — unaffected by the collapse — aren't lost.
+  if (providerShares && Object.keys(providerShares).length > 0) {
+    const [pluralityProvider] = Object.entries(providerShares).sort((a, b) => b[1] - a[1])[0]
+    updateAgentProviders({
+      ...(expandedAgentProviders ?? {}),
+      combined: pluralityProvider,
+    })
+  }
+
   return [new CombinedAnalyzer(activeDomains), ...customAgents]
 }
 

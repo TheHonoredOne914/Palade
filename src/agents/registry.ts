@@ -118,7 +118,15 @@ export function getAgentsForMode(
   // is on built-in specialist parallelism (matches config.swarm.agentCount's
   // usage in the cost estimator and CLI progress counters, see
   // src/ingestion/estimator.ts and src/cli/commands/diff.ts).
+  //
+  // `agentCount && agentCount > 0` used to treat an explicit 0 the same as
+  // "unset" (0 is falsy), silently running every built-in agent when the
+  // caller asked for zero — distinguish "unset" (undefined) from "a real
+  // number" instead, so agentCount: 0 actually yields zero built-ins while
+  // undefined still means "no cap, run them all" (agents-005).
   const builtIns =
-    agentCount && agentCount > 0 ? AGENT_REGISTRY.slice(0, agentCount) : AGENT_REGISTRY
+    typeof agentCount === 'number'
+      ? AGENT_REGISTRY.slice(0, Math.max(0, agentCount))
+      : AGENT_REGISTRY
   return [...builtIns, ...customAgents.values()]
 }

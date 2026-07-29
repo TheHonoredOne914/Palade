@@ -104,6 +104,32 @@ export function countBySeverity(
   return { total, critical, high }
 }
 
+/**
+ * The raw (unrounded) category score, floored but NOT rounded — shared by
+ * calculateCategoryScore (which rounds it once for display) and
+ * calculateScore's own average (which must NOT average already-rounded
+ * per-category integers, or the average itself gets rounded a second time
+ * before the final blended total rounds a third — scorer-007).
+ */
+function calculateCategoryRawScore(
+  findings: AgentFinding[],
+  category: ScoreCategory,
+  severityWeights: SeverityWeights,
+  complexityPenalties: ComplexityPenalties,
+  categoryPenaltyCap: number
+): number {
+  const agentName = category
+  let penalty = 0
+  for (const f of findings) {
+    if (f.agentName === agentName) {
+      penalty += computeFindingPenalty(f, severityWeights, complexityPenalties)
+    }
+  }
+  // Cap category penalty so a single category can't zero out the score
+  const cappedPenalty = Math.min(penalty, categoryPenaltyCap)
+  return Math.max(CATEGORY_SCORE_FLOOR, 100 - cappedPenalty)
+}
+
 export function calculateCategoryScore(
   findings: AgentFinding[],
   category: ScoreCategory,
@@ -114,20 +140,17 @@ export function calculateCategoryScore(
   const agentName = category
   const { total, critical, high } = countBySeverity(findings, agentName)
 
-  let penalty = 0
-  for (const f of findings) {
-    if (f.agentName === agentName) {
-      penalty += computeFindingPenalty(f, severityWeights, complexityPenalties)
-    }
-  }
-
-  // Cap category penalty so a single category can't zero out the score
-  const cappedPenalty = Math.min(penalty, categoryPenaltyCap)
-  const score = Math.max(CATEGORY_SCORE_FLOOR, Math.round(100 - cappedPenalty))
+  const rawScore = calculateCategoryRawScore(
+    findings,
+    category,
+    severityWeights,
+    complexityPenalties,
+    categoryPenaltyCap
+  )
 
   return {
     category,
-    score,
+    score: Math.round(rawScore),
     findingCount: total,
     criticalCount: critical,
     highCount: high,
@@ -304,6 +327,20 @@ export function calculateScore(
       penaltyCaps.categoryPenaltyCap
     )
   )
+  // Raw (unrounded) per-category scores, used ONLY for the average below —
+  // averaging categoryScores[].score (already rounded to an integer for
+  // display) rounds once per category, then rounds the average, then rounds
+  // the final blended total a third time, drifting the displayed total away
+  // from what a single final rounding would produce (scorer-007).
+  const rawCategoryScores = categories.map((cat) =>
+    calculateCategoryRawScore(
+      findings,
+      cat,
+      severityWeights,
+      complexityPenalties,
+      penaltyCaps.categoryPenaltyCap
+    )
+  )
 
   const findingPenalty = calculateTotalPenalty(findings, severityWeights, complexityPenalties)
   const crossAgentPenalty = calculateCrossAgentPenalty(crossAgentFindings, crossAgentWeights)
@@ -322,9 +359,9 @@ export function calculateScore(
   // be aware an empty array can mean either "nothing ran" or "nothing to
   // score".
   const avgCategoryScore =
-    categoryScores.length === 0
+    rawCategoryScores.length === 0
       ? 100
-      : categoryScores.reduce((sum, c) => sum + c.score, 0) / categoryScores.length
+      : rawCategoryScores.reduce((sum, s) => sum + s, 0) / rawCategoryScores.length
   // Blend: 60% average category score, 40% penalty-based score
   const penaltyScore = Math.max(
     TOTAL_SCORE_FLOOR,

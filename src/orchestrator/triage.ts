@@ -24,7 +24,7 @@ Prioritise:
 export async function triageFiles(
   manifests: FileManifest[],
   allChunks: CodeChunk[],
-  options?: { maxReviewTokens?: number; strictTriage?: boolean }
+  options?: { maxReviewTokens?: number; strictTriage?: boolean; signal?: AbortSignal }
 ): Promise<CodeChunk[]> {
   const budget = options?.maxReviewTokens ?? DEFAULT_MAX_REVIEW_TOKENS
   const totalTokens = estimateTotalTokens(allChunks)
@@ -82,6 +82,7 @@ export async function triageFiles(
       userPrompt: `Project files:\n${compactManifest}\n\nRank all files by importance. Return the full ranked list as a JSON array.`,
       maxTokens,
       temperature: 0.1,
+      signal: options?.signal,
     })
 
     let rankedPaths: string[] = []

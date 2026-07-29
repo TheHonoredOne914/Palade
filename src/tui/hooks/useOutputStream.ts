@@ -8,8 +8,19 @@ import type { OutputLine } from '../components/OutputPane.js'
 // the buffer crosses MAX_LINES we trim it down to the last WINDOW_LINES and
 // force <Static> to remount (via clearNonce) so its internal render cursor
 // resets to the now-shorter array instead of freezing on the old length.
-const MAX_LINES = 2000
-const WINDOW_LINES = 500
+//
+// Overridable via env vars (current values remain the default when unset) —
+// previously hardcoded with no way to tune the buffer for a session that
+// wants more/less scrollback (clihui-007).
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+const MAX_LINES = envInt('PALADE_TUI_MAX_LINES', 2000)
+const WINDOW_LINES = envInt('PALADE_TUI_WINDOW_LINES', 500)
 
 export function useOutputStream() {
   const idRef = useRef(0)

@@ -194,6 +194,15 @@ export class OpenAICompatibleProvider implements IProvider {
 
     if (!res.ok) {
       const body = await res.text()
+      // Some providers return 403 (not 429) for a daily/quota exhaustion —
+      // check isDailyLimitError before treating it as an auth failure, same
+      // as the 429 branch above, so a quota-exhausted key isn't permanently
+      // marked dead-from-auth (which blocks retrying it once quota resets)
+      // instead of the correct dailyLimitExhausted state (providers-001).
+      if (res.status === 403 && isDailyLimitError(body)) {
+        this.dailyLimitExhausted = true
+        throw tagQuotaError(new Error(`${this.label} daily limit exceeded. ${body.slice(0, 200)}`))
+      }
       if (res.status === 401 || res.status === 403) {
         throw new AuthError(
           `${this.label} error ${res.status}: ${body.slice(0, 200)}`,
