@@ -1,4 +1,10 @@
-export type DefectCategory = 'real-bug' | 'false-positive'
+// 'fixed-bug': was a genuine real-bug entry, confirmed fixed by a prior audit
+// round. Kept in the catalog (rather than deleted) so its location still acts
+// as a false-positive trap — an agent that still flags the old symptom is
+// wrong, since the code no longer has the defect — but it no longer counts
+// toward realBugCount/recall the way a live 'real-bug' does. See scorer.ts's
+// scoreAgent()/matchDefect() for how this differs from 'false-positive'.
+export type DefectCategory = 'real-bug' | 'false-positive' | 'fixed-bug'
 
 export type Severity = 'low' | 'medium' | 'high' | 'critical'
 
@@ -26,10 +32,10 @@ export const SCHEDULER_DEFECTS: Defect[] = [
     lineStart: 91,
     lineEnd: 93,
     severity: 'medium',
-    category: 'real-bug',
+    category: 'fixed-bug',
     hypothesis: 'Recursion depth cap can return an oversized chunk.',
     reality:
-      'CONFIRMED (runtime). splitToLimit returns [chunk] verbatim once depth > 10, so a single line that cannot be halved below MAX_TOKENS within 10 levels is emitted over HARD_CHUNK_LIMIT. Verified with a ~49MB single line.',
+      "WAS CONFIRMED, NOW FIXED (orchestrator-002). splitToLimit used to return [chunk] verbatim once depth > 10; it now calls hardTruncateChunk to guarantee the emitted chunk is under hardChunkLimit (see scheduler.ts's splitToLimit depth-cap branch). No longer a live defect — kept as a false-positive trap.",
     fromReport: true,
   },
   {
@@ -38,11 +44,11 @@ export const SCHEDULER_DEFECTS: Defect[] = [
     lineStart: 50,
     lineEnd: 56,
     severity: 'medium',
-    category: 'real-bug',
+    category: 'fixed-bug',
     hypothesis:
       'chunk.tokenCount includes chunk.contextPrefix, but splitChunk only divides chunk.content; contextPrefix is re-prepended to both halves and never split.',
     reality:
-      'CONFIRMED (logical + runtime). A chunk whose contextPrefix alone exceeds MAX_TOKENS is unsplittable: both halves keep the full prefix in their tokenCount, so neither drops below the limit and the depth cap returns it oversized. Generalizes S1 beyond single-line content.',
+      'WAS CONFIRMED, NOW FIXED (orchestrator-001). splitChunk now drops contextPrefix entirely when prefixTokens alone would meet/exceed hardChunkLimit, instead of re-prepending an unsplittable prefix to both halves. No longer a live defect — kept as a false-positive trap.',
     fromReport: false,
   },
   {
@@ -105,11 +111,11 @@ export const FINDING_VALIDATION_DEFECTS: Defect[] = [
     lineStart: 5,
     lineEnd: 7,
     severity: 'medium',
-    category: 'real-bug',
+    category: 'fixed-bug',
     hypothesis:
       'normalizePath does not lowercase, so Windows case differences between a finding path and a chunk path never match.',
     reality:
-      'CONFIRMED (runtime). On case-insensitive filesystems "C:/X.ts" and "c:/x.ts" are the same file, but normalizePath preserves case, so the finding is dropped as "not in reviewed chunks" even though it is valid.',
+      'WAS CONFIRMED, NOW FIXED (orchestrator-004). A separate normalizePathKey() case-folds the lookup key (normalizePath(p).toLowerCase()), used for chunk-map lookups, while normalizePath() itself still preserves case for the displayed filePath. No longer a live defect — kept as a false-positive trap.',
     fromReport: false,
   },
   {
@@ -118,11 +124,11 @@ export const FINDING_VALIDATION_DEFECTS: Defect[] = [
     lineStart: 9,
     lineEnd: 10,
     severity: 'medium',
-    category: 'real-bug',
+    category: 'fixed-bug',
     hypothesis:
       'normalizePath does not resolve ".." segments or internal "./", so relative paths diverge from chunk paths.',
     reality:
-      'CONFIRMED (runtime). "../src/foo.ts" or "src/./foo.ts" are not collapsed; if the chunk path is "src/foo.ts" the finding is silently dropped though it references a reviewed file.',
+      'WAS CONFIRMED, NOW FIXED. normalizePath now runs path.posix.normalize() on the backslash-normalized path and strips dangling leading "../"/"./" segments before comparison. No longer a live defect — kept as a false-positive trap.',
     fromReport: false,
   },
   {
@@ -131,11 +137,11 @@ export const FINDING_VALIDATION_DEFECTS: Defect[] = [
     lineStart: 12,
     lineEnd: 13,
     severity: 'medium',
-    category: 'real-bug',
+    category: 'fixed-bug',
     hypothesis:
       'A finding with lineStart === undefined is returned early WITHOUT a findingFingerprint.',
     reality:
-      'CONFIRMED (runtime). getMatchingChunkAndClamp returns the bare finding at line 13; validateAndFingerprintFindings pushes it without setting findingFingerprint. Downstream merger.ts cannot dedupe it, so it leaks as a duplicate.',
+      'WAS CONFIRMED, NOW FIXED. getMatchingChunkAndClamp() can still return the bare finding without a fingerprint for the undefined-lineStart case, but validateAndFingerprintFindings() now unconditionally sets findingFingerprint via fingerprintFor(normalized) at push time regardless of that path, so every emitted finding is fingerprinted. No longer a live defect — kept as a false-positive trap.',
     fromReport: false,
   },
   {
@@ -144,11 +150,11 @@ export const FINDING_VALIDATION_DEFECTS: Defect[] = [
     lineStart: 14,
     lineEnd: 15,
     severity: 'low',
-    category: 'real-bug',
+    category: 'fixed-bug',
     hypothesis:
       'A non-integer lineStart (e.g. 12.5 from a tool) is dropped entirely as if out of range.',
     reality:
-      'CONFIRMED (runtime). Line 14 returns null for any non-integer lineStart, so a valid fractional position is discarded rather than clamped.',
+      'WAS CONFIRMED, NOW FIXED (orchestrator-005). getMatchingChunkAndClamp() now rounds a non-integer lineStart/lineEnd via Math.round() instead of rejecting it, as long as the rounded value is still in range. No longer a live defect — kept as a false-positive trap.',
     fromReport: false,
   },
   {
@@ -184,11 +190,11 @@ export const MERGER_DEFECTS: Defect[] = [
     lineStart: 23,
     lineEnd: 24,
     severity: 'medium',
-    category: 'real-bug',
+    category: 'fixed-bug',
     hypothesis:
       'jaccardSimilarity returns 1 when BOTH titles consist only of non-alphanumeric characters (both word sets empty).',
     reality:
-      'CONFIRMED (runtime). getWords splits on [^a-z0-9]+, so "!!!" and "@@@" both yield empty sets and line 23 returns 1. Two unrelated findings with punctuation-only titles are then merged as duplicates.',
+      'WAS CONFIRMED, NOW FIXED (scorer-101). jaccardSimilarity now explicitly returns 0 when either word set is empty, instead of falling through to the union/overlap math that used to yield 1 for two empty sets. No longer a live defect — kept as a false-positive trap.',
     fromReport: false,
   },
   {
@@ -225,11 +231,11 @@ export const TRIAGE_DEFECTS: Defect[] = [
     lineStart: 93,
     lineEnd: 97,
     severity: 'low',
-    category: 'real-bug',
+    category: 'fixed-bug',
     hypothesis:
       'Array extraction uses the FIRST "[" and LAST "]" in the LLM response, so any extra brackets elsewhere produce invalid JSON.',
     reality:
-      'CONFIRMED (logical). If the model wraps the list or includes stray brackets, substring(arrayStart, arrayEnd+1) yields non-array JSON; parse fails and triage silently falls back to heuristicSelect. Fragile, though mitigated by the fallback.',
+      'WAS CONFIRMED, NOW FIXED (orchestrator-010). Triage now uses extractBalancedJson(), a bracket-depth-aware, string-literal-honoring extractor, instead of a naive first-"["/last-"]" substring slice. No longer a live defect — kept as a false-positive trap.',
     fromReport: false,
   },
 ]

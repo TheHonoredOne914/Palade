@@ -80,8 +80,17 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
       let current = ''
       let inQuote = false
       for (const ch of trimmed) {
-        if (ch === '"') { inQuote = !inQuote; continue }
-        if (ch === ' ' && !inQuote) { if (current) { parts.push(current); current = '' }; continue }
+        if (ch === '"') {
+          inQuote = !inQuote
+          continue
+        }
+        if (ch === ' ' && !inQuote) {
+          if (current) {
+            parts.push(current)
+            current = ''
+          }
+          continue
+        }
         current += ch
       }
       if (current) parts.push(current)
