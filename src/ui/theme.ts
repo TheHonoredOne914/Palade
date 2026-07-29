@@ -35,6 +35,23 @@ export const SCORE_THRESHOLDS = {
   poor: 40,
 } as const
 
+export type ScoreTier = 'excellent' | 'good' | 'warning' | 'poor' | 'critical'
+
+/**
+ * Single source of truth for "which SCORE_THRESHOLDS bucket does this score
+ * fall into" — shared by scorer/badge.ts's getScoreColor and ui/layout.ts's
+ * sparkline (and scoreGrade below), so a score can't land in a different
+ * bucket in one place than another the way it used to when each kept its own
+ * independently-hardcoded breakpoint ladder (scorer-003).
+ */
+export function scoreToTier(score: number): ScoreTier {
+  if (score >= SCORE_THRESHOLDS.excellent) return 'excellent'
+  if (score >= SCORE_THRESHOLDS.good) return 'good'
+  if (score >= SCORE_THRESHOLDS.warning) return 'warning'
+  if (score >= SCORE_THRESHOLDS.poor) return 'poor'
+  return 'critical'
+}
+
 export function scoreTheme(score: number) {
   if (score >= SCORE_THRESHOLDS.good) return theme.scoreGreen
   if (score >= SCORE_THRESHOLDS.warning) return theme.scoreYellow

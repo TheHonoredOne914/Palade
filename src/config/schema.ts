@@ -7,6 +7,7 @@ import {
   SEVERITY_PENALTY,
   DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
   DEFAULT_PENALTY_CAPS,
+  DEFAULT_MAX_HISTORY_ENTRIES,
 } from './defaults.js'
 import { BUILTIN_NAMES } from '../agents/registry.js'
 // router.ts's PROVIDER_NAMES is the single source of truth for supported
@@ -101,6 +102,28 @@ export const PaladeConfigSchema = z
         // Retention cap for .palade/decisions/ ADR files (oldest pruned
         // first), unlike every other swarm cap previously not config-backed.
         decisionsRetentionLimit: z.number().int().min(1).default(100),
+        // Line-proximity window and title-similarity thresholds for
+        // merger.ts's near-match dedup. Previously hardcoded-only
+        // (NEAR_MATCH_WINDOW_LINES/NEAR_MATCH_SAME_AGENT_THRESHOLD/
+        // NEAR_MATCH_CROSS_AGENT_THRESHOLD in merger.ts) despite already being
+        // threaded through SwarmOptions with no way to actually set them from
+        // config (orchestrator-002). All optional — merger.ts's own defaults
+        // (60/0.5/0.7) apply when unset.
+        nearMatchWindowLines: z.number().int().min(0).optional(),
+        nearMatchSameAgentThreshold: z.number().min(0).max(1).optional(),
+        nearMatchCrossAgentThreshold: z.number().min(0).max(1).optional(),
+        // Optional advanced overrides for the low-level HTTP retry loop
+        // shared by every provider adapter (base.ts's fetchWithRetry). All
+        // fields optional; the current hardcoded values (3 retries, 500ms
+        // base delay, 8000ms max delay) remain the default whenever this is
+        // unset, so setting nothing here changes nothing (providers-007).
+        retry: z
+          .object({
+            maxRetries: z.number().int().min(0).optional(),
+            baseDelayMs: z.number().int().min(0).optional(),
+            maxDelayMs: z.number().int().min(0).optional(),
+          })
+          .optional(),
       })
       .default(() => ({ ...(DEFAULT_CONFIG.swarm as Record<string, unknown>) })),
     output: z
@@ -123,7 +146,7 @@ export const PaladeConfigSchema = z
         // number. This is intentional (a flat combined cap let frequent `palade
         // diff` runs evict every 'full' entry and break score trend tracking)
         // but the field name doesn't make that obvious (scorer-003).
-        maxHistoryEntries: z.number().int().min(1).default(50),
+        maxHistoryEntries: z.number().int().min(1).default(DEFAULT_MAX_HISTORY_ENTRIES),
         // Per-finding penalty applied when calculating category/total scores,
         // keyed by severity. Defaults match agents/base.ts's SEVERITY_PENALTY.
         severityWeights: z

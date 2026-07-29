@@ -4,7 +4,7 @@ import pLimit from 'p-limit'
 import type { AgentFinding, AgentContext, AgentName, IAgent } from '../agents/base.js'
 import { getAgentsForMode } from '../agents/registry.js'
 import { synthesize as analyzeSynthesis, type SynthesisResult } from '../agents/synthesis.js'
-import { CombinedAnalyzer, DEFAULT_DOMAINS } from '../agents/combined.js'
+import { CombinedAnalyzer } from '../agents/combined.js'
 import { CustomAgent } from '../agents/custom/agent.js'
 import type { CodeChunk, FileManifest } from '../ingestion/types.js'
 import type { SwarmResult, SwarmOptions, CrossAgentFinding } from './types.js'
@@ -17,12 +17,12 @@ import {
   ECONOMY_SOFT_TOKEN_CAP,
   ECONOMY_HARD_CHUNK_CAP,
 } from './scheduler.js'
-import { getFallbackStats, updateAgentProviders } from '../providers/router.js'
-import { expandProviderShares } from '../config/loader.js'
+import { getFallbackStats } from '../providers/router.js'
 import { isFatalAuthError } from '../providers/errorClassification.js'
 import { detectConflicts, arbitrateConflict, saveDecision } from './verdict.js'
 import { applyLineIgnores } from '../ingestion/annotationParser.js'
 import { ReviewCancelledError } from '../errors/types.js'
+import { applyEconomyRouting } from './economy.js'
 
 const DEFAULT_MAX_CONCURRENT_BATCHES = 5
 
@@ -53,6 +53,7 @@ export async function runSwarm(
       ? await triageFiles(manifests, allChunks, {
           maxReviewTokens: options.maxReviewTokens,
           strictTriage: options.strictTriage,
+          signal: options.signal,
         })
       : allChunks
 
@@ -70,77 +71,28 @@ export async function runSwarm(
     options.agentCount
   )
 
-  // config-load time's expandProviderShares (config/loader.ts) assumes the
-  // standard-mode agent roster (BUILTIN_NAMES prefix of agentCount) — modes
-  // with agentOverrides (onboard, ghost) dispatch a different fixed agent
-  // list that ignores agentCount entirely, so that expansion can silently not
-  // match who actually runs. Re-expand here against the real resolved roster
-  // now that getAgentsForMode() has run (providers-002).
-  let expandedAgentProviders: Record<string, string> | undefined
-  if (options.providerShares) {
-    expandedAgentProviders = expandProviderShares(
-      options.providerShares,
-      modeAgents.length,
-      modeAgents.map((a) => a.name)
-    )
-    updateAgentProviders(expandedAgentProviders)
-  }
-
-  let agents: IAgent[] = modeAgents
-  // Tracks whether CombinedAnalyzer is actually going to be used this run —
-  // only true once the builtInAgents.length > 1 branch below fires. Economy
-  // mode's tightened softTokenLimit/hardChunkLimit caps exist solely for
-  // CombinedAnalyzer's larger multi-domain output, so they must only clamp
-  // when it's really in play; otherwise the <= 1 built-in agent fallback to
-  // standard dispatch would still run standard-mode agents against
-  // economy-sized batches for no reason (orchestrator-101).
-  let usingCombinedAnalyzer = false
-  if (options.economyMode) {
-    const builtInAgents = modeAgents.filter((a) => !(a instanceof CustomAgent))
-    const customAgents = modeAgents.filter((a) => a instanceof CustomAgent)
-
-    // Ghost mode or heavily filtered modes might only have 1 built-in agent.
-    // Combining 1 agent defeats the purpose of economy mode (which is to batch N domains)
-    // and just degrades prompt quality. So if <= 1 built-in agent, just run standard mode.
-    if (builtInAgents.length <= 1) {
-      console.warn(
-        chalk.yellow(
-          '⚠ Economy mode requested but only 1 built-in agent active — falling back to standard mode.'
-        )
-      )
-    }
-    if (builtInAgents.length > 1) {
-      usingCombinedAnalyzer = true
-      const activeDomains = builtInAgents.map((a) => {
-        const defaultSpec = DEFAULT_DOMAINS.find((d) => d.name === a.name)
-        return (
-          defaultSpec || { name: a.name as AgentName, label: a.name, focus: 'General code review' }
-        )
-      })
-      agents = [new CombinedAnalyzer(activeDomains), ...customAgents]
-
-      // The share expansion above was keyed by the pre-collapse specialist
-      // names (security, architecture, ...) — CombinedAnalyzer replaces all
-      // of them with a single agent named 'combined', so those entries are
-      // now orphaned and getProvider('primary', 'combined') would never find
-      // an override, silently falling back to swarm.primary regardless of
-      // configured shares (providers-006). Re-map onto 'combined' directly:
-      // pick the plurality provider (largest configured share; ties keep the
-      // first configured key, since Array#sort is stable) so economy mode
-      // still respects at least one meaningfully-chosen provider. Merge with
-      // (rather than replace) the prior expansion so custom agents' own
-      // entries — unaffected by the collapse — aren't lost.
-      if (options.providerShares && Object.keys(options.providerShares).length > 0) {
-        const [pluralityProvider] = Object.entries(options.providerShares).sort(
-          (a, b) => b[1] - a[1]
-        )[0]
-        updateAgentProviders({
-          ...(expandedAgentProviders ?? {}),
-          combined: pluralityProvider,
-        })
-      }
-    }
-  }
+  // applyEconomyRouting re-expands config.swarm.providerShares against the
+  // real resolved roster now that getAgentsForMode() has run (config-load
+  // time's expandProviderShares assumes the standard-mode roster, which modes
+  // with agentOverrides — onboard, ghost — don't follow), AND — when economy
+  // mode collapses the roster into CombinedAnalyzer — re-maps that expansion
+  // onto the 'combined' agent name. Shared with watch.ts's own call site
+  // (via economy.ts) instead of each keeping a separately drifting inline
+  // copy of this remap, which used to leave watch.ts's copy never calling
+  // updateAgentProviders at all (orchestrator-001, providers-002).
+  const agents: IAgent[] = applyEconomyRouting(
+    modeAgents,
+    !!options.economyMode,
+    options.providerShares
+  )
+  // Tracks whether CombinedAnalyzer is actually going to be used this run.
+  // Economy mode's tightened softTokenLimit/hardChunkLimit caps exist solely
+  // for CombinedAnalyzer's larger multi-domain output, so they must only
+  // clamp when it's really in play — applyEconomyRouting falls back to
+  // standard per-agent dispatch when <= 1 built-in agent is active, so this
+  // is derived from its actual output rather than the raw economyMode flag
+  // (orchestrator-101).
+  const usingCombinedAnalyzer = agents.some((a) => a instanceof CombinedAnalyzer)
 
   // Economy-mode batch-size narrowing used to be only a convention followed
   // by CLI command callers (review/diff/watch), not enforced here — a caller

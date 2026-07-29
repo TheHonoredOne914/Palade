@@ -10,8 +10,9 @@ import {
 } from 'node:fs'
 import { dirname } from 'node:path'
 import type { ScoreHistoryEntry, ScoreBreakdown, CategoryScore } from './types.js'
+import { DEFAULT_MAX_HISTORY_ENTRIES } from '../config/defaults.js'
 
-const MAX_HISTORY_ENTRIES = 50
+const MAX_HISTORY_ENTRIES = DEFAULT_MAX_HISTORY_ENTRIES
 
 // `entries.slice(-maxEntries)` degenerates to `entries.slice(-0)` — which is
 // `entries.slice(0)`, i.e. the *entire* untrimmed array — when maxEntries is
@@ -105,8 +106,12 @@ export function parseHistoryEntries(raw: string): ScoreHistoryEntry[] {
 
       entries.push({
         timestamp: obj.timestamp as string,
-        runId:
-          typeof obj.runId === 'string' ? obj.runId : obj.runId != null ? String(obj.runId) : '',
+        // A non-string runId (e.g. a number/object from a hand-edited or
+        // corrupted history.json) used to be blindly coerced via String() —
+        // unlike every other malformed field here, which falls back to a
+        // safe default instead of trusting garbage input. Reject it the same
+        // way (scorer-006).
+        runId: typeof obj.runId === 'string' ? obj.runId : '',
         score: obj.score as number,
         breakdown,
         delta: typeof obj.delta === 'number' && Number.isFinite(obj.delta) ? obj.delta : 0,

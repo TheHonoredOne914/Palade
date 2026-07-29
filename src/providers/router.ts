@@ -11,6 +11,7 @@ import { OpenCodeZenProvider } from './opencode-zen.js'
 import OllamaProvider from './ollama.js'
 import { ProviderPool, PROVIDER_POOL_SOURCE, type PoolSourceTaggedError } from './pool.js'
 import { sanitizeErrorMessage } from '../utils/sanitize.js'
+import { configureRetryBackoff } from './base.js'
 
 // Marks the specific provider instance responsible for a fatal error dead,
 // rather than the chain entry itself. When `provider` is a ProviderPool
@@ -347,6 +348,9 @@ function getFallbackChain(excludeName: string): IProvider[] {
 
 export async function initRouter(config: PaladeConfig): Promise<ProviderAssignment> {
   activeConfig = config
+  // Optional advanced retry/backoff overrides (config.swarm.retry) — a no-op
+  // (keeps the hardcoded defaults) when unset (providers-007).
+  configureRetryBackoff(config.swarm.retry)
   allProviders = instantiateProviders(config.providers)
   // Per-agent FallbackProvider cache keyed off the previous call's provider
   // instances (see getProvider()'s cacheKey lookup below) — a second
@@ -364,6 +368,17 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   if (allProviders.has(preferredPrimary) && availability[names.indexOf(preferredPrimary)]) {
     primary = allProviders.get(preferredPrimary)
   } else {
+    // Mirrors getProvider()'s existing "requested provider is not configured"
+    // warning below — this used to silently fall back to whatever provider
+    // was available first, with no signal that swarm.primary named a provider
+    // that isn't actually set up (providers-002).
+    if (!allProviders.has(preferredPrimary)) {
+      console.warn(
+        chalk.yellow(
+          `[router] Warning: swarm.primary is '${preferredPrimary}' but it is not configured. Falling back to the first available provider.`
+        )
+      )
+    }
     for (let i = 0; i < names.length; i++) {
       if (availability[i]) {
         primary = allProviders.get(names[i])
@@ -382,6 +397,13 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   if (allProviders.has(preferredSynthesis) && availability[names.indexOf(preferredSynthesis)]) {
     synthesis = allProviders.get(preferredSynthesis)!
   } else {
+    if (!allProviders.has(preferredSynthesis)) {
+      console.warn(
+        chalk.yellow(
+          `[router] Warning: swarm.synthesis is '${preferredSynthesis}' but it is not configured. Falling back to the primary provider.`
+        )
+      )
+    }
     synthesis = primary
   }
 
@@ -403,13 +425,17 @@ export async function initRouter(config: PaladeConfig): Promise<ProviderAssignme
   // the primary counters.
   const preferredTriage = config.swarm.triage
   let triageWithFallback: IProvider = primaryWithFallback
-  if (
-    preferredTriage &&
-    allProviders.has(preferredTriage) &&
-    availability[names.indexOf(preferredTriage)]
-  ) {
-    const triage = allProviders.get(preferredTriage)!
-    triageWithFallback = new FallbackProvider(triage, getFallbackChain(triage.name))
+  if (preferredTriage) {
+    if (allProviders.has(preferredTriage) && availability[names.indexOf(preferredTriage)]) {
+      const triage = allProviders.get(preferredTriage)!
+      triageWithFallback = new FallbackProvider(triage, getFallbackChain(triage.name))
+    } else if (!allProviders.has(preferredTriage)) {
+      console.warn(
+        chalk.yellow(
+          `[router] Warning: swarm.triage is '${preferredTriage}' but it is not configured. Falling back to the primary provider.`
+        )
+      )
+    }
   }
 
   const result: ProviderAssignment = {

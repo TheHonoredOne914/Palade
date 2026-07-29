@@ -86,10 +86,15 @@ export class ProviderPool implements IProvider {
       // member). Stashing it on the error itself — rather than an instance
       // field like `this.lastHandler` — avoids a race where a concurrent
       // call overwrites the "last handler" before this one's catch runs.
-      if (err instanceof Error) {
-        ;(err as PoolSourceTaggedError)[PROVIDER_POOL_SOURCE] = provider
-      }
-      throw err
+      //
+      // A thrown non-Error primitive (string/object/etc, e.g. from a
+      // misbehaving adapter) used to skip tagging entirely — wrap it in an
+      // Error first so the responsible member is always identifiable
+      // downstream instead of silently losing the pool-source attribution
+      // (providers-004).
+      const tagged = err instanceof Error ? err : new Error(String(err))
+      ;(tagged as PoolSourceTaggedError)[PROVIDER_POOL_SOURCE] = provider
+      throw tagged
     }
   }
 

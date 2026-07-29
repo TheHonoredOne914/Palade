@@ -11,6 +11,7 @@ import type { Severity } from '../agents/base.js'
 import { CATEGORY_LABELS } from '../scorer/types.js'
 import { getScoreColor as getScoreColorTier } from '../scorer/badge.js'
 import { groupBySeverity } from '../orchestrator/merger.js'
+import { SCORE_THRESHOLDS } from '../ui/theme.js'
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
   critical: 'severity-critical',
@@ -25,10 +26,16 @@ function getScoreGradeClass(score: number): string {
   // templates/report.html — that stylesheet only has a/b/c/d/f tiers, no
   // "-plus" variants, so emitting grade-a-plus/grade-b-plus left the
   // best-scoring runs' score circle with no color at all.
-  if (score >= 80) return 'grade-a'
-  if (score >= 70) return 'grade-b'
-  if (score >= 60) return 'grade-c'
-  if (score >= 40) return 'grade-d'
+  //
+  // Buckets are derived from ui/theme.ts's SCORE_THRESHOLDS (90/80/60/40) —
+  // the same thresholds getScoreColor's badge.ts tier and layout.ts's
+  // scoreGrade/sparkline use — instead of an independently hardcoded
+  // 80/70/60/40 ladder, which used to give the same score a different grade
+  // here than the color it was actually painted with (scorer-001).
+  if (score >= SCORE_THRESHOLDS.excellent) return 'grade-a'
+  if (score >= SCORE_THRESHOLDS.good) return 'grade-b'
+  if (score >= SCORE_THRESHOLDS.warning) return 'grade-c'
+  if (score >= SCORE_THRESHOLDS.poor) return 'grade-d'
   return 'grade-f'
 }
 

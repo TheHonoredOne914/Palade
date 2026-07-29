@@ -61,18 +61,29 @@ if (hasCommand) {
   launchTUI()
 }
 
+/**
+ * Fallback command listing shown whenever the interactive TUI can't run —
+ * either no TTY is attached, or the TUI module itself threw while loading.
+ * Extracted so the `tui` subcommand's own failure path (see runClassicCLI
+ * below) can print the same list instead of just claiming a fallback that
+ * never actually happened (clihui-002).
+ */
+function printFallbackCommandList(chalkModule: typeof import('chalk').default): void {
+  console.log('  palade review [path]     Review codebase with AI swarm')
+  console.log('  palade diff               Review changes since a branch')
+  console.log('  palade watch              Continuous background review')
+  console.log('  palade score              Show current health score')
+  console.log('  palade init               Set up Palade in this project')
+  console.log(chalkModule.dim('\nRun `palade --help` for the full command list.'))
+}
+
 async function launchTUI(): Promise<void> {
   const { default: chalk } = await import('chalk')
   if (!process.stdout.isTTY || !process.stdin.isTTY) {
     console.log(
       chalk.dim('Interactive TUI requires a terminal. Showing available commands instead:\n')
     )
-    console.log('  palade review [path]     Review codebase with AI swarm')
-    console.log('  palade diff               Review changes since a branch')
-    console.log('  palade watch              Continuous background review')
-    console.log('  palade score              Show current health score')
-    console.log('  palade init               Set up Palade in this project')
-    console.log(chalk.dim('\nRun `palade --help` for the full command list.'))
+    printFallbackCommandList(chalk)
     return
   }
   const { launchTUI: startTUI } = await import('../tui/launch.js')
@@ -195,8 +206,14 @@ async function runClassicCLI(): Promise<void> {
       '--strict-triage',
       'Strict triage mode: halt if triage drops any files due to token limits'
     )
+    .option(VALUE_FLAG_STRINGS.format, 'Output formats: html,json,md (default: from config)')
     .action(
-      async (opts: { base?: string; ci?: boolean; strictTriage?: boolean }): Promise<void> => {
+      async (opts: {
+        base?: string
+        ci?: boolean
+        strictTriage?: boolean
+        format?: string
+      }): Promise<void> => {
         try {
           await diffCommand(opts)
         } catch (err) {
@@ -289,8 +306,16 @@ async function runClassicCLI(): Promise<void> {
         const { launchTUI } = await import('../tui/launch.js')
         await launchTUI()
       } catch (err: unknown) {
-        console.error(chalk.yellow('\n⚠ TUI failed to load. Falling back to classic CLI.'))
+        // The message used to claim a fallback to "classic CLI" that never
+        // actually happened — this catch just logs and returns, leaving the
+        // process exiting with no further action taken. Print the same
+        // command list the non-TTY launchTUI() path shows instead, so the
+        // user gets something actionable rather than a misleading claim
+        // (clihui-002).
+        console.error(chalk.yellow('\n⚠ TUI failed to load. Showing available commands instead:\n'))
         console.error(chalk.dim('Reason: ' + (err instanceof Error ? err.message : String(err))))
+        console.log()
+        printFallbackCommandList(chalk)
       }
     })
 
