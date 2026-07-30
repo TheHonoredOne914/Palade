@@ -217,6 +217,14 @@ export function calculateScore(
     ...DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS,
     ...scoreConfig?.crossAgentPenalty,
   }
+  for (const k of Object.keys(crossAgentWeights) as Array<keyof CrossAgentPenaltyWeights>) {
+    crossAgentWeights[k] = Math.max(
+      0,
+      Number.isFinite(crossAgentWeights[k])
+        ? crossAgentWeights[k]
+        : DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS[k]
+    )
+  }
 
   const complexityPenalties: ComplexityPenalties = {
     ...DEFAULT_COMPLEXITY_PENALTIES,
@@ -330,7 +338,13 @@ export function calculateScore(
     TOTAL_SCORE_FLOOR,
     Math.round(100 - Math.min(totalPenalty, penaltyCaps.totalPenaltyCap))
   )
-  const total = Math.round(avgCategoryScore * 0.6 + penaltyScore * 0.4)
+  // Backstop clamp: the input-side validation above (severityWeights,
+  // crossAgentWeights, complexityPenalties, penaltyCaps) keeps penalties
+  // non-negative so penaltyScore/avgCategoryScore shouldn't exceed 100 in
+  // practice, but cap the final blended total here too so a badge or report
+  // can never display something like "460/100" if a future weight source
+  // slips through un-validated.
+  const total = Math.min(100, Math.round(avgCategoryScore * 0.6 + penaltyScore * 0.4))
 
   const breakdown: ScoreBreakdown = {
     total,
