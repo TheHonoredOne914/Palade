@@ -1,12 +1,18 @@
 import chalk from 'chalk'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { theme } from '../../ui/theme.js'
 import { loadConfig } from '../../config/loader.js'
 import { PaladeConfigSchema } from '../../config/schema.js'
 import { DEFAULT_CONFIG } from '../../config/defaults.js'
-import { PROVIDERS, saveApiKey, setNestedValue, type ProviderId } from '../../config/apiKey.js'
+import {
+  PROVIDERS,
+  saveApiKey,
+  setNestedValue,
+  resolveConfigPath,
+  type ProviderId,
+} from '../../config/apiKey.js'
 // (uicli-008) This CLI flow and the TUI's SettingsPanel.tsx both source their
 // provider list/labels/env-var names from the same PROVIDERS array above —
 // see SettingsPanel.tsx's top-of-file comment for the one intentional
@@ -156,7 +162,16 @@ async function showCurrentConfig(projectRoot: string): Promise<void> {
 }
 
 async function initConfig(projectRoot: string): Promise<void> {
-  const configPath = join(projectRoot, '.palade', 'palade.config.ts')
+  // Use the same resolution order as loadConfig()/applySets: prefer an
+  // existing config at either the nested or root-level fallback path over
+  // blindly creating a new nested one. Creating a second config at the
+  // nested path when one already exists at the root-level fallback would
+  // shadow/orphan that pre-existing config (loadConfig() prefers nested when
+  // both exist) — see settings-set-ignores-root-config-fallback.
+  const resolved = resolveConfigPath(projectRoot)
+  const configPath = existsSync(resolved)
+    ? resolved
+    : join(projectRoot, '.palade', 'palade.config.ts')
   const ignorePath = join(projectRoot, '.palade', 'ignore')
 
   if (!existsSync(join(projectRoot, '.palade'))) {
@@ -165,9 +180,9 @@ async function initConfig(projectRoot: string): Promise<void> {
 
   if (!existsSync(configPath)) {
     await writeFile(configPath, CONFIG_TEMPLATE, 'utf-8')
-    console.log(theme.success('  ✓ .palade/palade.config.ts created'))
+    console.log(theme.success(`  ✓ ${relative(projectRoot, configPath)} created`))
   } else {
-    console.log(theme.dim('  .palade/palade.config.ts already exists, skipping'))
+    console.log(theme.dim(`  ${relative(projectRoot, configPath)} already exists, skipping`))
   }
 
   if (!existsSync(ignorePath)) {
@@ -185,7 +200,12 @@ async function initConfig(projectRoot: string): Promise<void> {
 }
 
 async function applySets(projectRoot: string, sets: string[]): Promise<void> {
-  const configPath = join(projectRoot, '.palade', 'palade.config.ts')
+  // Same precedence as loadConfig()/resolveConfigPath: nested .palade/ path
+  // first, falling back to a root-level palade.config.ts. Hardcoding the
+  // nested-only path here made --set fail with "Config not found" on a
+  // config that loadConfig() (and --list) find fine at the root-level
+  // fallback (settings-set-ignores-root-config-fallback).
+  const configPath = resolveConfigPath(projectRoot)
   let configContent: string
 
   try {
