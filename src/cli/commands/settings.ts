@@ -169,7 +169,9 @@ async function initConfig(projectRoot: string): Promise<void> {
   // shadow/orphan that pre-existing config (loadConfig() prefers nested when
   // both exist) — see settings-set-ignores-root-config-fallback.
   const resolved = resolveConfigPath(projectRoot)
-  const configPath = existsSync(resolved) ? resolved : join(projectRoot, '.palade', 'palade.config.ts')
+  const configPath = existsSync(resolved)
+    ? resolved
+    : join(projectRoot, '.palade', 'palade.config.ts')
   const ignorePath = join(projectRoot, '.palade', 'ignore')
 
   if (!existsSync(join(projectRoot, '.palade'))) {
