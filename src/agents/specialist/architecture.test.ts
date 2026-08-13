@@ -1,0 +1,129 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ArchitectureAgent, ARCHITECTURE_WARNING, ARCHITECTURE_FOCUS } from './architecture.js'
+import * as router from '../../providers/router.js'
+import type { AgentContext } from '../base.js'
+import type { CodeChunk } from '../../ingestion/types.js'
+import type { IProvider } from '../../providers/base.js'
+
+describe('agents/specialist/architecture — exported prompt fragments', () => {
+  it('ARCHITECTURE_WARNING warns against asserting cross-file issues from partial chunks', () => {
+    expect(ARCHITECTURE_WARNING).toContain('PARTIAL chunks')
+    expect(ARCHITECTURE_WARNING).toContain('circular dependency')
+    expect(ARCHITECTURE_WARNING).toContain('DEPENDENCY CYCLES')
+  })
+
+  it('ARCHITECTURE_FOCUS lists domain-specific concerns', () => {
+    expect(ARCHITECTURE_FOCUS).toContain('Circular dependencies')
+    expect(ARCHITECTURE_FOCUS).toContain('God objects')
+    expect(ARCHITECTURE_FOCUS).toContain('DEPENDENCY CYCLES')
+  })
+})
+
+describe('ArchitectureAgent', () => {
+  let mockProvider: any
+
+  beforeEach(() => {
+    mockProvider = {
+      name: 'mock',
+      model: 'mock-model',
+      complete: vi.fn(),
+      isAvailable: vi.fn().mockResolvedValue(true),
+    }
+    vi.spyOn(router, 'getProvider').mockReturnValue(mockProvider as unknown as IProvider)
+  })
+
+  const ctx: AgentContext = {
+    mode: 'standard',
+    totalFiles: 1,
+    totalChunks: 1,
+    projectLanguages: ['typescript'],
+  }
+  const chunk: CodeChunk = {
+    id: '1',
+    filePath: 'src/orderService.ts',
+    startLine: 1,
+    endLine: 2,
+    content: 'export class OrderService {}',
+    tokenCount: 5,
+    language: 'typescript',
+  }
+
+  it('has the correct agent name', () => {
+    const agent = new ArchitectureAgent()
+    expect(agent.name).toBe('architecture')
+  })
+
+  it('sends a system prompt that includes the warning and focus blocks', async () => {
+    mockProvider.complete.mockResolvedValueOnce({
+      content: '[]',
+      provider: 'mock-provider',
+      model: 'mock-model-v2',
+      inputTokens: 10,
+      outputTokens: 10,
+      durationMs: 10,
+    })
+
+    const agent = new ArchitectureAgent()
+    await agent.analyze([chunk], ctx)
+
+    expect(mockProvider.complete).toHaveBeenCalledTimes(1)
+    const request = mockProvider.complete.mock.calls[0][0]
+    expect(request.systemPrompt).toContain(ARCHITECTURE_WARNING)
+    expect(request.systemPrompt).toContain(ARCHITECTURE_FOCUS)
+    expect(request.systemPrompt).toContain('specialist architecture code reviewer')
+  })
+
+  it('parses findings from the provider and tags them with the architecture agentName', async () => {
+    mockProvider.complete
+      .mockResolvedValueOnce({
+        content:
+          '[{"severity":"high","title":"Circular dependency","description":"A depends on B and B depends on A.","filePath":"src/orderService.ts","lineStart":1,"lineEnd":2}]',
+        provider: 'mock-provider',
+        model: 'mock-model-v2',
+        inputTokens: 10,
+        outputTokens: 10,
+        durationMs: 10,
+      })
+      .mockResolvedValueOnce({
+        content: 'YES',
+        provider: 'mock-provider',
+        model: 'mock-model-v2',
+        inputTokens: 10,
+        outputTokens: 10,
+        durationMs: 10,
+      })
+
+    const agent = new ArchitectureAgent()
+    const findings = await agent.analyze([chunk], ctx)
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0].agentName).toBe('architecture')
+    expect(findings[0].title).toBe('Circular dependency')
+    expect(findings[0].severity).toBe('high')
+  })
+
+  it('returns an empty array when the model reports no findings', async () => {
+    mockProvider.complete.mockResolvedValueOnce({
+      content: '[]',
+      provider: 'mock-provider',
+      model: 'mock-model-v2',
+      inputTokens: 10,
+      outputTokens: 10,
+      durationMs: 10,
+    })
+
+    const agent = new ArchitectureAgent()
+    const findings = await agent.analyze([chunk], ctx)
+    expect(findings).toEqual([])
+  })
+
+  it('swallows AbortError and returns an empty array', async () => {
+    const abortErr = new Error('aborted')
+    abortErr.name = 'AbortError'
+    mockProvider.complete.mockRejectedValue(abortErr)
+
+    const agent = new ArchitectureAgent()
+    const findings = await agent.analyze([chunk], ctx)
+    expect(findings).toEqual([])
+  })
+})
