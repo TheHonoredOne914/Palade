@@ -12,6 +12,7 @@ import {
   type CompletionRequest,
   type CompletionResponse,
 } from '../providers/base.js'
+import { extractBalancedJson } from '../utils/jsonExtract.js'
 
 export function formatSpecAndConstitution(context?: AgentContext): string {
   let block = ''
@@ -24,8 +25,12 @@ export function formatSpecAndConstitution(context?: AgentContext): string {
   return block
 }
 
-/** Strip chain-of-thought reasoning blocks emitted by some models. */
-function stripCoT(text: string): string {
+/**
+ * Strip chain-of-thought reasoning blocks emitted by some models. Exported so
+ * synthesis.ts's own CoT-stripping regexes don't drift out of sync with this
+ * copy (agents-004).
+ */
+export function stripCoT(text: string): string {
   return text
     .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
     .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
@@ -290,15 +295,26 @@ export function parseFindingsResponse(
     cleaned = (jsonBlock ?? allBlocks[allBlocks.length - 1])[1].trim()
   }
 
-  // Find outermost JSON array bounds
-  const arrayStart = cleaned.indexOf('[')
-  const arrayEnd = cleaned.lastIndexOf(']')
-  if (arrayStart !== -1 && arrayEnd > arrayStart) {
-    cleaned = cleaned.substring(arrayStart, arrayEnd + 1)
+  // Find the outermost JSON array bounds. Prefer a balanced bracket-scan
+  // (honoring string literals) over a naive indexOf/lastIndexOf substring
+  // slice — a stray bracket in explanatory preamble/prose before or after the
+  // real array (e.g. a footnote like "[1]") broke the naive slice the same
+  // way it used to break triage.ts's ranked-file-list parse
+  // (orchestrator-010). Falls back to the naive slice — the pre-existing
+  // safety net — when no balanced region is found (agents-006).
+  const balancedArray = extractBalancedJson(cleaned, '[', ']')
+  if (balancedArray) {
+    cleaned = balancedArray
   } else {
-    // If no array brackets found, it might be an empty response or pure conversational text
-    if (!cleaned.includes('[')) {
-      return unparsableResponseFinding(agentName, 'contained no JSON findings array')
+    const arrayStart = cleaned.indexOf('[')
+    const arrayEnd = cleaned.lastIndexOf(']')
+    if (arrayStart !== -1 && arrayEnd > arrayStart) {
+      cleaned = cleaned.substring(arrayStart, arrayEnd + 1)
+    } else {
+      // If no array brackets found, it might be an empty response or pure conversational text
+      if (!cleaned.includes('[')) {
+        return unparsableResponseFinding(agentName, 'contained no JSON findings array')
+      }
     }
   }
 
@@ -518,6 +534,28 @@ export async function completeAndParseFindings(
 }
 
 /**
+ * Fetches a provider distinct from the one that produced a finding, to run
+ * the self-consistency verification below — a model re-confirming its own
+ * output is a weaker check than an independent second opinion. Prefers the
+ * 'synthesis' role (usually configured to a different provider than
+ * 'primary'/per-agent overrides); falls back to the SAME provider instance
+ * when only one provider is configured or the router isn't initialized (e.g.
+ * some test contexts calling verifyCriticalHighFindings directly) — a
+ * same-provider recheck is still strictly better than no recheck at all
+ * (agents-003).
+ */
+function getVerifierProvider(producerProvider: IProvider): IProvider {
+  try {
+    const candidate = getProvider('synthesis')
+    if (candidate && candidate.name !== producerProvider.name) return candidate
+  } catch {
+    // Router not initialized, or no distinct synthesis provider resolvable —
+    // fall back to the producer provider below.
+  }
+  return producerProvider
+}
+
+/**
  * Re-asks the model a strict YES/NO question to confirm each critical/high
  * finding against the actual code chunk it references, dropping any it can't
  * confirm. Shared so every analyze() path (per-domain specialists AND the
@@ -531,6 +569,10 @@ export async function verifyCriticalHighFindings(
   context?: AgentContext,
   signal?: AbortSignal
 ): Promise<AgentFinding[]> {
+  // Verify with a provider distinct from the one that produced the finding
+  // when one is available, instead of always re-asking the same model that
+  // just made the claim (agents-003).
+  const verifierProvider = getVerifierProvider(provider)
   const knownFilePaths = context?.knownFilePaths
   // The verifier used to see only the bare code chunk — no spec/constitution
   // — so a finding correctly raised by cross-referencing the business-logic
@@ -568,7 +610,7 @@ export async function verifyCriticalHighFindings(
       return f
     }
     try {
-      const verifyResponse = await provider.complete({
+      const verifyResponse = await verifierProvider.complete({
         systemPrompt: `You are an expert verifier. Reply strictly YES or NO.${specConstitutionBlock}`,
         userPrompt: `Does the following code ACTUALLY contain this vulnerability/issue?
 Issue: ${f.title} - ${f.description}

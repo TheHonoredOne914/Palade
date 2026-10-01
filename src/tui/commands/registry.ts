@@ -18,7 +18,6 @@ export const COMMAND_REGISTRY: CommandDef[] = [
       '/review --target auth',
       '/review --mode security',
       '/review --mode ghost',
-      '/review --pick',
     ],
   },
   {

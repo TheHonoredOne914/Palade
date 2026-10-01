@@ -1,6 +1,7 @@
 import type { IProvider } from '../providers/base.js'
 import { getProvider } from '../providers/router.js'
-import type { AgentContext, AgentFinding, Severity } from './base.js'
+import { isFatalAuthError } from '../providers/errorClassification.js'
+import { stripCoT, type AgentContext, type AgentFinding, type Severity } from './base.js'
 import type { CrossAgentFinding } from '../orchestrator/types.js'
 import { penaltyFor } from '../scorer/calculator.js'
 
@@ -59,11 +60,9 @@ Be direct. Be specific. Do not repeat individual findings — synthesize pattern
 Note: the numeric critical/high/medium/low/total counts in debtEstimate are computed separately from the actual finding set — do NOT try to compute them yourself. Only provide "highestROIFix" in debtEstimate.`
 
 function parseSynthesisResponse(raw: string): SynthesisResult | null {
-  let cleaned = raw.trim()
-
-  // Safely strip CoT reasoning blocks
-  cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
-  cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim()
+  // Safely strip CoT reasoning blocks — shared with base.ts's parseFindingsResponse
+  // so the two regexes can't drift apart (agents-004).
+  let cleaned = stripCoT(raw.trim())
 
   // Safely strip outer markdown code blocks using a non-greedy match
   const allBlocks = [...cleaned.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)]
@@ -356,6 +355,12 @@ export async function synthesize(
       .catch((err: unknown): null => {
         // Re-throw AbortErrors so the outer catch can handle graceful cancellation
         if (err instanceof Error && err.name === 'AbortError') throw err
+        // A fatal auth error (invalid/expired key) is just as doomed here as
+        // anywhere else it's thrown — swallowing it into a null response used
+        // to make swarm.ts's synthesis catch treat it as an ordinary "warn and
+        // continue" failure instead of aborting the run via isFatalAuthError,
+        // so a dead key silently produced a "successful" report (agents-001).
+        if (err instanceof Error && isFatalAuthError(err)) throw err
         console.warn(
           `[synthesis] provider.complete failed: ${err instanceof Error ? err.message : String(err)}`
         )
@@ -384,10 +389,8 @@ export async function synthesize(
       }
     }
     result.debtEstimate = { ...debtCounts, highestROIFix: result.debtEstimate.highestROIFix }
-    signal?.removeEventListener('abort', onExternalAbort!)
     return result
   } catch (err) {
-    signal?.removeEventListener('abort', onExternalAbort!)
     if (err instanceof Error && err.name === 'AbortError') {
       return {
         executiveSummary: 'Synthesis was aborted.',
@@ -397,5 +400,12 @@ export async function synthesize(
       }
     }
     throw err
+  } finally {
+    // Both success returns above used to skip this cleanup entirely (only the
+    // catch block removed the listener), leaking one 'abort' listener on the
+    // shared external signal per successful synthesis call — a finally runs
+    // on every exit path (success, parse-failure early return, and the catch
+    // block itself) so it always fires exactly once (agents-002).
+    if (onExternalAbort) signal?.removeEventListener('abort', onExternalAbort)
   }
 }

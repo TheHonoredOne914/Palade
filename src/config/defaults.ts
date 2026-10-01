@@ -3,6 +3,11 @@ import type { PaladeConfig } from './schema.js'
 export const DEFAULT_CONSTITUTION_PATH = '.palade/constitution.md'
 export const DEFAULT_BADGE_PATH = 'palade-badge.svg'
 export const DEFAULT_SPEC_PATH = 'palade.spec.md'
+// Single source of truth for the history.json retention cap default, shared
+// by config/schema.ts's maxHistoryEntries field and scorer/history.ts's own
+// fallback constant — these used to be two separately hardcoded `50`s that
+// could drift apart (scorer-005).
+export const DEFAULT_MAX_HISTORY_ENTRIES = 50
 
 export const SEVERITY_PENALTY = {
   critical: 10,
@@ -60,7 +65,7 @@ export const DEFAULT_CONFIG: DefaultConfigType = {
     historyFile: '.palade/history.json',
     badge: true,
     badgePath: DEFAULT_BADGE_PATH,
-    maxHistoryEntries: 50,
+    maxHistoryEntries: DEFAULT_MAX_HISTORY_ENTRIES,
     severityWeights: { ...SEVERITY_PENALTY },
     crossAgentPenalty: { ...DEFAULT_CROSS_AGENT_PENALTY_WEIGHTS },
     complexityPenalties: { ...DEFAULT_COMPLEXITY_PENALTIES },

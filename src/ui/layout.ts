@@ -1,6 +1,20 @@
 import chalk from 'chalk'
-import { theme, SCORE_THRESHOLDS } from './theme.js'
+import { theme, SCORE_THRESHOLDS, scoreToTier, type ScoreTier } from './theme.js'
 import type { AgentFinding } from '../agents/base.js'
+
+// Terminal-hex palette per scoreToTier() bucket. 'excellent' intentionally
+// shares 'good's green — the sparkline is a coarse trend glyph, not a badge,
+// so it keeps its original 4-color look while now deriving its breakpoints
+// from the same shared scoreToTier()/SCORE_THRESHOLDS logic scorer/badge.ts's
+// getScoreColor and scoreGrade below use, instead of a third independently
+// hardcoded 80/60/40 ladder that could drift from the other two (scorer-003).
+const TIER_SPARKLINE_HEX: Record<ScoreTier, string> = {
+  excellent: '#10B981',
+  good: '#10B981',
+  warning: '#F59E0B',
+  poor: '#F97316',
+  critical: '#EF4444',
+}
 
 // Match full SGR escape sequences, including multi-parameter truecolor codes
 // like \x1b[38;2;R;G;Bm that chalk.hex() (used throughout theme.ts) emits.
@@ -65,10 +79,7 @@ export function sparkline(values: number[], width = 20): string {
   const chars = values.slice(-width).map((v) => {
     const idx = Math.round(((v - min) / range) * (BLOCKS.length - 1))
     const block = BLOCKS[idx]
-    if (v >= 80) return chalk.hex('#10B981')(block)
-    if (v >= 60) return chalk.hex('#F59E0B')(block)
-    if (v >= 40) return chalk.hex('#F97316')(block)
-    return chalk.hex('#EF4444')(block)
+    return chalk.hex(TIER_SPARKLINE_HEX[scoreToTier(v)])(block)
   })
   return chars.join('')
 }

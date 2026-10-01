@@ -18,6 +18,48 @@ import {
 import { CliExitError } from '../../errors/types.js'
 import { formatErrorMessages } from '../../errors/handler.js'
 
+// Per-command allowlist of recognized `--flag` names (without the leading
+// `--`), used below to reject an unrecognized flag instead of silently
+// letting its value leak into `positional` (clihui-009). Kept in sync by
+// hand with each case in the switch below and with cli/index.ts's commander
+// registrations for the same command.
+const KNOWN_FLAGS: Record<string, Set<string>> = {
+  review: new Set([
+    'target',
+    'all-targets',
+    'dir',
+    'file',
+    'glob',
+    'mode',
+    'annotations',
+    'pick',
+    'depth',
+    'format',
+    'open',
+    'no-open',
+    'quiet',
+    'dry-run',
+    'economy',
+    'exhaustive',
+    'strict-triage',
+    'no-verdict',
+  ]),
+  diff: new Set(['base', 'ci', 'strict-triage', 'format']),
+  // watch always shows its own "cannot run inside the TUI" message below
+  // regardless of flags — allowlisting its real CLI flags (rather than none)
+  // just means a legitimate `/watch --sensitivity high` doesn't get a
+  // confusing "unknown flag" error ahead of that message.
+  watch: new Set(['sensitivity', 'continuous']),
+  score: new Set(['history']),
+  decisions: new Set(['days']),
+  settings: new Set(['set', 'init', 'list']),
+  init: new Set(['yes']),
+  targets: new Set([]),
+  clear: new Set([]),
+  help: new Set([]),
+  exit: new Set([]),
+}
+
 interface CommandRunnerOptions {
   config?: PaladeConfig
   projectRoot: string
@@ -139,6 +181,26 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
         return !(prev?.startsWith('--') && VALUE_FLAGS.has(prev.slice(2)))
       })
 
+      // An unrecognized `--flag` used to silently pass through: the
+      // positional filter above only excludes a token that follows a KNOWN
+      // value-flag, so `/review --bogus src/foo.ts` left "src/foo.ts"
+      // correctly positional but `/review --bogus` alone leaked nothing
+      // wrong-looking either — the typo'd flag was just dropped with no
+      // signal at all. Validate against the per-command allowlist and
+      // surface an explicit error instead of silently proceeding
+      // (clihui-009).
+      const allowedFlags = KNOWN_FLAGS[commandName] ?? new Set<string>()
+      const unknownFlags = Array.from(
+        new Set(rest.filter((r) => r.startsWith('--')).map((r) => r.slice(2)))
+      ).filter((f) => !allowedFlags.has(f))
+      if (unknownFlags.length > 0) {
+        opts.appendLine({
+          type: 'error',
+          text: `Unknown flag${unknownFlags.length > 1 ? 's' : ''} for /${commandName}: ${unknownFlags.map((f) => '--' + f).join(', ')}`,
+        })
+        return
+      }
+
       // Capture this dispatch's abort signal so the finally block can tell
       // whether it is still the active command (a newer dispatch replaces the
       // controller) — otherwise an aborted command's late rejection resets the
@@ -183,6 +245,7 @@ export function useCommandRunner(opts: CommandRunnerOptions) {
               base: flag('base') ?? 'main',
               ci: hasFlag('ci'),
               strictTriage: hasFlag('strict-triage'),
+              format: flag('format'),
               signal: runSignal,
               tui: true,
             })

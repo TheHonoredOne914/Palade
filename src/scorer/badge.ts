@@ -1,5 +1,13 @@
 import type { BadgeColor, BadgeData } from './types.js'
-import { SCORE_THRESHOLDS } from '../ui/theme.js'
+import { scoreToTier, type ScoreTier } from '../ui/theme.js'
+
+const TIER_TO_BADGE_COLOR: Record<ScoreTier, BadgeColor> = {
+  excellent: 'brightgreen',
+  good: 'green',
+  warning: 'yellow',
+  poor: 'orange',
+  critical: 'red',
+}
 
 const COLOR_MAP: Record<BadgeColor, string> = {
   brightgreen: '#4c1',
@@ -11,11 +19,7 @@ const COLOR_MAP: Record<BadgeColor, string> = {
 
 export function getScoreColor(score: number): BadgeColor {
   const clamped = Math.max(0, Math.min(100, score))
-  if (clamped >= SCORE_THRESHOLDS.excellent) return 'brightgreen'
-  if (clamped >= SCORE_THRESHOLDS.good) return 'green'
-  if (clamped >= SCORE_THRESHOLDS.warning) return 'yellow'
-  if (clamped >= SCORE_THRESHOLDS.poor) return 'orange'
-  return 'red'
+  return TIER_TO_BADGE_COLOR[scoreToTier(clamped)]
 }
 
 export function getBadgeData(score: number): BadgeData {

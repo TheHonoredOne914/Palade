@@ -417,7 +417,11 @@ export async function watchCommand(opts: {
   }
 
   const modeAgents = getAgentsForMode('standard', undefined, customAgentDefs)
-  const watchAgents = applyEconomyRouting(modeAgents, !!config.swarm.economyMode)
+  const watchAgents = applyEconomyRouting(
+    modeAgents,
+    !!config.swarm.economyMode,
+    config.swarm.providerShares
+  )
 
   console.log(
     theme.accent(`  palade watch started. Watching for changes... (${sensitivity} sensitivity)`)

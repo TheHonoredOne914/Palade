@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { COMMAND_REGISTRY } from '../commands/registry.js'
 import { loadTargets } from '../../targets/loader.js'
@@ -90,11 +90,20 @@ export function Autocomplete({
     setSelectedIdx(0)
   }, [matches])
 
+  // Read the latest onSelect through a ref instead of listing it as an
+  // effect dependency — onSelect is typically a fresh closure every parent
+  // render, which used to re-fire this effect (and its onSelect('') call) on
+  // every keystroke even when `matches` itself hadn't changed (clihui-010).
+  const onSelectRef = useRef(onSelect)
+  useEffect(() => {
+    onSelectRef.current = onSelect
+  }, [onSelect])
+
   // When nothing matches, hide the (empty) autocomplete so the parent's Enter
   // handler can submit the raw input instead of both handlers swallowing it.
   useEffect(() => {
-    if (matches.length === 0) onSelect('')
-  }, [matches, onSelect])
+    if (matches.length === 0) onSelectRef.current('')
+  }, [matches])
 
   useInput((keyInput, key) => {
     if (key.tab || key.downArrow) {

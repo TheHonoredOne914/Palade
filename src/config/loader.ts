@@ -143,14 +143,27 @@ export async function loadConfig(): Promise<PaladeConfig> {
       }
     }
 
-    const configArgIdx = process.argv.indexOf('--config')
-    if (configArgIdx !== -1 && process.argv.length > configArgIdx + 1) {
-      const rawPath = process.argv[configArgIdx + 1]
-      if (!rawPath.endsWith('.ts')) {
+    // Accept both `--config <path>` and `--config=<path>` — only the
+    // space-separated form was recognized before, so `--config=foo.ts` was
+    // silently ignored and fell through to the default palade.config.ts
+    // discovery instead (clihui-001).
+    let rawConfigPath: string | undefined
+    const eqArg = process.argv.find((a) => a.startsWith('--config='))
+    if (eqArg) {
+      rawConfigPath = eqArg.slice('--config='.length)
+    } else {
+      const configArgIdx = process.argv.indexOf('--config')
+      if (configArgIdx !== -1 && process.argv.length > configArgIdx + 1) {
+        rawConfigPath = process.argv[configArgIdx + 1]
+      }
+    }
+
+    if (rawConfigPath !== undefined) {
+      if (!rawConfigPath.endsWith('.ts')) {
         throw new PaladeConfigError('Config file must be a .ts file', '--config')
       }
 
-      const absolutePath = join(process.cwd(), rawPath)
+      const absolutePath = join(process.cwd(), rawConfigPath)
       if (absolutePath !== process.cwd() && !absolutePath.startsWith(process.cwd() + sep)) {
         throw new PaladeConfigError('Config file must be within the working directory', '--config')
       }

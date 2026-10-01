@@ -1,4 +1,5 @@
 import pLimit, { type LimitFunction } from 'p-limit'
+import { isFatalAuthError } from './errorClassification.js'
 
 export interface CompletionRequest {
   systemPrompt: string
@@ -72,13 +73,37 @@ export interface IProvider {
   isDeadFromAuth?(): boolean
 }
 
-// Intentionally fixed: these govern the low-level HTTP retry loop shared by
-// every adapter. They're not exposed via config because tuning them per-run
-// would change retry timing underneath the router's own backoff/fallback
-// logic in unpredictable ways; see CLAUDE.md's "Performance Tuning Knobs".
+// Default values for the low-level HTTP retry loop shared by every adapter.
+// Previously hardcoded with no override path; now exposed as OPTIONAL
+// advanced config (config.swarm.retry) via configureRetryBackoff below, with
+// these exact values as the default — a run that doesn't set config.swarm.retry
+// behaves identically to before (providers-007).
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 500
 const MAX_DELAY_MS = 8000
+
+let configuredMaxRetries = MAX_RETRIES
+let configuredBaseDelayMs = BASE_DELAY_MS
+let configuredMaxDelayMs = MAX_DELAY_MS
+
+export interface RetryBackoffConfig {
+  maxRetries?: number
+  baseDelayMs?: number
+  maxDelayMs?: number
+}
+
+/**
+ * Applies optional advanced retry/backoff overrides (config.swarm.retry) to
+ * the shared HTTP retry loop used by every adapter. Called once by
+ * router.ts's initRouter() with the loaded config. Any field left unset falls
+ * back to the original hardcoded default, so a config that never sets
+ * swarm.retry sees no behavior change at all (providers-007).
+ */
+export function configureRetryBackoff(cfg?: RetryBackoffConfig): void {
+  configuredMaxRetries = cfg?.maxRetries ?? MAX_RETRIES
+  configuredBaseDelayMs = cfg?.baseDelayMs ?? BASE_DELAY_MS
+  configuredMaxDelayMs = cfg?.maxDelayMs ?? MAX_DELAY_MS
+}
 
 // Single source of truth for the per-request deadline default, shared by
 // every adapter (groq/cerebras/nvidia/openrouter/opencode-zen/ollama) — used
@@ -173,7 +198,7 @@ export function rateLimitedMessage(providerLabel: string, body: string): string 
 export async function fetchWithRetry(
   url: string,
   init: RequestInit,
-  retries = MAX_RETRIES
+  retries = configuredMaxRetries
 ): Promise<Response> {
   // If the caller supplied an already-aborted signal, fail immediately rather
   // than issuing a request we know we don't want. This matters for the swarm's
@@ -205,7 +230,8 @@ export async function fetchWithRetry(
         // 8s backoff ceiling would retry inside the server's window and burn
         // every attempt on guaranteed 429s.
         const delayMs = isNaN(parsed)
-          ? Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS) * (0.5 + Math.random() * 0.5)
+          ? Math.min(configuredBaseDelayMs * 2 ** attempt, configuredMaxDelayMs) *
+            (0.5 + Math.random() * 0.5)
           : Math.min(parsed, 60_000)
         await sleep(delayMs, externalSignal)
         continue
@@ -215,7 +241,8 @@ export async function fetchWithRetry(
         // it, concurrent batches hitting the same outage all retry in lockstep
         // instead of spreading their retries out.
         await sleep(
-          Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS) * (0.5 + Math.random() * 0.5),
+          Math.min(configuredBaseDelayMs * 2 ** attempt, configuredMaxDelayMs) *
+            (0.5 + Math.random() * 0.5),
           externalSignal
         )
         continue
@@ -230,7 +257,8 @@ export async function fetchWithRetry(
       lastError = err instanceof Error ? err : new Error(String(err))
       if (attempt < retries) {
         await sleep(
-          Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS) * (0.5 + Math.random() * 0.5),
+          Math.min(configuredBaseDelayMs * 2 ** attempt, configuredMaxDelayMs) *
+            (0.5 + Math.random() * 0.5),
           externalSignal
         )
       }
@@ -261,11 +289,39 @@ export function createLimiter(maxConcurrency: number): LimitFunction {
   return pLimit(maxConcurrency)
 }
 
-// Shared by every adapter (groq/cerebras/nvidia/openrouter/opencode-zen/ollama):
-// if a model consumes its whole output-token budget but returns no visible
-// content (e.g. reasoning-only output), retrying with a larger token budget
-// often recovers real content instead of surfacing an empty response.
-const MAX_RETRY_TOKENS = 32768
+/**
+ * Optional, opt-in cheap auth probe (providers-005): makes a minimal
+ * (near-zero-token) completion call to confirm a provider's credentials are
+ * actually valid, distinct from IProvider.isAvailable()'s quota-only check
+ * (see that method's own doc comment) — an invalid API key that has never
+ * been tried still reports isAvailable() === true.
+ *
+ * NOT wired into initRouter's primary-provider selection or any other
+ * automatic path — every provider constructed today keeps behaving exactly
+ * as before (isAvailable() stays quota-only, no extra network round trip on
+ * startup). Callers that specifically want eager credential validation
+ * before a full run (e.g. a future `palade doctor`-style command) can invoke
+ * this explicitly. Kept manual rather than wired in because the safe default
+ * — never spending an extra request's worth of quota just to validate a key
+ * — wasn't obviously improvable without changing behavior for every run.
+ */
+export async function probeAuthLive(provider: IProvider): Promise<boolean> {
+  try {
+    await provider.complete({
+      systemPrompt: 'Reply with the single word OK.',
+      userPrompt: 'OK',
+      maxTokens: 4,
+      temperature: 0,
+    })
+    return true
+  } catch (err) {
+    if (err instanceof Error && isFatalAuthError(err)) return false
+    // Any other failure (network, quota, timeout, transient 5xx) doesn't
+    // confirm the credentials themselves are bad — this probe is
+    // specifically about auth validity, not general availability.
+    return true
+  }
+}
 
 export function shouldRetryEmptyContent(
   content: string,
@@ -276,6 +332,11 @@ export function shouldRetryEmptyContent(
   return content.trim().length === 0 && outputTokens > 0 && attempt < maxAttempts
 }
 
-export function nextRetryMaxTokens(maxTokens: number, ceiling: number = MAX_RETRY_TOKENS): number {
+// `ceiling` is now required — every real caller (openaiCompatible.ts,
+// ollama.ts) already scales it off their own call's starting maxTokens (see
+// their retryCeiling comments) and passes it explicitly, which made the old
+// default value (a flat MAX_RETRY_TOKENS = 32768 constant) permanently
+// unreachable dead code (providers-003).
+export function nextRetryMaxTokens(maxTokens: number, ceiling: number): number {
   return Math.min(maxTokens * 2, ceiling)
 }
